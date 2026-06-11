@@ -48,7 +48,10 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   solo: {
     id: 'solo',
-    label: 'Solo',
+    // "Starter" — single-seller plan with AI-powered pipeline and up to
+    // 1 affiliate link. Affiliate engine limited; upgrade to Growth for
+    // full affiliate management.
+    label: 'Starter',
     priceMonthly: 97,
     includedUsers: 1,
     monthlyCredits: 1500,
@@ -58,7 +61,9 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   pro: {
     id: 'pro',
-    label: 'Pro Performer',
+    // "Growth" — full affiliate engine: unlimited referral links, auto
+    // commission tracking, FirstPromoter integration, and payout workflows.
+    label: 'Growth',
     priceMonthly: 197,
     includedUsers: 1,
     monthlyCredits: 4000,
@@ -68,7 +73,9 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   team: {
     id: 'team',
-    label: 'Team',
+    // "Scale" — multi-seller company workspace with up to 5 included seats.
+    // Shared affiliate pool, marketplace listing, and company analytics.
+    label: 'Scale',
     priceMonthly: 497,
     includedUsers: 5,
     monthlyCredits: 12000,
@@ -79,7 +86,8 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   team_plus: {
     id: 'team_plus',
-    label: 'Team Plus',
+    // "Scale Plus" — up to 10 sellers, priority support, advanced analytics.
+    label: 'Scale Plus',
     priceMonthly: 897,
     includedUsers: 10,
     monthlyCredits: 25000,

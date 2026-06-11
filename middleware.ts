@@ -56,7 +56,16 @@ const isFullyPublicRoute = createRouteMatcher([
   '/apply/(.*)',
   '/apply/b/(.*)',
   '/book/(.*)',
-  '/p/(.*)',                 // seller public "link in bio" pages
+  '/p/(.*)',                 // legacy public product pages (redirect → /marketplace)
+  // Marketplace storefront + guest checkout — anonymous buyers, no Clerk.
+  '/marketplace',
+  '/marketplace/(.*)',
+  '/api/checkout',
+  '/api/track/(.*)',
+  '/api/affiliates/join',
+  // Buyer portal — its own magic-code session (ClientUser), like /clients.
+  '/buyer',
+  '/buyer/(.*)',
   '/status/(.*)',
   '/cma/(.*)',               // tokenised CMA share pages (seller-facing report)
   '/packet/(.*)',            // tokenised listing-packet share pages (Phase 11)

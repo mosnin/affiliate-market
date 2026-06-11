@@ -115,7 +115,8 @@ function scorePill(label: string | null) {
 
 function leadTypeLabel(leadType: 'rental' | 'buyer' | null) {
   if (!leadType) return null;
-  return leadType === 'buyer' ? 'Buyer' : 'Rental';
+  // rental → subscription inquiry; buyer → one-time purchase
+  return leadType === 'buyer' ? 'Purchase' : 'Subscription';
 }
 
 function formatDate(iso: string) {
@@ -149,7 +150,7 @@ function stagePill(stage: AssignedLeadProgress['currentStage']) {
   const labels: Record<string, string> = {
     QUALIFICATION: 'Qualifying',
     DEMO: 'Demo',
-    APPLICATION: 'Applied',
+    APPLICATION: 'Quote requested',
   };
   return (
     <span

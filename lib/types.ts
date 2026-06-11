@@ -363,20 +363,18 @@ export type DealStageKind =
   | 'closed';
 
 export type ProductType =
-  | 'single_family'
-  | 'condo'
-  | 'townhouse'
-  | 'multi_family'
-  | 'land'
-  | 'commercial'
+  | 'saas'
+  | 'devtools'
+  | 'mobile_app'
+  | 'desktop_app'
+  | 'api_service'
+  | 'plugin'
   | 'other';
 
 export type ProductListingStatus =
-  | 'active'
-  | 'pending'
-  | 'sold'
-  | 'off_market'
-  | 'owned';
+  | 'draft'
+  | 'published'
+  | 'archived';
 
 export interface ProductPacket {
   id: string;
@@ -395,21 +393,24 @@ export interface ProductPacket {
 export interface Product {
   id: string;
   spaceId: string;
-  address: string;
-  unitNumber: string | null;
-  city: string | null;
-  stateRegion: string | null;
-  postalCode: string | null;
-  mlsNumber: string | null;
-  productType: ProductType | null;
-  beds: number | null;
-  baths: number | null;
-  squareFeet: number | null;
-  lotSizeSqft: number | null;
-  yearBuilt: number | null;
-  listPrice: number | null;
+  /** Product name, e.g. "Acme Analytics". Replaces the old `address` field. */
+  name: string;
+  /** One-line value proposition. */
+  tagline: string | null;
+  /** Long-form description shown on the marketplace listing. */
+  longDescription: string | null;
+  /** Category / product type for discovery. */
+  category: ProductType | null;
+  /** Pricing model: subscription or one-time. */
+  pricingModel: 'subscription' | 'one_time' | null;
+  /** Price in cents (e.g. 4900 = $49). */
+  priceCents: number | null;
+  currency: string | null;
+  billingPeriod: 'monthly' | 'yearly' | null;
+  websiteUrl: string | null;
+  marketplaceSlug: string | null;
+  listPrice: number | null; // kept for backward compat / CMA calcs
   listingStatus: ProductListingStatus;
-  listingUrl: string | null;
   photos: string[];
   notes: string | null;
   /** Company pool: set when this product belongs to a company's central

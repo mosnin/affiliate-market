@@ -1,9 +1,10 @@
 /**
- * `find_comparable_products` — search local Product rows in this workspace.
+ * `find_comparable_products` — search competing/similar Product rows in this workspace.
  *
- * Read-only. Honest about scope: this is NOT MLS. It searches Product rows
- * the seller has saved (their own listings, off-market notes, owned). If
- * MLS lookup is needed, that's a separate integration that doesn't exist yet.
+ * Read-only. Looks at the seller's own saved products (catalog) to find
+ * competing or similar software products for pricing analysis. Filters by
+ * category, price range, and keyword. Used for competitive pricing analysis
+ * (formerly CMA).
  *
  * Sort: when a price midpoint is computable from priceMin + priceMax (or one
  * of them), rank by ABS(price - midpoint). Otherwise default to recently
@@ -16,32 +17,33 @@ import { defineTool } from '../types';
 
 const parameters = z
   .object({
-    near: z
+    keyword: z
       .string()
       .trim()
       .min(1)
       .max(200)
       .optional()
-      .describe('Free-text address or city/region to ILIKE-match.'),
-    beds: z.number().int().min(0).max(20).optional(),
-    baths: z.number().min(0).max(20).optional(),
-    priceMin: z.number().min(0).optional(),
-    priceMax: z.number().min(0).optional(),
-    status: z
-      .enum(['active', 'pending', 'sold', 'off_market', 'owned'])
+      .describe('Free-text keyword to ILIKE-match against product name, tagline, or category.'),
+    category: z
+      .string()
       .optional()
-      .describe("Product.listingStatus filter."),
+      .describe('Product category filter, e.g. "saas", "devtools", "api_service".'),
+    priceMin: z.number().min(0).optional().describe('Minimum list price / monthly price in dollars.'),
+    priceMax: z.number().min(0).optional().describe('Maximum list price / monthly price in dollars.'),
+    status: z
+      .enum(['draft', 'published', 'archived'])
+      .optional()
+      .describe("Product.listingStatus filter. Use 'published' for live catalog entries."),
   })
-  .describe('Find up to 6 saved products matching the criteria. Local CRM only — no MLS.');
+  .describe('Find up to 6 saved products matching the criteria. Searches the seller\'s own product catalog — not a public marketplace index.');
 
 interface ProductMatch {
   id: string;
-  address: string;
-  city: string | null;
-  beds: number | null;
-  baths: number | null;
+  name: string;
+  category: string | null;
   listPrice: number | null;
   listingStatus: string;
+  tagline: string | null;
 }
 
 interface FindCompsResult {
@@ -53,26 +55,25 @@ export const findComparableProductsTool = defineTool<typeof parameters, FindComp
   name: 'find_comparable_products',
   riskLevel: 'safe',
   description:
-    'Search saved Product rows in this workspace by location, beds/baths, price range, status. Returns up to 6. Does NOT query MLS.',
+    'Search the seller\'s product catalog for competing or similar software products by keyword, category, and price range. Returns up to 6. Useful for competitive pricing analysis.',
   parameters,
   requiresApproval: false,
 
   async handler(args, ctx) {
     let query = supabase
       .from('Product')
-      .select('id, address, city, beds, baths, listPrice, listingStatus, updatedAt')
+      .select('id, name, address, category, listPrice, listingStatus, tagline, updatedAt')
       .eq('spaceId', ctx.space.id)
       .limit(20); // small over-fetch to allow midpoint sort
 
-    if (args.beds != null) query = query.gte('beds', args.beds);
-    if (args.baths != null) query = query.gte('baths', args.baths);
     if (args.priceMin != null) query = query.gte('listPrice', args.priceMin);
     if (args.priceMax != null) query = query.lte('listPrice', args.priceMax);
     if (args.status) query = query.eq('listingStatus', args.status);
-    if (args.near) {
-      const escaped = args.near.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_').replace(/[,()]/g, '');
+    if (args.category) query = query.eq('category', args.category);
+    if (args.keyword) {
+      const escaped = args.keyword.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_').replace(/[,()]/g, '');
       const pat = `%${escaped}%`;
-      query = query.or(`address.ilike.${pat},city.ilike.${pat},stateRegion.ilike.${pat}`);
+      query = query.or(`name.ilike.${pat},address.ilike.${pat},tagline.ilike.${pat},category.ilike.${pat}`);
     }
     query = query.order('updatedAt', { ascending: false });
 
@@ -81,11 +82,11 @@ export const findComparableProductsTool = defineTool<typeof parameters, FindComp
       return { summary: `Product lookup failed: ${error.message}`, display: 'error' };
     }
 
-    let rows = (data ?? []) as Array<ProductMatch & { updatedAt: string }>;
+    let rows = (data ?? []) as Array<ProductMatch & { updatedAt: string; address?: string }>;
     if (rows.length === 0) {
       return {
         summary: 'No comparable products on file.',
-        data: { products: [], note: 'No comparable products on file.' },
+        data: { products: [], note: 'No comparable products in your catalog matching those criteria.' },
         display: 'plain',
       };
     }
@@ -104,16 +105,15 @@ export const findComparableProductsTool = defineTool<typeof parameters, FindComp
 
     const products: ProductMatch[] = rows.map((r) => ({
       id: r.id,
-      address: r.address,
-      city: r.city,
-      beds: r.beds,
-      baths: r.baths,
+      name: r.name ?? r.address ?? 'Untitled',
+      category: r.category,
       listPrice: r.listPrice,
       listingStatus: r.listingStatus,
+      tagline: r.tagline,
     }));
 
     return {
-      summary: `${products.length} comparable product${products.length === 1 ? '' : 's'} on file.`,
+      summary: `${products.length} comparable product${products.length === 1 ? '' : 's'} in your catalog.`,
       data: { products },
       display: 'plain',
     };

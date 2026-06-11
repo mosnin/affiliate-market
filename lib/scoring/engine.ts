@@ -1,8 +1,10 @@
 /**
  * Cola Proprietary Lead Scoring Engine
  *
- * Deterministic, weighted scoring system for rental and buyer leads.
- * Produces consistent scores across runs — no LLM dependency for the score itself.
+ * Deterministic, weighted scoring system for software-buyer leads (quote
+ * requests, trial signups, demo requests). Scores budget fit, authority,
+ * timeline urgency, use-case specificity, team size, and current tooling.
+ * Produces consistent scores across runs — no LLM dependency for the score.
  *
  * Architecture:
  *   1. Each scoring category computes a 0-1 normalized sub-score
@@ -122,7 +124,7 @@ export type ScoringInput = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Credit score is NOT collected on the intake form — this returns a neutral score.
-// Kept as a stub for type compatibility; not included in rental weight calculations.
+// Kept as a stub for type compatibility; not included in software lead scoring calculations.
 function scoreCreditScore(_input: ScoringInput): CategoryResult {
   return {
     category: 'affordability' as ScoringCategory, // placeholder category
@@ -179,32 +181,32 @@ function scoreAffordability(input: ScoringInput): CategoryResult {
 
   if (income > 0 && rent > 0) {
     const ratio = income / rent;
-
+    // For software buyers, income = monthly revenue/ARR budget, rent = monthly subscription cost.
     if (ratio >= 4.0) {
       rawScore = 1.0;
-      signals.push(`Strong income-to-rent ratio: ${ratio.toFixed(1)}x (≥4x target rent)`);
+      signals.push(`Strong budget-to-cost ratio: ${ratio.toFixed(1)}x — well within budget`);
     } else if (ratio >= 3.0) {
       rawScore = 0.85;
-      signals.push(`Meets 3x rent rule: ${ratio.toFixed(1)}x`);
+      signals.push(`Good budget fit: ${ratio.toFixed(1)}x budget-to-cost`);
     } else if (ratio >= 2.5) {
       rawScore = 0.6;
-      signals.push(`Below 3x rent rule: ${ratio.toFixed(1)}x — marginal affordability`);
+      signals.push(`Marginal budget fit: ${ratio.toFixed(1)}x — may need smaller plan`);
     } else if (ratio >= 2.0) {
       rawScore = 0.35;
-      signals.push(`Significantly below 3x: ${ratio.toFixed(1)}x — high rent burden`);
+      signals.push(`Budget tight: ${ratio.toFixed(1)}x — verify ROI case`);
     } else {
       rawScore = 0.1;
-      signals.push(`Income-to-rent ratio ${ratio.toFixed(1)}x — likely unaffordable`);
+      signals.push(`Budget may not support this tier: ${ratio.toFixed(1)}x ratio`);
     }
   } else if (income > 0) {
     rawScore = 0.5;
-    signals.push(`Income reported but no target rent provided`);
+    signals.push(`Budget reported but no target subscription cost provided`);
   } else if (rent > 0) {
     rawScore = 0.25;
-    signals.push(`Target rent provided but no income reported`);
+    signals.push(`Subscription budget noted but company revenue/budget not reported`);
   } else {
     rawScore = 0.15;
-    signals.push('No income or rent data provided');
+    signals.push('No budget or subscription cost data provided');
   }
 
   return {
@@ -222,50 +224,51 @@ function scoreMoveInUrgency(input: ScoringInput): CategoryResult {
   let rawScore = 0.3;
 
   if (app?.targetMoveInDate) {
-    const moveIn = app.targetMoveInDate.toLowerCase().trim();
+    // targetMoveInDate is reused as "purchase timeline" for software leads.
+    const timeline = app.targetMoveInDate.toLowerCase().trim();
 
-    if (moveIn === 'asap') {
+    if (timeline === 'asap') {
       rawScore = 1.0;
-      signals.push('Immediate move-in: ASAP');
-    } else if (moveIn === '30days') {
+      signals.push('Ready to buy now: ASAP');
+    } else if (timeline === '30days') {
       rawScore = 0.85;
       signals.push('Near-term: within 30 days');
-    } else if (moveIn === '1-2months') {
+    } else if (timeline === '1-2months') {
       rawScore = 0.6;
       signals.push('Medium-term: 1-2 months');
-    } else if (moveIn === 'browsing') {
+    } else if (timeline === 'browsing') {
       rawScore = 0.15;
-      signals.push('Just browsing — low urgency');
+      signals.push('Just exploring — low purchase urgency');
     } else {
       // Fallback: try parsing as a date for legacy data
       const target = new Date(app.targetMoveInDate);
       if (!isNaN(target.getTime())) {
         const now = new Date();
-        const daysUntilMove = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        const daysUntil = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-        if (daysUntilMove <= 0) {
+        if (daysUntil <= 0) {
           rawScore = 0.95;
-          signals.push('Immediate move-in needed (date has passed or is today)');
-        } else if (daysUntilMove <= 14) {
+          signals.push('Decision deadline has passed or is today — follow up immediately');
+        } else if (daysUntil <= 14) {
           rawScore = 1.0;
-          signals.push(`Urgent: moving in ${daysUntilMove} days`);
-        } else if (daysUntilMove <= 30) {
+          signals.push(`Urgent: decision within ${daysUntil} days`);
+        } else if (daysUntil <= 30) {
           rawScore = 0.85;
-          signals.push(`Near-term: moving in ${daysUntilMove} days (~1 month)`);
-        } else if (daysUntilMove <= 60) {
+          signals.push(`Near-term: deciding within ${daysUntil} days (~1 month)`);
+        } else if (daysUntil <= 60) {
           rawScore = 0.65;
-          signals.push(`Medium-term: moving in ${daysUntilMove} days (~2 months)`);
+          signals.push(`Medium-term: deciding within ${daysUntil} days (~2 months)`);
         } else {
           rawScore = 0.25;
-          signals.push(`Far out: moving in ${daysUntilMove} days`);
+          signals.push(`Far-out timeline: deciding in ${daysUntil} days`);
         }
       } else {
         rawScore = 0.4;
-        signals.push(`Move-in timing: "${app.targetMoveInDate}"`);
+        signals.push(`Purchase timeline: "${app.targetMoveInDate}"`);
       }
     }
   } else {
-    signals.push('No move-in date provided');
+    signals.push('No purchase timeline provided');
   }
 
   return {
@@ -283,34 +286,36 @@ function scoreEmploymentStability(input: ScoringInput): CategoryResult {
   let rawScore = 0.2;
 
   if (app?.employmentStatus) {
+    // employmentStatus is reused as "role / authority" for software leads.
     const status = app.employmentStatus.toLowerCase().trim();
     switch (status) {
       case 'full-time':
+        // Maps to "decision-maker / budget owner" in software context
         rawScore = 1.0;
-        signals.push('Full-time employed');
+        signals.push('Decision-maker / budget owner');
         break;
       case 'self-employed':
-        rawScore = 0.75;
-        signals.push('Self-employed');
+        rawScore = 0.85;
+        signals.push('Founder / solo operator — high authority');
         break;
       case 'part-time':
         rawScore = 0.6;
-        signals.push('Part-time employed');
+        signals.push('Influencer / evaluator — may need executive sign-off');
         break;
       case 'student':
-        rawScore = 0.4;
-        signals.push('Student — may need co-signer or guarantor');
+        rawScore = 0.35;
+        signals.push('Individual contributor — limited purchasing authority');
         break;
       case 'not-employed':
         rawScore = 0.15;
-        signals.push('Not currently employed — verify alternative income sources');
+        signals.push('No organizational role identified — qualify authority');
         break;
       default:
         rawScore = 0.3;
-        signals.push(`Employment status: ${app.employmentStatus}`);
+        signals.push(`Role / authority: ${app.employmentStatus}`);
     }
   } else {
-    signals.push('Employment status not provided');
+    signals.push('Role / authority not provided');
   }
 
   return {
@@ -322,15 +327,15 @@ function scoreEmploymentStability(input: ScoringInput): CategoryResult {
   };
 }
 
-// Rental history (landlord refs, late payments, lease violations) is NOT collected on the intake form.
-// Returns neutral score — not included in rental weight calculations.
+// Vendor/reference history is NOT collected on the intake form.
+// Returns neutral score — not included in lead scoring calculations.
 function scoreRentalHistory(_input: ScoringInput): CategoryResult {
   return {
     category: 'affordability' as ScoringCategory, // placeholder
     rawScore: 1.0,
     weight: 0,
     weightedScore: 0,
-    signals: ['Rental history not collected — neutral'],
+    signals: ['Reference/history not collected — neutral'],
   };
 }
 
@@ -348,19 +353,19 @@ function scoreApplicationCompleteness(input: ScoringInput): CategoryResult {
     };
   }
 
-  // Only check fields that the rental intake form ACTUALLY collects
+  // Only check fields that the quote-request / intake form ACTUALLY collects
   const fields = [
-    input.name,                // legalName
+    input.name,                // full name
     input.email,               // email
     input.phone,               // phone
-    app.targetMoveInDate,
-    app.productAddress,
-    app.monthlyRent,
-    app.monthlyGrossIncome,
-    app.employmentStatus,
-    app.numberOfOccupants,
-    app.hasPets,
-    app.leaseTermPreference,
+    app.targetMoveInDate,      // purchase timeline
+    app.productAddress,        // product/plan interest
+    app.monthlyRent,           // budget (monthly subscription)
+    app.monthlyGrossIncome,    // company budget / revenue
+    app.employmentStatus,      // role / authority
+    app.numberOfOccupants,     // team size / seats
+    app.hasPets,               // current tooling (boolean proxy)
+    app.leaseTermPreference,   // contract preference (annual vs monthly)
   ];
 
   const totalFields = fields.length;
@@ -406,29 +411,35 @@ function scoreHouseholdFit(input: ScoringInput): CategoryResult {
     };
   }
 
-  const occupants = app.numberOfOccupants;
+  // numberOfOccupants → team size / seats for software leads
+  const teamSize = app.numberOfOccupants;
 
-  if (occupants != null && occupants > 0) {
-    signals.push(`Total occupants: ${occupants}`);
-    if (occupants <= 2) {
+  if (teamSize != null && teamSize > 0) {
+    signals.push(`Team size: ${teamSize} seat${teamSize !== 1 ? 's' : ''}`);
+    if (teamSize <= 2) {
+      rawScore = 0.75;
+      signals.push('Small team / individual — solo or startup plan fit');
+    } else if (teamSize <= 10) {
       rawScore = 0.9;
-      signals.push('Small household — fits most unit types');
-    } else if (occupants <= 4) {
-      rawScore = 0.7;
-      signals.push('Medium household — verify unit size compatibility');
+      signals.push('Mid-size team — good fit for Growth or Scale tier');
+    } else if (teamSize <= 50) {
+      rawScore = 1.0;
+      signals.push('Large team — strong Scale / enterprise opportunity');
     } else {
-      rawScore = 0.4;
-      signals.push('Large household — may need specific unit type');
+      rawScore = 1.0;
+      signals.push('Enterprise-size team — high MRR potential');
     }
   } else {
-    signals.push('Number of occupants not provided');
+    signals.push('Team size / seats not provided');
   }
 
+  // hasPets reused as "has existing tooling" proxy for software leads
   if (app.hasPets === true) {
-    rawScore = Math.max(0, rawScore - 0.1);
-    signals.push('Has pets — verify pet policy');
+    // Has existing tools — switching cost present but also validates active use case
+    signals.push('Has existing tooling — switching cost; validate migration path');
   } else if (app.hasPets === false) {
-    signals.push('No pets');
+    rawScore = Math.min(1.0, rawScore + 0.05);
+    signals.push('No existing tooling — greenfield adoption');
   }
 
   return {
@@ -440,15 +451,15 @@ function scoreHouseholdFit(input: ScoringInput): CategoryResult {
   };
 }
 
-// Screening flags (evictions, bankruptcy, outstanding balances) are NOT collected on the intake form.
-// Returns neutral score — not included in rental weight calculations.
+// Disqualifying flags (fraud signals, churned accounts) are NOT collected on the intake form.
+// Returns neutral score — not included in lead scoring calculations.
 function scoreScreeningFlags(_input: ScoringInput): CategoryResult {
   return {
     category: 'affordability' as ScoringCategory, // placeholder
     rawScore: 1.0,
     weight: 0,
     weightedScore: 0,
-    signals: ['Screening flags not collected — neutral'],
+    signals: ['Disqualifying flags not collected — neutral'],
   };
 }
 
@@ -462,14 +473,14 @@ function computeRiskPenalties(input: ScoringInput): RiskPenalty[] {
 
   if (!app) return penalties;
 
-  // Income way below threshold (using form range values)
+  // Budget way below subscription cost — severe budget gap
   const income = parseFormRange(app.monthlyGrossIncome);
   const rent = parseFormRange(app.monthlyRent);
   if (income > 0 && rent > 0 && income / rent < 1.5) {
     penalties.push({
-      flag: 'severe_affordability_gap',
+      flag: 'severe_budget_gap',
       multiplier: 0.6,
-      description: `Income-to-rent ratio below 1.5x — severe affordability risk`,
+      description: `Budget-to-subscription ratio below 1.5x — may not be able to afford this tier`,
     });
   }
 

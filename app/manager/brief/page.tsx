@@ -473,7 +473,7 @@ export default async function ManagerBriefPage() {
               Talk to Cola
             </p>
             <p className="text-sm text-muted-foreground">
-              Ask about team health, reassign a lead, flag a deal, send an announcement.
+              Ask about team health, reassign a quote request, flag a deal, send an announcement.
             </p>
           </div>
           <span className={cn(COLA_PILL, 'flex-shrink-0')}>
@@ -492,7 +492,7 @@ export default async function ManagerBriefPage() {
           <div className="flex-1 space-y-0.5">
             <p className="text-sm font-medium">Finish setting up your team</p>
             <p className="text-[13px] text-muted-foreground">
-              Add a logo, website, and intake form details so leads see a polished surface.
+              Add a logo, website, and intake form details so buyers see a polished surface.
             </p>
           </div>
           <Link
@@ -540,7 +540,7 @@ export default async function ManagerBriefPage() {
           >
             {totalLeads}&nbsp;→&nbsp;{totalApplications}
           </p>
-          <p className="text-[11px] text-muted-foreground mt-1">leads → applications</p>
+          <p className="text-[11px] text-muted-foreground mt-1">leads → quote requests</p>
         </div>
       </section>
 
@@ -777,7 +777,7 @@ export default async function ManagerBriefPage() {
           <div className="mt-4 rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-10 text-center">
             <p className="text-sm text-foreground">Your team, in here.</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Invite your first seller and their work will land in this view.
+              Invite your first seller and their pipeline activity will land in this view.
             </p>
           </div>
         ) : (

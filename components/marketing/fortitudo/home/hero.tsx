@@ -43,9 +43,9 @@ const booking = [
 ];
 
 const heroItems: DotFlowProps['items'] = [
-  { title: 'Drafting', frames: drafting, repeatCount: 2, duration: 160 },
-  { title: 'Scoring', frames: scoring, repeatCount: 2, duration: 130 },
-  { title: 'Booking', frames: booking, repeatCount: 2, duration: 150 },
+  { title: 'Recruiting', frames: drafting, repeatCount: 2, duration: 160 },
+  { title: 'Tracking', frames: scoring, repeatCount: 2, duration: 130 },
+  { title: 'Paying out', frames: booking, repeatCount: 2, duration: 150 },
 ];
 
 const easeOut = [0.16, 1, 0.3, 1] as const;

@@ -99,14 +99,14 @@ export default async function LeadsPage({
       <header className="space-y-1.5">
         <p className="text-sm text-muted-foreground">People.</p>
         <h1 className={H1} style={TITLE_FONT}>
-          Applications
+          Quote requests
         </h1>
         <p className="text-sm text-muted-foreground">
           {leads.length === 0
-            ? 'Share your intake link and leads will appear here.'
+            ? 'Share your intake link and quote requests will appear here.'
             : unreadLeads.length > 0
               ? `${unreadLeads.length} new since you last checked.`
-              : 'All caught up — no new applications.'}
+              : 'All caught up — no new quote requests.'}
         </p>
       </header>
 
@@ -116,7 +116,7 @@ export default async function LeadsPage({
       {leads.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/70 bg-card px-4 py-3">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-            {leads.length} {leads.length === 1 ? 'application' : 'applications'}
+            {leads.length} {leads.length === 1 ? 'quote request' : 'quote requests'}
           </span>
           <div className="h-3 w-px bg-border hidden sm:block" />
           <div className="flex flex-wrap gap-3">
@@ -150,9 +150,9 @@ export default async function LeadsPage({
 
       {leads.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-10 text-center">
-          <p className="text-sm text-foreground">No applications yet.</p>
+          <p className="text-sm text-foreground">No quote requests yet.</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Share your intake link — new applications will appear here.
+            Share your intake link — new quote requests from potential buyers will appear here.
           </p>
           <Link
             href={`/s/${slug}/intake/share`}

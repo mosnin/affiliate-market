@@ -86,8 +86,8 @@ export default async function PublicBookingPage({
     trackingPixels: TrackingPixelsType | null;
   } | null;
 
-  const pageTitle = settings?.demoBookingPageTitle || 'Book a Demo';
-  const pageIntro = settings?.demoBookingPageIntro || 'Pick a time that works for you and we\'ll confirm your demo.';
+  const pageTitle = settings?.demoBookingPageTitle || 'Book a Product Demo';
+  const pageIntro = settings?.demoBookingPageIntro || 'Pick a time that works for you and we\'ll confirm your demo meeting.';
   const businessName = settings?.businessName || space.name;
   const duration = settings?.demoDuration || 30;
   const timezone = settings?.timezone || 'America/New_York';
@@ -147,7 +147,7 @@ export default async function PublicBookingPage({
         agentPhoto={agentPhoto}
         pageTitle={pageTitle}
         pageIntro={pageIntro}
-        trustLine={`Your information is shared only with ${agentName} and used solely for scheduling.`}
+        trustLine={`Your information is shared only with ${agentName} and used solely for scheduling your demo.`}
         agentPresenceLabel="Booking with"
         hidePoweredBy={hidePoweredBy}
         customization={customization}

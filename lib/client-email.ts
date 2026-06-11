@@ -39,7 +39,7 @@ function shell(heading: string, bodyHtml: string): string {
 
 const PURPOSE_COPY: Record<'verify' | 'login' | 'reset', { subject: string; heading: string; line: string }> = {
   verify: { subject: 'Verify your email', heading: 'Verify your email', line: 'Enter this code to verify your email and finish setting up your account.' },
-  login: { subject: 'Your sign-in code', heading: 'Your sign-in code', line: 'Enter this code to sign in.' },
+  login: { subject: 'Your Cola buyer portal sign-in code', heading: 'Your Cola buyer portal sign-in code', line: 'Enter this code to sign in to your Cola buyer portal.' },
   reset: { subject: 'Reset your password', heading: 'Reset your password', line: 'Enter this code to reset your password.' },
 };
 

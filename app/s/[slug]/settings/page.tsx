@@ -266,8 +266,8 @@ export default async function SettingsPage({
           <section className="space-y-5">
             <p className={SECTION_LABEL}>Your profile</p>
             <p className={BODY_MUTED}>
-              The face and voice your leads see on intake forms, demo pages,
-              and packets.
+              The face and voice your buyers see on quote-request forms, demo
+              booking pages, and product briefs.
             </p>
             <ProfileSection slug={space.slug} />
           </section>
@@ -398,8 +398,8 @@ export default async function SettingsPage({
           >
             <p className={SECTION_LABEL}>Compliance &amp; trust signals</p>
             <p className={BODY_MUTED}>
-              Optional. License number, Fair Housing notice, and Equal Housing
-              mark — shown in your intake-form footer.
+              Optional. License number and compliance notices shown in your
+              quote-request form footer.
             </p>
             <IntakeTrustSignalsForm
               slug={space.slug}

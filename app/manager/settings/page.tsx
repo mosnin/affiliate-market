@@ -60,8 +60,8 @@ export default async function ManagerSettingsPage() {
       <section className="space-y-5 pt-10 border-t border-border/60">
         <p className={SECTION_LABEL}>Compliance &amp; trust signals</p>
         <p className={BODY_MUTED}>
-          License number, Fair Housing notice, and Equal Housing mark — shown
-          in the company intake-form footer for every seller on your team.
+          License number and compliance notices — shown in the company
+          quote-request form footer for every seller on your team.
         </p>
         <CompanyIntakeTrustSignalsForm
           licenseNumber={company.companyLicenseNumber ?? ''}

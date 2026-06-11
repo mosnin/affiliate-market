@@ -7,9 +7,12 @@ import {
   Settings,
   Calendar,
   ClipboardList,
-  Building2,
+  Package,
   FolderOpen,
   Aperture,
+  ShoppingCart,
+  Network,
+  Video,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -85,13 +88,27 @@ export const sellerNavItems: NavItem[] = [
   {
     href: '/products',
     label: 'Products',
-    icon: Building2,
+    icon: Package,
     badgeKey: 'products',
     children: [
       { href: '/products/new', label: 'Add product' },
       { href: '/products/commissions', label: 'Commissions' },
-      { href: '/cma', label: 'CMA' },
     ],
+  },
+  {
+    href: '/demos',
+    label: 'Demos',
+    icon: Video,
+  },
+  {
+    href: '/orders',
+    label: 'Orders',
+    icon: ShoppingCart,
+  },
+  {
+    href: '/affiliates',
+    label: 'Affiliates',
+    icon: Network,
   },
   {
     href: '/studio',

@@ -1,8 +1,17 @@
 /**
- * Client-portal data — aggregates everything tied to a verified client email
- * across ALL spaces: applications (Contact rows) and demos (Demo rows). This is
- * the "one page by email" surface. Read-only against seller data; the client's
- * verified email is the authorization boundary (only rows matching their email).
+ * Client-portal data — two layers:
+ *
+ * 1. LEGACY (kept for API routes that own their own paths):
+ *    `getClientPortalData` and `clientOwnsContact` still read Contact/Demo rows
+ *    so the existing /api/clients/** routes continue to work unchanged.
+ *
+ * 2. BUYER PORTAL (new):
+ *    The buyer dashboard uses `getOrdersForBuyerEmail` and
+ *    `getLicensesForBuyerEmail` from lib/marketplace/orders directly —
+ *    those are imported there, not here. This file is only the aggregation
+ *    layer for the old client portal surfaces.
+ *
+ * Authorization boundary: `email` MUST always be the verified session email.
  */
 import 'server-only';
 import { supabase } from '@/lib/supabase';
@@ -40,19 +49,18 @@ export interface ClientPortalData {
 
 type SpaceRel = { name?: string | null; slug?: string | null } | null;
 
+/** Escape LIKE/ILIKE metacharacters so a full email is matched literally (still
+ *  case-insensitively) rather than as a pattern. `%` and `_` are legal in email
+ *  local parts and were a wildcard-injection hole in the cross-client guard. */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
 /**
  * Pull the client's applications + demos by email. `email` MUST be the verified
  * session email — it is the only authorization check, so never pass an
  * unverified or caller-supplied address here.
  */
-/** Escape LIKE/ILIKE metacharacters so a full email is matched literally (still
- *  case-insensitively) rather than as a pattern. `%` and `_` are legal in email
- *  local parts and were a wildcard-injection hole in the cross-client guard
- *  (e.g. a client registered as `%@gmail.com` would match every gmail contact). */
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, '\\$&');
-}
-
 export async function getClientPortalData(email: string): Promise<ClientPortalData> {
   const lower = email.trim().toLowerCase();
 

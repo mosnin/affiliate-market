@@ -10,12 +10,12 @@
  * Heuristic: regex on imperative action verbs. If the message looks like
  * "add Preston as a contact" or "send the follow-up", we route 'agent'
  * because direct can't run tools. Everything else — questions, summaries,
- * "what's a CMA?" — goes direct.
+ * "what's a competitive pricing analysis?" — goes direct.
  *
  * Attachments + no action verb → direct. Multimodal Q&A ("summarize this
- * listing", "what's wrong with this MLS sheet?") is exactly what the direct
- * path is for; routing it through the full agent would add latency for no
- * benefit.
+ * product sheet", "what's wrong with this pricing doc?") is exactly what
+ * the direct path is for; routing it through the full agent would add
+ * latency for no benefit.
  *
  * Errors default to 'agent' so a router bug can never silently drop a real
  * action. Safer to over-route to the full agent than miss an action.
@@ -54,7 +54,7 @@ const ACTION_VERBS_RE =
  * "plan my day" must reach the tools, not the generic LLM.
  */
 const WORKSPACE_QUERY_RE =
-  /\b(show|find|search|look\s?up|lookup|list|see|view|pull|display|surface|who(?:'?s| is| are)?|which|whose|overdue|hottest|hot|warm|cold|stuck|stalled|quiet|pipeline|deals?|leads?|contacts?|people|person|clients?|prospects?|buyers?|sellers?|listings?|products?|demos?|showings?|follow[\s-]?ups?|calendar|agenda|schedule|today|tomorrow|this week|inbox|drafts?|offers?|commissions?|stages?|scores?|plan my|my day|my week|my pipeline|my leads|my deals|my contacts|my schedule|my calendar)\b/i;
+  /\b(show|find|search|look\s?up|lookup|list|see|view|pull|display|surface|who(?:'?s| is| are)?|which|whose|overdue|hottest|hot|warm|cold|stuck|stalled|quiet|pipeline|deals?|leads?|contacts?|people|person|clients?|prospects?|buyers?|sellers?|listings?|products?|demos?|trials?|subscriptions?|licenses?|affiliates?|orders?|follow[\s-]?ups?|calendar|agenda|schedule|today|tomorrow|this week|inbox|drafts?|commissions?|stages?|scores?|mrr|arr|churn|onboarding|plan my|my day|my week|my pipeline|my leads|my deals|my contacts|my schedule|my calendar|my affiliates)\b/i;
 
 /**
  * Integration-shaped messages. Reading email / checking a connected app needs

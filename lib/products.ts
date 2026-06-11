@@ -1,21 +1,19 @@
 import type { ProductType, ProductListingStatus } from '@/lib/types';
 
 export const PRODUCT_TYPE_OPTIONS: { value: ProductType; label: string }[] = [
-  { value: 'single_family', label: 'Single family' },
-  { value: 'condo',         label: 'Condo' },
-  { value: 'townhouse',     label: 'Townhouse' },
-  { value: 'multi_family',  label: 'Multi-family' },
-  { value: 'land',          label: 'Land' },
-  { value: 'commercial',    label: 'Commercial' },
-  { value: 'other',         label: 'Other' },
+  { value: 'saas',         label: 'SaaS' },
+  { value: 'devtools',     label: 'Developer tools' },
+  { value: 'mobile_app',  label: 'Mobile app' },
+  { value: 'desktop_app', label: 'Desktop app' },
+  { value: 'api_service', label: 'API service' },
+  { value: 'plugin',      label: 'Plugin' },
+  { value: 'other',       label: 'Other' },
 ];
 
 export const PRODUCT_LISTING_STATUS_OPTIONS: { value: ProductListingStatus; label: string }[] = [
-  { value: 'active',     label: 'Active' },
-  { value: 'pending',    label: 'Pending' },
-  { value: 'sold',       label: 'Sold' },
-  { value: 'off_market', label: 'Off market' },
-  { value: 'owned',      label: 'Owned' },
+  { value: 'draft',     label: 'Draft' },
+  { value: 'published', label: 'Published' },
+  { value: 'archived',  label: 'Archived' },
 ];
 
 const TYPE_SET = new Set(PRODUCT_TYPE_OPTIONS.map((o) => o.value));
@@ -29,27 +27,49 @@ export function isValidListingStatus(v: unknown): v is ProductListingStatus {
   return typeof v === 'string' && STATUS_SET.has(v as ProductListingStatus);
 }
 
-/** A single-line display string: "123 Main St #4B, Oakland". */
+/**
+ * A display label for a product. Returns name + category in a human-readable
+ * form, e.g. "Acme Analytics (SaaS)". Kept as `formatProductAddress` for
+ * import-name compatibility across the codebase.
+ */
 export function formatProductAddress(p: {
-  address: string;
-  unitNumber: string | null;
-  city: string | null;
-  stateRegion: string | null;
+  name?: string | null;
+  address?: string | null;
+  category?: ProductType | string | null;
 }): string {
-  const unit = p.unitNumber ? ` #${p.unitNumber}` : '';
-  const cityState = [p.city, p.stateRegion].filter(Boolean).join(', ');
-  return cityState ? `${p.address}${unit}, ${cityState}` : `${p.address}${unit}`;
+  const name = p.name ?? p.address ?? 'Untitled product';
+  const cat = p.category
+    ? PRODUCT_TYPE_OPTIONS.find((o) => o.value === p.category)?.label ?? String(p.category)
+    : null;
+  return cat ? `${name} (${cat})` : name;
 }
 
-/** Short chips like "3bd · 2ba · 1,450 sqft". */
+/**
+ * Short chip line for a software product, e.g. "SaaS · $49/mo".
+ * Replaces the real-estate `formatProductFacts` (beds/baths/sqft).
+ * Export name kept as `formatProductFacts` for compatibility.
+ */
 export function formatProductFacts(p: {
-  beds: number | null;
-  baths: number | null;
-  squareFeet: number | null;
+  pricingModel?: string | null;
+  priceCents?: number | null;
+  billingPeriod?: string | null;
+  category?: string | null;
 }): string {
   const parts: string[] = [];
-  if (p.beds != null) parts.push(`${p.beds}bd`);
-  if (p.baths != null) parts.push(`${p.baths}ba`);
-  if (p.squareFeet != null) parts.push(`${p.squareFeet.toLocaleString()} sqft`);
+  if (p.category) {
+    const label = PRODUCT_TYPE_OPTIONS.find((o) => o.value === p.category)?.label;
+    if (label) parts.push(label);
+  }
+  if (p.priceCents != null && p.priceCents > 0) {
+    const dollars = (p.priceCents / 100).toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    });
+    const period = p.billingPeriod === 'yearly' ? '/yr' : p.billingPeriod === 'monthly' ? '/mo' : '';
+    parts.push(`${dollars}${period}`);
+  } else if (p.pricingModel) {
+    parts.push(p.pricingModel === 'one_time' ? 'One-time' : 'Subscription');
+  }
   return parts.join(' · ');
 }

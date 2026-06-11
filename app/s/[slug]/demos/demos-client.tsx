@@ -47,7 +47,7 @@ interface Demo {
   guestName: string;
   guestEmail: string;
   guestPhone: string | null;
-  productAddress: string | null;
+  productAddress: string | null; // repurposed as meeting link for software demos
   notes: string | null;
   startsAt: string;
   endsAt: string;
@@ -284,7 +284,7 @@ export function DemosClient({ slug, spaceId, initialDemos, hasGoogleCalendar, bo
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search by guest, email, phone, or address…"
+          placeholder="Search by guest, email, phone, or meeting link…"
           className="h-9 w-full rounded-lg border border-border bg-muted/60 pl-9 pr-8 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:bg-background transition-colors"
         />
         {searchQuery && (
@@ -368,7 +368,7 @@ export function DemosClient({ slug, spaceId, initialDemos, hasGoogleCalendar, bo
             No {tab === 'all' ? '' : tab + ' '}demos yet
           </p>
           <p className={`${BODY_MUTED} max-w-sm`}>
-            Share your booking link to start receiving demo requests.
+            Share your booking link to start receiving product demo requests.
           </p>
         </div>
       ) : tab !== 'availability' ? (
@@ -381,7 +381,7 @@ export function DemosClient({ slug, spaceId, initialDemos, hasGoogleCalendar, bo
                   <tr className="border-b border-border bg-muted/40">
                     <th className={cn('text-left px-4 py-3', SECTION_LABEL)}>Guest</th>
                     <th className={cn('text-left px-4 py-3 hidden sm:table-cell', SECTION_LABEL)}>Date & Time</th>
-                    <th className={cn('text-left px-4 py-3 hidden md:table-cell', SECTION_LABEL)}>Product</th>
+                    <th className={cn('text-left px-4 py-3 hidden md:table-cell', SECTION_LABEL)}>Meeting link</th>
                     <th className={cn('text-left px-4 py-3', SECTION_LABEL)}>Status</th>
                     <th className={cn('text-left px-4 py-3 hidden lg:table-cell', SECTION_LABEL)}>Contact</th>
                     <th className="px-4 py-3 w-16" />
@@ -420,7 +420,14 @@ export function DemosClient({ slug, spaceId, initialDemos, hasGoogleCalendar, bo
                         </td>
                         <td className="px-4 py-3 hidden md:table-cell text-xs text-muted-foreground">
                           {demo.productAddress ? (
-                            <span className="flex items-center gap-1"><MapPin size={10} /> {demo.productAddress}</span>
+                            <a
+                              href={demo.productAddress.startsWith('http') ? demo.productAddress : `https://${demo.productAddress}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1 hover:text-foreground hover:underline transition-colors"
+                            >
+                              <MapPin size={10} aria-hidden /> Join meeting
+                            </a>
                           ) : '—'}
                         </td>
                         <td className="px-4 py-3">
@@ -544,7 +551,19 @@ export function DemosClient({ slug, spaceId, initialDemos, hasGoogleCalendar, bo
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1"><Mail size={11} /> {demo.guestEmail}</span>
                       {demo.guestPhone && <span className="flex items-center gap-1"><Phone size={11} /> {demo.guestPhone}</span>}
-                      {demo.productAddress && <span className="flex items-center gap-1"><MapPin size={11} /> {demo.productAddress}</span>}
+                      {demo.productAddress && (
+                        <span className="flex items-center gap-1">
+                          <MapPin size={11} aria-hidden />
+                          <a
+                            href={demo.productAddress.startsWith('http') ? demo.productAddress : `https://${demo.productAddress}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="hover:underline"
+                          >
+                            Join meeting
+                          </a>
+                        </span>
+                      )}
                     </div>
                     {demo.notes && (
                       <p className="text-xs text-muted-foreground/80 italic mt-1">{demo.notes}</p>

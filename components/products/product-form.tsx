@@ -21,24 +21,23 @@ interface Props {
 }
 
 /**
- * Shared product create/edit form. Field set is intentionally small — a
- * seller adding a product in the middle of their day shouldn't have to
- * fill twenty boxes. Everything except address is optional.
+ * Shared product create/edit form. Field set covers the software product
+ * fields: name, tagline, category, pricing model, price, features, logo,
+ * website URL, and publish status. Everything except name is optional so a
+ * seller can list a product quickly and fill in the rest later.
  *
  * All inputs are the canonical <Input> / <Textarea> primitives so the form
  * inherits the product's paper-flat polish (no shadow, 2px focus ring,
  * quieter placeholder, 150ms transitions). The status/type pickers are
- * still native <select> for keyboard-first speed; they're styled with the
- * same chain as Input so the row visually aligns.
+ * still native <select> for keyboard-first speed.
  *
- * Photos live at the top — a product is what it looks like, not what its
- * MLS number is. The featured photo is `photos[0]` (convention reused from
- * the list + detail pages); the editor lets the seller tap any tile to
- * promote it. The first uploaded photo is featured by default.
+ * Logo lives at the top — a product is what it looks like, not what its
+ * catalog ID is. The featured photo is `photos[0]` (convention reused from
+ * the list + detail pages).
  */
 export function ProductForm({ initial = {}, onCancel, onSubmit, submitting, submitLabel = 'Save' }: Props) {
   const [v, setV] = useState<FormValues>({
-    listingStatus: 'active',
+    listingStatus: 'draft',
     photos: [],
     ...initial,
   });
@@ -49,32 +48,28 @@ export function ProductForm({ initial = {}, onCancel, onSubmit, submitting, subm
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    const address = (v.address ?? '').trim();
-    if (!address) return;
+    const name = (v.name ?? '').trim();
+    if (!name) return;
     onSubmit({
-      address,
-      unitNumber: v.unitNumber?.toString().trim() || null,
-      city: v.city?.toString().trim() || null,
-      stateRegion: v.stateRegion?.toString().trim() || null,
-      postalCode: v.postalCode?.toString().trim() || null,
-      mlsNumber: v.mlsNumber?.toString().trim() || null,
-      listingUrl: v.listingUrl?.toString().trim() || null,
-      productType: (v.productType ?? null) as ProductType | null,
-      listingStatus: (v.listingStatus ?? 'active') as ProductListingStatus,
-      beds: v.beds != null ? Number(v.beds) : null,
-      baths: v.baths != null ? Number(v.baths) : null,
-      squareFeet: v.squareFeet != null ? Number(v.squareFeet) : null,
-      lotSizeSqft: v.lotSizeSqft != null ? Number(v.lotSizeSqft) : null,
-      yearBuilt: v.yearBuilt != null ? Number(v.yearBuilt) : null,
-      listPrice: v.listPrice != null ? Number(v.listPrice) : null,
+      name,
+      tagline: v.tagline?.toString().trim() || null,
+      longDescription: v.longDescription?.toString().trim() || null,
+      category: (v.category ?? null) as ProductType | null,
+      pricingModel: (v.pricingModel ?? null) as FormValues['pricingModel'],
+      priceCents: v.priceCents != null ? Number(v.priceCents) : null,
+      currency: v.currency?.toString().trim() || null,
+      billingPeriod: (v.billingPeriod ?? null) as FormValues['billingPeriod'],
+      websiteUrl: v.websiteUrl?.toString().trim() || null,
+      marketplaceSlug: v.marketplaceSlug?.toString().trim() || null,
+      listingStatus: (v.listingStatus ?? 'draft') as ProductListingStatus,
       notes: v.notes?.toString() || null,
       photos: Array.isArray(v.photos) ? v.photos : [],
     });
   }
 
   // Native <select> styled to match <Input> — same height, border, radius,
-  // padding, focus ring. Keeps the form a single visual row when the type
-  // and status sit next to bed/bath number fields.
+  // padding, focus ring. Keeps the form a single visual row when type/status
+  // sit next to pricing fields.
   const selectClasses = cn(
     'flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base transition-colors duration-150 outline-none md:text-sm',
     'dark:bg-input/30',
@@ -84,73 +79,60 @@ export function ProductForm({ initial = {}, onCancel, onSubmit, submitting, subm
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      {/* Photos first — the seller is showing a house, not filing an MLS
-          form. The featured tile sets what the list, the deal card, and
-          the listing detail show. */}
-      <Field label="Photos">
+      {/* Logo / screenshots — the seller is showing a product, not filing a
+          catalog form. The featured image sets what the list, the deal card,
+          and the product detail show. */}
+      <Field label="Logo / Screenshots">
         <ProductPhotoEditor
           value={v.photos ?? []}
           onChange={(next) => set('photos', next)}
         />
       </Field>
 
-      {/* Address row */}
-      <div className="grid grid-cols-[1fr_120px] gap-2">
-        <Field label="Address" required>
-          <Input
-            type="text"
-            required
-            value={v.address ?? ''}
-            onChange={(e) => set('address', e.target.value)}
-            placeholder="123 Main St"
-          />
-        </Field>
-        <Field label="Unit">
-          <Input
-            type="text"
-            value={v.unitNumber ?? ''}
-            onChange={(e) => set('unitNumber', e.target.value)}
-            placeholder="4B"
-          />
-        </Field>
-      </div>
+      {/* Name row */}
+      <Field label="Product name" required>
+        <Input
+          type="text"
+          required
+          value={v.name ?? ''}
+          onChange={(e) => set('name', e.target.value)}
+          placeholder="e.g. Acme Analytics"
+        />
+      </Field>
 
-      <div className="grid grid-cols-3 gap-2">
-        <Field label="City">
-          <Input type="text" value={v.city ?? ''} onChange={(e) => set('city', e.target.value)} />
+      <Field label="Tagline">
+        <Input
+          type="text"
+          value={v.tagline ?? ''}
+          onChange={(e) => set('tagline', e.target.value)}
+          placeholder="One-line value proposition"
+        />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Website URL">
+          <Input
+            type="url"
+            value={v.websiteUrl ?? ''}
+            onChange={(e) => set('websiteUrl', e.target.value)}
+            placeholder="https://…"
+          />
         </Field>
-        <Field label="State">
-          <Input type="text" value={v.stateRegion ?? ''} onChange={(e) => set('stateRegion', e.target.value)} />
-        </Field>
-        <Field label="ZIP">
-          <Input type="text" value={v.postalCode ?? ''} onChange={(e) => set('postalCode', e.target.value)} />
+        <Field label="Marketplace slug">
+          <Input
+            type="text"
+            value={v.marketplaceSlug ?? ''}
+            onChange={(e) => set('marketplaceSlug', e.target.value)}
+            placeholder="acme-analytics"
+          />
         </Field>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <Field label="MLS #">
-          <Input
-            type="text"
-            value={v.mlsNumber ?? ''}
-            onChange={(e) => set('mlsNumber', e.target.value)}
-            placeholder="Unique per space"
-          />
-        </Field>
-        <Field label="Listing URL">
-          <Input
-            type="url"
-            value={v.listingUrl ?? ''}
-            onChange={(e) => set('listingUrl', e.target.value)}
-            placeholder="https://…"
-          />
-        </Field>
-      </div>
-
-      <div className="grid grid-cols-4 gap-2">
-        <Field label="Type">
+        <Field label="Category">
           <select
-            value={v.productType ?? ''}
-            onChange={(e) => set('productType', (e.target.value || null) as ProductType | null)}
+            value={v.category ?? ''}
+            onChange={(e) => set('category', (e.target.value || null) as ProductType | null)}
             className={selectClasses}
           >
             <option value="">—</option>
@@ -161,7 +143,7 @@ export function ProductForm({ initial = {}, onCancel, onSubmit, submitting, subm
         </Field>
         <Field label="Status">
           <select
-            value={v.listingStatus ?? 'active'}
+            value={v.listingStatus ?? 'draft'}
             onChange={(e) => set('listingStatus', e.target.value as ProductListingStatus)}
             className={selectClasses}
           >
@@ -170,69 +152,58 @@ export function ProductForm({ initial = {}, onCancel, onSubmit, submitting, subm
             ))}
           </select>
         </Field>
-        <Field label="Beds">
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <Field label="Pricing model">
+          <select
+            value={v.pricingModel ?? ''}
+            onChange={(e) => set('pricingModel', (e.target.value || null) as FormValues['pricingModel'])}
+            className={selectClasses}
+          >
+            <option value="">—</option>
+            <option value="subscription">Subscription</option>
+            <option value="one_time">One-time</option>
+          </select>
+        </Field>
+        <Field label="Price (cents)">
           <Input
             type="number"
-            step="0.5"
             min="0"
-            value={v.beds ?? ''}
-            onChange={(e) => set('beds', e.target.value === '' ? null : Number(e.target.value))}
+            step="1"
+            value={v.priceCents ?? ''}
+            onChange={(e) => set('priceCents', e.target.value === '' ? null : Number(e.target.value))}
+            placeholder="4900"
           />
         </Field>
-        <Field label="Baths">
-          <Input
-            type="number"
-            step="0.5"
-            min="0"
-            value={v.baths ?? ''}
-            onChange={(e) => set('baths', e.target.value === '' ? null : Number(e.target.value))}
-          />
+        <Field label="Billing period">
+          <select
+            value={v.billingPeriod ?? ''}
+            onChange={(e) => set('billingPeriod', (e.target.value || null) as FormValues['billingPeriod'])}
+            className={selectClasses}
+          >
+            <option value="">—</option>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+          </select>
         </Field>
       </div>
 
-      <div className="grid grid-cols-4 gap-2">
-        <Field label="Sq ft">
-          <Input
-            type="number"
-            min="0"
-            value={v.squareFeet ?? ''}
-            onChange={(e) => set('squareFeet', e.target.value === '' ? null : Number(e.target.value))}
-          />
-        </Field>
-        <Field label="Lot (sqft)">
-          <Input
-            type="number"
-            min="0"
-            value={v.lotSizeSqft ?? ''}
-            onChange={(e) => set('lotSizeSqft', e.target.value === '' ? null : Number(e.target.value))}
-          />
-        </Field>
-        <Field label="Year built">
-          <Input
-            type="number"
-            min="1600"
-            max="2200"
-            value={v.yearBuilt ?? ''}
-            onChange={(e) => set('yearBuilt', e.target.value === '' ? null : Number(e.target.value))}
-          />
-        </Field>
-        <Field label="List price">
-          <Input
-            type="number"
-            min="0"
-            step="1000"
-            value={v.listPrice ?? ''}
-            onChange={(e) => set('listPrice', e.target.value === '' ? null : Number(e.target.value))}
-          />
-        </Field>
-      </div>
+      <Field label="Description">
+        <Textarea
+          value={v.longDescription ?? ''}
+          onChange={(e) => set('longDescription', e.target.value)}
+          rows={4}
+          placeholder="Full product description for the marketplace listing."
+        />
+      </Field>
 
       <Field label="Notes">
         <Textarea
           value={v.notes ?? ''}
           onChange={(e) => set('notes', e.target.value)}
-          rows={3}
-          placeholder="Anything buyers or co-agents should know."
+          rows={2}
+          placeholder="Internal notes — not shown publicly."
         />
       </Field>
 
@@ -240,7 +211,7 @@ export function ProductForm({ initial = {}, onCancel, onSubmit, submitting, subm
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" size="sm" disabled={submitting || !(v.address ?? '').trim()}>
+        <Button type="submit" size="sm" disabled={submitting || !(v.name ?? '').trim()}>
           {submitting && <Loader2 className="animate-spin" />}
           {submitLabel}
         </Button>

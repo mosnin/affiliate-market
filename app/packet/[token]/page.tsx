@@ -74,7 +74,7 @@ export default async function PacketPage({ params }: Props) {
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-3xl mx-auto p-6 space-y-6">
         <header className="space-y-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Listing packet</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Product brief</p>
           <h1 className="text-2xl font-semibold">{packet.name}</h1>
         </header>
 
@@ -107,10 +107,9 @@ export default async function PacketPage({ params }: Props) {
             )}
 
             <dl className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm pt-3 border-t border-border">
-              {product.productType && <Row label="Type" value={product.productType.replace('_', ' ')} />}
-              {product.yearBuilt != null && <Row label="Year built" value={String(product.yearBuilt)} />}
-              {product.lotSizeSqft != null && <Row label="Lot" value={`${product.lotSizeSqft.toLocaleString()} sqft`} />}
-              {product.mlsNumber && <Row label="MLS #" value={product.mlsNumber} />}
+              {product.productType && <Row label="Category" value={product.productType.replace('_', ' ')} />}
+              {(product as Record<string, unknown>).websiteUrl && <Row label="Website" value={String((product as Record<string, unknown>).websiteUrl)} />}
+              {(product as Record<string, unknown>).marketplaceSlug && <Row label="Catalog ID" value={String((product as Record<string, unknown>).marketplaceSlug)} />}
             </dl>
 
             {product.notes && (
@@ -121,7 +120,7 @@ export default async function PacketPage({ params }: Props) {
 
             {product.listingUrl && (
               <a href={product.listingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline">
-                View original listing <ExternalLink size={12} />
+                View product website <ExternalLink size={12} />
               </a>
             )}
           </div>

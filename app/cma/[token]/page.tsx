@@ -1,18 +1,15 @@
 /**
- * /cma/[token] — the PUBLIC, polished CMA report a seller shares with a seller.
+ * /cma/[token] — public competitive pricing analysis report.
  *
  * No Clerk gate. Access is the unguessable shareToken; only a `published`
  * report renders (a draft 404s, so a half-finished analysis never leaks). The
  * report renders the frozen `payload`, so it stays stable even if the seller
  * later edits or deletes the underlying Product rows.
  *
- * Design (Jobs lens): this is a deliverable a seller will read, screenshot, and
- * forward. Paper-flat, one focal element (the suggested range), the comps as a
- * clean table, the seller's workspace name as the only branding. Print-friendly
- * via a scoped @media print block — "save as PDF" from the browser is our v1
- * export, no PDF library.
+ * This is a competitive pricing analysis (CPA) — replaces the real-estate CMA
+ * concept. Shows pricing for comparable software products in the market.
  *
- * NOTE FOR DEPLOY: /cma/(.*) must be added to middleware's public routes or
+ * NOTE FOR DEPLOY: /cma/(.*) must be in middleware's public routes or
  * Clerk will gate this page.
  */
 
@@ -46,24 +43,25 @@ function ppsf(n: number | null): string {
 
 function facts(c: { beds: number | null; baths: number | null; squareFeet: number | null }): string {
   const parts: string[] = [];
-  if (c.beds != null) parts.push(`${c.beds} bd`);
-  if (c.baths != null) parts.push(`${c.baths} ba`);
-  if (c.squareFeet != null) parts.push(`${c.squareFeet.toLocaleString('en-US')} sqft`);
+  // beds → seats, baths → plan tier, squareFeet → integrations count
+  if (c.beds != null) parts.push(`${c.beds} seats`);
+  if (c.baths != null) parts.push(`tier ${c.baths}`);
+  if (c.squareFeet != null) parts.push(`${c.squareFeet.toLocaleString('en-US')} integrations`);
   return parts.join(' · ') || '—';
 }
 
 const STATUS_LABEL: Record<string, string> = {
   active: 'Active',
   pending: 'Pending',
-  sold: 'Sold',
-  off_market: 'Off market',
-  owned: 'Owned',
+  sold: 'Acquired',
+  off_market: 'Discontinued',
+  owned: 'In catalog',
 };
 
 const BASIS_NOTE: Record<CmaPayload['stats']['basis'], string> = {
-  sold: 'Based on recent sold prices of comparable homes.',
-  list: 'Based on current list prices of comparable homes.',
-  mixed: 'Based on a mix of recent sold and current list prices.',
+  sold: 'Based on recent acquisition prices of comparable software products.',
+  list: 'Based on current list prices of comparable software products.',
+  mixed: 'Based on a mix of acquisition and current list prices.',
   none: 'Not enough priced comparables to compute a range yet.',
 };
 
@@ -114,7 +112,7 @@ export default async function CmaPublicPage({ params }: Props) {
 
         {/* ── Header (the one focal block) ───────────────────────────────── */}
         <header className="space-y-1.5">
-          <p className="text-sm text-muted-foreground">Comparative market analysis.</p>
+          <p className="text-sm text-muted-foreground">Competitive pricing analysis.</p>
           <h1
             className="text-3xl tracking-tight text-foreground"
             style={{ fontFamily: 'var(--font-title)' }}
@@ -122,14 +120,14 @@ export default async function CmaPublicPage({ params }: Props) {
             {report.title?.trim() || subject.address}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {report.title?.trim() ? subject.address : subjectLocation || 'Prepared for the product owner.'}
+            {report.title?.trim() ? subject.address : subjectLocation || 'Prepared for the seller.'}
           </p>
         </header>
 
         {/* ── Suggested range — the headline number ──────────────────────── */}
         <section className="rounded-xl border border-border/70 bg-card px-6 py-7 text-center space-y-2">
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Suggested list-price range
+            Suggested subscription price range
           </p>
           {hasRange ? (
             <p
@@ -157,7 +155,7 @@ export default async function CmaPublicPage({ params }: Props) {
         {/* ── Subject product ───────────────────────────────────────────── */}
         <section className="space-y-3">
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Subject product
+            Subject software product
           </p>
           <div className="rounded-xl border border-border/70 bg-card px-5 py-4 space-y-1.5">
             <p className="text-[17px] font-semibold text-foreground">{subject.address}</p>
@@ -175,7 +173,7 @@ export default async function CmaPublicPage({ params }: Props) {
         <section className="space-y-3">
           <div className="flex items-baseline justify-between">
             <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Comparable homes
+              Comparable products
             </p>
             {stats.avgPricePerSqft != null && (
               <p className="text-xs text-muted-foreground">
@@ -183,16 +181,16 @@ export default async function CmaPublicPage({ params }: Props) {
                 <span className="text-foreground tabular-nums">
                   {ppsf(stats.avgPricePerSqft)}
                 </span>
-                /sqft
+                /seat
               </p>
             )}
           </div>
 
           {comps.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-10 text-center">
-              <p className="text-sm text-foreground">No comparable homes on file yet.</p>
+              <p className="text-sm text-foreground">No comparable products on file yet.</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Comparables drawn from this office&apos;s records will appear here.
+                Comparable products from market research will appear here.
               </p>
             </div>
           ) : (
@@ -200,11 +198,11 @@ export default async function CmaPublicPage({ params }: Props) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border/70 text-left">
-                    <Th>Address</Th>
-                    <Th className="text-right">Beds / baths</Th>
-                    <Th className="text-right">Sqft</Th>
+                    <Th>Product</Th>
+                    <Th className="text-right">Seats / tier</Th>
+                    <Th className="text-right">Integrations</Th>
                     <Th className="text-right">Price</Th>
-                    <Th className="text-right">$/sqft</Th>
+                    <Th className="text-right">$/seat</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -220,8 +218,8 @@ export default async function CmaPublicPage({ params }: Props) {
         {/* ── Footer ─────────────────────────────────────────────────────── */}
         <footer className="border-t border-border/60 pt-6 space-y-2">
           <p className="text-xs text-muted-foreground">
-            Prepared {brand?.name ? `by ${brand.name} ` : ''}on {generated}. This analysis is an
-            estimate based on comparable products, not an appraisal.
+            Prepared {brand?.name ? `by ${brand.name} ` : ''}on {generated}. This analysis is a
+            competitive pricing estimate based on comparable software products, not a formal valuation.
           </p>
           <p className="text-[11px] text-muted-foreground print:hidden">
             Tip: use your browser&apos;s print to save this report as a PDF.

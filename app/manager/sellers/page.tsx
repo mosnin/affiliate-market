@@ -306,7 +306,7 @@ export default async function ManagerSellersPage() {
       <header className="space-y-1.5">
         <p className={cn(BODY_MUTED)}>Sellers.</p>
         <h1 className={cn(H1)} style={TITLE_FONT}>
-          Your team in flight
+          Your sales team
         </h1>
         <p className={cn(BODY_MUTED)}>{subtitle}</p>
       </header>
@@ -321,7 +321,7 @@ export default async function ManagerSellersPage() {
             >
               Send the first invite
             </Link>{' '}
-            to get someone working.
+            to get your first seller onboarded.
           </p>
         </div>
       ) : (
