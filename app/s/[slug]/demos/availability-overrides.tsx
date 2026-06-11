@@ -196,7 +196,7 @@ export function AvailabilityOverrides({ slug, productProfiles = [] }: Availabili
                 type="text"
                 value={formLabel}
                 onChange={(e) => setFormLabel(e.target.value)}
-                placeholder="e.g. Saturday open house"
+                placeholder="e.g. Product launch webinar"
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>

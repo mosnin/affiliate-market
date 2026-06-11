@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import { getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
-import { formatProductAddress } from '@/lib/products';
 import type { Product } from '@/lib/types';
 import { ProductDetailClient } from '@/components/products/product-detail-client';
 
@@ -42,13 +41,14 @@ export default async function ProductDetailPage({
       .limit(20),
   ]);
 
-  const addr = formatProductAddress(product as Product);
+  // Prefer the software product name (stored as `name` or falling back to `address`).
+  const productName =
+    (product as Record<string, unknown>).name as string | null
+    ?? (product as Product).address
+    ?? 'Product';
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
-      {/* Breadcrumb — the detail page is no longer an orphan child of /deals.
-          Matches the contact-detail breadcrumb pattern: muted "back" link
-          with chevron, in muted-foreground. */}
       <nav
         aria-label="Breadcrumb"
         className="flex items-center gap-1 text-xs text-muted-foreground"
@@ -60,7 +60,7 @@ export default async function ProductDetailPage({
           Products
         </Link>
         <ChevronRight size={11} aria-hidden className="text-muted-foreground/60" />
-        <span className="truncate text-foreground">{addr}</span>
+        <span className="truncate text-foreground">{productName}</span>
       </nav>
 
       <ProductDetailClient

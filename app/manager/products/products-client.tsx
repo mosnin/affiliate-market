@@ -314,23 +314,23 @@ function AddProductForm({ members, onCreated, onCancel }: AddProductFormProps) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Address row — mirrors product-form.tsx layout */}
+        {/* Product name row */}
         <div className="grid grid-cols-[1fr_120px] gap-2">
-          <FormField label="Address" required>
+          <FormField label="Product name" required>
             <Input
               type="text"
               required
               value={v.address}
               onChange={(e) => set('address', e.target.value)}
-              placeholder="123 Main St"
+              placeholder="e.g. Acme Analytics"
             />
           </FormField>
-          <FormField label="Unit">
+          <FormField label="Version">
             <Input
               type="text"
               value={v.unitNumber}
               onChange={(e) => set('unitNumber', e.target.value)}
-              placeholder="4B"
+              placeholder="v2.0"
             />
           </FormField>
         </div>
@@ -360,7 +360,7 @@ function AddProductForm({ members, onCreated, onCancel }: AddProductFormProps) {
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <FormField label="MLS #">
+          <FormField label="Catalog ID">
             <Input
               type="text"
               value={v.mlsNumber}
@@ -368,7 +368,7 @@ function AddProductForm({ members, onCreated, onCancel }: AddProductFormProps) {
               placeholder="Unique identifier"
             />
           </FormField>
-          <FormField label="Listing URL">
+          <FormField label="Website URL">
             <Input
               type="url"
               value={v.listingUrl}

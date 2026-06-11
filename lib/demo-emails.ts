@@ -15,6 +15,7 @@ export interface DemoEmailData {
   guestName: string;
   guestEmail: string;
   guestPhone?: string | null;
+  /** Product name or meeting link shown in detail boxes. */
   productAddress: string | null;
   startsAt: string; // ISO
   endsAt: string;   // ISO
@@ -111,7 +112,7 @@ export async function sendDemoConfirmation(data: DemoEmailData) {
     ${detailBox([
       { label: 'Date', value: formatDate(startsAt) },
       { label: 'Time', value: `${formatTime(startsAt)} – ${formatTime(endsAt)}` },
-      { label: 'Product', value: productAddress ?? '' },
+      { label: 'Meeting link', value: productAddress ?? '' },
     ])}
     <p style="margin:0;font-size:14px;color:#374151;line-height:1.5">If you need to reschedule or cancel, please reply to this email.</p>
   `;
@@ -130,9 +131,9 @@ export async function sendDemoReminder(data: DemoEmailData) {
     ${detailBox([
       { label: 'Date', value: formatDate(startsAt) },
       { label: 'Time', value: `${formatTime(startsAt)} – ${formatTime(endsAt)}` },
-      { label: 'Product', value: productAddress ?? '' },
+      { label: 'Meeting link', value: productAddress ?? '' },
     ])}
-    <p style="margin:0;font-size:14px;color:#374151;line-height:1.5">We look forward to seeing you!</p>
+    <p style="margin:0;font-size:14px;color:#374151;line-height:1.5">We look forward to connecting with you!</p>
   `;
 
   const html = wrapHtml(businessName, 'Demo reminder', body, `Sent by ${esc(businessName)}`);
@@ -141,12 +142,12 @@ export async function sendDemoReminder(data: DemoEmailData) {
 
 export async function sendDemoFollowUp(data: DemoEmailData) {
   const { guestName, guestEmail, businessName, productAddress } = data;
-  const subject = `Thanks for demoing with ${businessName}!`;
+  const subject = `Thanks for attending the demo — ${businessName}`;
 
   const body = `
     <p style="margin:0 0 12px;font-size:15px;color:#111827;line-height:1.6">Hi ${esc(guestName)},</p>
     <p style="margin:0 0 4px;font-size:15px;color:#111827;line-height:1.6">
-      Thank you for demoing${productAddress ? ` <strong>${esc(productAddress)}</strong>` : ''} with us. We hope you enjoyed the visit.
+      Thank you for attending the demo${productAddress ? ` of <strong>${esc(productAddress)}</strong>` : ''}. We hope it was valuable.
     </p>
     <p style="margin:12px 0 0;font-size:14px;color:#374151;line-height:1.5">
       If you have any questions or would like to move forward, simply reply to this email and we'll get back to you right away.
@@ -154,7 +155,7 @@ export async function sendDemoFollowUp(data: DemoEmailData) {
     <p style="margin:16px 0 0;font-size:14px;color:#111827">Best regards,<br/><strong>${esc(businessName)}</strong></p>
   `;
 
-  const html = wrapHtml(businessName, 'Thanks for visiting!', body, `Sent by ${esc(businessName)}`);
+  const html = wrapHtml(businessName, 'Thanks for attending!', body, `Sent by ${esc(businessName)}`);
   await sendEmail(guestEmail, subject, html);
 }
 
@@ -170,7 +171,7 @@ export async function sendAgentNotification(agentEmail: string, data: DemoEmailD
       { label: 'Email', value: guestEmail },
       { label: 'Phone', value: guestPhone ?? '' },
       { label: 'Date', value: `${formatDate(startsAt)} at ${formatTime(startsAt)}` },
-      { label: 'Product', value: productAddress ?? '' },
+      { label: 'Meeting link', value: productAddress ?? '' },
     ])}
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px">
       <tr><td>

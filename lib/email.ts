@@ -116,14 +116,14 @@ export async function sendNewLeadNotification(params: NewLeadEmailParams): Promi
       row('Phone', phone),
       row('Email', email),
       row('Budget', budget != null ? fmt(budget) : null),
-      row('Product', app.productAddress),
-      row('Move-in date', app.targetMoveInDate),
-      row('Monthly rent', app.monthlyRent != null ? fmt(Number(app.monthlyRent)) : null),
-      row('Employment', app.employmentStatus),
-      row('Gross income', app.monthlyGrossIncome != null ? `${fmt(Number(app.monthlyGrossIncome))}/mo` : null),
-      row('Occupants', app.numberOfOccupants),
-      row('Pets', app.hasPets === true ? (app.petDetails ?? 'Yes') : app.hasPets === false ? 'No' : null),
-      row('Prior evictions', app.priorEvictions),
+      row('Product / plan', app.productAddress),
+      row('Target start date', app.targetMoveInDate),
+      row('Monthly budget', app.monthlyRent != null ? fmt(Number(app.monthlyRent)) : null),
+      row('Role', app.employmentStatus),
+      row('Annual software budget', app.monthlyGrossIncome != null ? `${fmt(Number(app.monthlyGrossIncome))}/yr` : null),
+      row('Team size (seats)', app.numberOfOccupants),
+      row('Existing tooling', app.hasPets === true ? (app.petDetails ?? 'Yes') : app.hasPets === false ? 'No' : null),
+      row('Replacing existing tool', app.priorEvictions),
     ].filter(Boolean).join('');
   }
 
@@ -137,7 +137,7 @@ export async function sendNewLeadNotification(params: NewLeadEmailParams): Promi
         <!-- Header -->
         <tr><td style="background:#0f172a;padding:20px 28px">
           <p style="margin:0;color:#94a3b8;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.05em">${esc(spaceName)}</p>
-          <p style="margin:4px 0 0;color:#ffffff;font-size:20px;font-weight:700">New lead application</p>
+          <p style="margin:4px 0 0;color:#ffffff;font-size:20px;font-weight:700">New lead submission</p>
         </td></tr>
         <!-- Body -->
         <tr><td style="padding:24px 28px">
@@ -561,11 +561,11 @@ export async function sendApplicationConfirmation(params: ApplicationConfirmatio
 
   const safeBusinessName = esc(businessName);
   const safeName = esc(applicantName);
-  const typeLabel = leadType === 'buyer' ? 'buyer' : 'rental';
+  const typeLabel = leadType === 'buyer' ? 'demo' : 'quote';
 
   const bodyParagraph = customMessage
     ? esc(customMessage)
-    : `We&#x27;ve received your ${typeLabel} application and will review it shortly. You don&#x27;t need to do anything else right now.`;
+    : `We&#x27;ve received your ${typeLabel} request and will review it shortly. You don&#x27;t need to do anything else right now.`;
 
   const html = `
 <!DOCTYPE html>
@@ -652,7 +652,7 @@ export async function sendWelcomeEmail(params: {
       <tr>
         <td style="padding:8px 0;font-size:14px;color:#374151;line-height:1.5">
           <strong style="color:#111827">1. Share your intake link</strong><br/>
-          Send it to renters so their inquiries flow straight into your pipeline.
+          Send it to prospects so their quote requests flow straight into your pipeline.
         </td>
       </tr>
       <tr>

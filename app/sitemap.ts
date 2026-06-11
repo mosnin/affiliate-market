@@ -32,6 +32,10 @@ const ROUTES: ReadonlyArray<{
   { path: '/company', changeFrequency: 'monthly', priority: 0.6 },
   { path: '/demo', changeFrequency: 'monthly', priority: 0.7 },
   { path: '/status', changeFrequency: 'daily', priority: 0.4 },
+  // Marketplace surfaces
+  { path: '/marketplace', changeFrequency: 'daily', priority: 0.8 },
+  { path: '/affiliate', changeFrequency: 'monthly', priority: 0.7 },
+  { path: '/buyer', changeFrequency: 'monthly', priority: 0.7 },
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

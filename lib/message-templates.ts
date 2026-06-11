@@ -39,7 +39,7 @@ export const TEMPLATE_VARIABLES: { key: keyof TemplateContext; description: stri
   { key: 'contactName',      description: 'Full name of the contact' },
   { key: 'contactFirstName', description: 'First name only' },
   { key: 'dealTitle',        description: 'Deal title' },
-  { key: 'productAddress',  description: 'Deal / demo product address' },
+  { key: 'productAddress',  description: 'Deal / demo meeting link or product name' },
   { key: 'demoDate',         description: 'Demo date, e.g. "Sat Apr 20"' },
   { key: 'demoTime',         description: 'Demo time, e.g. "2:00 PM"' },
   { key: 'closeDate',        description: 'Expected close date' },

@@ -10,19 +10,19 @@ import { SentryUser } from '@/components/observability/sentry-user';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Cola — Agentic OS for Real Estate Agents & Companies',
-  description: 'An AI agent that runs your seller workspace — qualifies leads, drafts follow-ups, schedules demos, and keeps your pipeline current so you can focus on the deals that matter. Start your 7-day free trial.',
-  keywords: ['agentic OS', 'AI agent', 'real estate', 'sellers', 'companies', 'AI lead scoring', 'lead qualification', 'demo scheduling', 'deal pipeline', 'CRM'],
+  title: 'Cola — the agentic sales OS for software companies',
+  description: 'An AI agent that runs your software sales workspace — qualifies leads, drafts follow-ups, schedules product demos, and keeps your pipeline current so you can focus on the deals that matter. Start your 7-day free trial.',
+  keywords: ['agentic OS', 'AI agent', 'software sales', 'SaaS', 'sellers', 'affiliates', 'AI lead scoring', 'lead qualification', 'demo scheduling', 'deal pipeline', 'CRM'],
   openGraph: {
-    title: 'Cola — Agentic OS for Real Estate Agents & Companies',
-    description: 'An AI agent that runs your seller workspace — qualifies leads, drafts follow-ups, schedules demos, and keeps your pipeline current.',
+    title: 'Cola — the agentic sales OS for software companies',
+    description: 'An AI agent that runs your software sales workspace — qualifies leads, drafts follow-ups, schedules product demos, and keeps your pipeline current.',
     siteName: 'Cola',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Cola — Agentic OS for Real Estate Agents & Companies',
-    description: 'An AI agent that runs your seller workspace — qualifies leads, drafts follow-ups, schedules demos, keeps your pipeline current.',
+    title: 'Cola — the agentic sales OS for software companies',
+    description: 'An AI agent that runs your software sales workspace — qualifies leads, drafts follow-ups, schedules product demos, keeps your pipeline current.',
   },
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },

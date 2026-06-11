@@ -32,7 +32,7 @@ export default async function ManagerSettingsPage() {
   const canEdit = membership.role === 'manager_owner' || membership.role === 'manager_admin';
 
   const subtitle = canEdit
-    ? `${company.name} — your team's identity and intake.`
+    ? `${company.name} — your company identity and intake settings.`
     : `${company.name} — read-only for your role.`;
 
   return (
