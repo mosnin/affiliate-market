@@ -356,9 +356,9 @@ async def create_deal(
     contact_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Create a new deal in a pipeline stage."""
-    # title required. stage_id optional (auto-picks first buyer/seller pipeline stage).
+    # title required. stage_id optional (auto-picks first available pipeline stage).
     # value: dollars. priority: LOW|MEDIUM|HIGH (default MEDIUM). close_date: ISO 8601.
-    # contact_ids: linked Contact.id values; buyer leads auto-route to buyer pipeline.
+    # contact_ids: linked Contact.id values; auto-routes to the appropriate pipeline stage.
     space_id = ctx.context.space_id
     db = await supabase()
     now = datetime.now(timezone.utc).isoformat()

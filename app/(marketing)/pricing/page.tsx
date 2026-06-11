@@ -71,7 +71,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'How does company pricing work?',
-    a: 'Add an agent and billing updates automatically — the per-agent price drops as the team grows. No tier jumping, no calls to sales until you want them.',
+    a: 'Add a seller and billing updates automatically — the per-seller price drops as the team grows. No tier jumping, no calls to sales until you want them.',
   },
 ];
 
@@ -120,7 +120,7 @@ export default function PricingPage() {
       <MarketingHero
         eyebrow="PRICING"
         title="Pricing that scales with your team."
-        sub="Every plan starts with a 7-day free trial — card collected at checkout. Premium AI workflows draw from a monthly credit balance, and company pricing expands automatically as you add agents."
+        sub="Every plan starts with a 7-day free trial — card collected at checkout. Premium AI workflows draw from a monthly credit balance, and company pricing expands automatically as you add sellers."
         primaryCta={{ label: 'Start free trial', href: SIGNUP }}
         secondaryCta={{ label: 'Talk to sales for teams', href: '/demo' }}
       />
@@ -180,7 +180,7 @@ export default function PricingPage() {
                   </tr>
                 ))}
                 <tr>
-                  <td className="px-5 py-3 text-foreground">200+ agents</td>
+                  <td className="px-5 py-3 text-foreground">200+ sellers</td>
                   <td className="px-5 py-3 text-muted-foreground" colSpan={2}>
                     Custom — performance pricing available.{' '}
                     <Link href="/demo" className="text-brand hover:underline">Talk to sales</Link>
