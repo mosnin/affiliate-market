@@ -63,22 +63,22 @@ function formatDayWord(d: Date, now: Date = new Date()): string {
  * a name. The doorway opens to the contact.
  */
 export function notificationForNewLead(name: string): string {
-  return `${name} just applied. Worth a welcome.`;
+  return `${name} just submitted a quote request. Worth a welcome.`;
 }
 
 /**
- * The bell-feed aggregate when the user has unread fresh applications. The
+ * The bell-feed aggregate when the user has unread fresh submissions. The
  * count carries the urgency; we don't editorialize beyond that.
  */
 export function notificationForNewLeadsCount(count: number): NotificationCopy {
   if (count === 1) {
     return {
-      title: '1 new applicant',
+      title: '1 new lead submission',
       description: 'Worth a welcome.',
     };
   }
   return {
-    title: `${count} new applicants`,
+    title: `${count} new lead submissions`,
     description: 'Worth a welcome.',
   };
 }
@@ -94,8 +94,8 @@ export function notificationForNewCompanyLead(
   contact: { phone?: string | null; email?: string | null },
 ): NotificationCopy {
   return {
-    title: `${name} just applied through company intake.`,
-    description: contact.phone ?? contact.email ?? 'New application submitted.',
+    title: `${name} just submitted through company intake.`,
+    description: contact.phone ?? contact.email ?? 'New quote request submitted.',
   };
 }
 
@@ -131,7 +131,7 @@ export function notificationForNewDemo(
   product?: string | null,
 ): string {
   if (product) {
-    return `On the calendar — demo with ${guestName} at ${product}.`;
+    return `On the calendar — demo with ${guestName} for ${product}.`;
   }
   return `On the calendar — demo with ${guestName}.`;
 }
@@ -255,7 +255,7 @@ export function notificationForWaitlist(count: number): NotificationCopy {
  */
 export function notificationForNewDeal(title: string, address?: string | null): string {
   if (address) {
-    return `Pipeline added: ${title} at ${address}.`;
+    return `Pipeline added: ${title} (${address}).`;
   }
   return `Pipeline added: ${title}.`;
 }

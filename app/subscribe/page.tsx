@@ -26,9 +26,9 @@ import { TITLE_FONT } from '@/lib/typography';
 
 const FEATURES = [
   'I draft every follow-up. You approve.',
-  'AI lead scoring on every applicant.',
-  'Intake links that qualify leads for you.',
-  'Demos scheduled and booked.',
+  'AI lead scoring on every quote request.',
+  'Intake links that qualify buyers for you.',
+  'Product demos scheduled and booked automatically.',
   'Unlimited contacts and deals.',
   'Notes, calendar, and analytics.',
   'Connect Gmail, Slack, and more.',

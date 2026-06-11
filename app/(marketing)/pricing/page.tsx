@@ -1,9 +1,9 @@
 /**
- * `/pricing` — Cola V2 three-layer pricing.
+ * `/pricing` — Cola three-layer pricing.
  *
- * Layer 1: platform tiers for individuals (Free / Solo / Pro Performer) and
- * teams (Team / Team Plus). Layer 2: company expansion (auto-expanding
- * per-agent pricing). Premium AI workflows draw from a monthly credit balance.
+ * Layer 1: platform tiers for individuals (Starter / Growth) and
+ * teams (Scale / Scale Plus). Layer 2: company expansion (auto-expanding
+ * per-seller pricing). Premium AI workflows draw from a monthly credit balance.
  *
  * Numbers come from `lib/plans` so the marketing page can't drift from the
  * product's source of truth. Marketing visual system (studio): serif Times for
@@ -31,20 +31,20 @@ type Card = {
 // plans start with a 7-day Stripe trial (card collected at checkout, charged
 // when the trial ends). PLANS.free remains an internal fallback state only.
 const INDIVIDUAL: Card[] = [
-  { id: 'solo', blurb: 'Organize your pipeline and start using AI workflows.', cta: { label: 'Start Solo', href: SIGNUP } },
-  { id: 'pro', blurb: 'Full daily AI workflow for serious lead volume.', cta: { label: 'Start Pro', href: SIGNUP }, featured: true },
+  { id: 'solo', blurb: 'Launch your affiliate engine and start using AI workflows.', cta: { label: 'Start Starter', href: SIGNUP } },
+  { id: 'pro', blurb: 'Full daily AI workflow for serious deal volume.', cta: { label: 'Start Growth', href: SIGNUP }, featured: true },
 ];
 
 const TEAM: Card[] = [
-  { id: 'team', blurb: 'Shared command center for scoring, routing, accountability.', cta: { label: 'Start a team', href: '/demo' } },
+  { id: 'team', blurb: 'Shared command center for scoring, routing, accountability.', cta: { label: 'Start Scale', href: '/demo' } },
   { id: 'team_plus', blurb: 'Company-level workflow without enterprise complexity.', cta: { label: 'Talk to sales', href: '/demo' } },
 ];
 
 const EXPANSION: { range: string; mo: number; yr: number }[] = [
-  { range: '10–24 agents', mo: 69, yr: 56 },
-  { range: '25–49 agents', mo: 59, yr: 48 },
-  { range: '50–99 agents', mo: 49, yr: 40 },
-  { range: '100–199 agents', mo: 39, yr: 32 },
+  { range: '10–24 sellers', mo: 69, yr: 56 },
+  { range: '25–49 sellers', mo: 59, yr: 48 },
+  { range: '50–99 sellers', mo: 49, yr: 40 },
+  { range: '100–199 sellers', mo: 39, yr: 32 },
 ];
 
 // Premium workflows shown on the pricing table. `chat_turn` is intentionally
@@ -129,7 +129,7 @@ export default function PricingPage() {
       <section className="relative pb-16 md:pb-24">
         <div className="mx-auto max-w-4xl px-6 md:px-8">
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            For individual agents
+            For individual sellers
           </p>
           <div className="mt-6 grid gap-5 md:grid-cols-2">
             {INDIVIDUAL.map((c) => (
@@ -160,15 +160,15 @@ export default function PricingPage() {
             Company expansion
           </p>
           <h2 style={TITLE_FONT} className="mt-3 text-[28px] md:text-[36px] tracking-[-0.02em] text-foreground">
-            Add an agent. Billing updates automatically.
+            Add a seller. Billing updates automatically.
           </h2>
           <div className="mt-8 overflow-hidden rounded-2xl border border-border/70">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/60 text-left text-muted-foreground">
-                  <th className="px-5 py-3 font-medium">Agents</th>
-                  <th className="px-5 py-3 font-medium tabular-nums">Monthly / agent</th>
-                  <th className="px-5 py-3 font-medium tabular-nums">Annual / agent</th>
+                  <th className="px-5 py-3 font-medium">Sellers</th>
+                  <th className="px-5 py-3 font-medium tabular-nums">Monthly / seller</th>
+                  <th className="px-5 py-3 font-medium tabular-nums">Annual / seller</th>
                 </tr>
               </thead>
               <tbody>

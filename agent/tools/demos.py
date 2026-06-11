@@ -1,5 +1,5 @@
-"""Demo booking tool — agent creates a Demo row + mirrors to the seller's
-external calendar.
+"""Demo booking tool — agent creates a Demo row (product demo video call) +
+mirrors to the seller's external calendar.
 
 The seller lives in Google Calendar (or Outlook); Cola doesn't own a
 calendar. After booking the Demo row, this tool writes through to the
@@ -51,11 +51,14 @@ async def book_demo(
     contact_id: str,
     starts_at: str,
     duration_minutes: int = 30,
-    product_address: str | None = None,
+    product_name: str | None = None,
+    meeting_link: str | None = None,
     notes: str | None = None,
 ) -> dict[str, Any]:
-    """Book a demo for a contact + mirror to the connected external calendar."""
+    """Book a product demo call for a contact + mirror to the connected external calendar."""
     # starts_at: ISO 8601 (include tz; naive = UTC). duration_minutes: 5-240 (default 30).
+    # product_name: the software product being demoed (optional, for calendar event title).
+    # meeting_link: video call URL (Zoom, Meet, Teams, etc.) included in the calendar invite.
     # Contact must have email on file. Through-writes to Google Calendar if connected.
     space_id = ctx.context.space_id
     db = await supabase()
@@ -99,7 +102,8 @@ async def book_demo(
         "guestName": guest_name,
         "guestEmail": guest_email,
         "guestPhone": guest_phone,
-        "productAddress": product_address,
+        "productName": product_name,
+        "meetingLink": meeting_link,
         "notes": notes,
         "startsAt": starts.isoformat(),
         "endsAt": ends.isoformat(),
@@ -125,7 +129,8 @@ async def book_demo(
             guest_email=guest_email,
             starts=starts,
             ends=ends,
-            product_address=product_address,
+            product_name=product_name,
+            meeting_link=meeting_link,
             notes=notes,
         )
     except Exception as exc:  # noqa: BLE001 — best-effort
@@ -137,16 +142,17 @@ async def book_demo(
         )
 
     # Activity timeline entry for the contact
-    summary_addr = f" at {product_address}" if product_address else ""
+    summary_product = f" for {product_name}" if product_name else ""
     await db.table("ContactActivity").insert({
         "id": str(uuid.uuid4()),
         "contactId": contact_id,
         "spaceId": space_id,
         "type": "note",
         "content": (
-            f"[Agent] Demo booked for "
+            f"[Agent] Demo booked"
+            f"{summary_product} on "
             f"{starts.strftime('%a %b %d, %I:%M%p').replace(' 0', ' ')}"
-            f"{summary_addr}. {(notes or '').strip()[:200]}"
+            f". {(notes or '').strip()[:200]}"
         ).strip(),
         "metadata": {
             "source": "agent",
@@ -169,7 +175,7 @@ async def book_demo(
             ctx.context,
             action_type="demo_booked",
             outcome="completed",
-            reasoning=f"Demo at {product_address or 'TBD'} on {starts.isoformat()}",
+            reasoning=f"Demo for {product_name or 'product'} on {starts.isoformat()}",
             contact_id=contact_id,
         )
     except Exception:
@@ -193,7 +199,8 @@ async def _write_demo_through_to_external_calendar(
     guest_email: str,
     starts: datetime,
     ends: datetime,
-    product_address: str | None,
+    product_name: str | None,
+    meeting_link: str | None,
     notes: str | None,
 ) -> None:
     """Write the demo through to the seller's connected external calendar
@@ -243,10 +250,12 @@ async def _write_demo_through_to_external_calendar(
     # 2. Try the external write via the internal proxy. Lazy import to
     #    keep the cold path light — agent.settings is a heavy module.
     description_parts: list[str] = []
-    if product_address:
-        description_parts.append(f"Product: {product_address}")
+    if product_name:
+        description_parts.append(f"Product: {product_name}")
+    if meeting_link:
+        description_parts.append(f"Meeting link: {meeting_link}")
     if guest_email:
-        description_parts.append(f"Guest: {guest_name} <{guest_email}>")
+        description_parts.append(f"Attendee: {guest_name} <{guest_email}>")
     if notes:
         description_parts.append(f"Notes: {notes}")
     description = "\n".join(description_parts) if description_parts else None
@@ -270,7 +279,7 @@ async def _write_demo_through_to_external_calendar(
                 "userId": user_id,
                 "slug": _GCAL_CREATE_SLUG,
                 "arguments": {
-                    "summary": f"Demo: {guest_name}",
+                    "summary": f"Demo{(' – ' + product_name) if product_name else ''}: {guest_name}",
                     "description": description,
                     "start_datetime": starts.isoformat(),
                     "end_datetime": ends.isoformat(),
@@ -316,7 +325,7 @@ async def _write_demo_through_to_external_calendar(
                 "spaceId": space_id,
                 "externalProvider": toolkit,
                 "externalEventId": external_event_id,
-                "title": f"Demo: {guest_name}",
+                "title": f"Demo{(' – ' + product_name) if product_name else ''}: {guest_name}",
                 "start": starts.isoformat(),
                 "end": ends.isoformat(),
                 "attendees": attendees,

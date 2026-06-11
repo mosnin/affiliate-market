@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 # Enums / Literals
 # ---------------------------------------------------------------------------
 
-LeadType = Literal["rental", "buyer", "seller"]
+LeadType = Literal["inbound", "outbound", "referral"]
 DealStatus = Literal["active", "won", "lost", "on_hold"]
 Priority = Literal["LOW", "MEDIUM", "HIGH"]
 ContactType = Literal["QUALIFICATION", "DEMO", "APPLICATION"]
@@ -37,7 +37,7 @@ class Contact(BaseModel):
     email: str | None = None
     phone: str | None = None
     lead_type: LeadType | None = Field(None, alias="leadType")
-    address: str | None = None
+    company: str | None = None
     notes: str | None = None
     budget: float | None = None
     tags: list[str] = Field(default_factory=list)
@@ -68,7 +68,7 @@ class Deal(BaseModel):
     title: str
     description: str | None = None
     value: float | None = None
-    address: str | None = None
+    product_name: str | None = Field(None, alias="productName")
     priority: Priority = "MEDIUM"
     close_date: str | None = Field(None, alias="closeDate")
     stage_id: str | None = Field(None, alias="stageId")

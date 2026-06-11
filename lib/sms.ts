@@ -136,18 +136,18 @@ export function newDemoSMS(p: { spaceName: string; guestName: string; date: stri
 }
 
 export function demoConfirmationSMS(p: { guestName: string; guestPhone: string; businessName: string; date: string; time: string; product?: string | null }): SendSMSParams {
-  const prop = p.product ? ` at ${p.product}` : '';
+  const prop = p.product ? ` (${p.product})` : '';
   return {
     to: p.guestPhone,
-    body: `Hi ${p.guestName}! Your demo with ${p.businessName}${prop} is confirmed for ${p.date} at ${p.time}. Contact your agent if you need to reschedule.`,
+    body: `Hi ${p.guestName}! Your demo with ${p.businessName}${prop} is confirmed for ${p.date} at ${p.time}. Reply to reschedule.`,
   };
 }
 
 export function demoReminderSMS(p: { guestName: string; guestPhone: string; businessName: string; time: string; product?: string | null }): SendSMSParams {
-  const prop = p.product ? ` at ${p.product}` : '';
+  const prop = p.product ? ` (${p.product})` : '';
   return {
     to: p.guestPhone,
-    body: `Hi ${p.guestName}, reminder: your demo with ${p.businessName}${prop} is tomorrow at ${p.time}. See you there!`,
+    body: `Hi ${p.guestName}, reminder: your demo with ${p.businessName}${prop} is tomorrow at ${p.time}. See you then!`,
   };
 }
 

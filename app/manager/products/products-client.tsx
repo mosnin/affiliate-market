@@ -410,7 +410,7 @@ function AddProductForm({ members, onCreated, onCancel }: AddProductFormProps) {
               ))}
             </select>
           </FormField>
-          <FormField label="Beds">
+          <FormField label="Seats">
             <Input
               type="number"
               step="0.5"
@@ -419,7 +419,7 @@ function AddProductForm({ members, onCreated, onCancel }: AddProductFormProps) {
               onChange={(e) => set('beds', e.target.value)}
             />
           </FormField>
-          <FormField label="Baths">
+          <FormField label="Plan tier">
             <Input
               type="number"
               step="0.5"
@@ -431,7 +431,7 @@ function AddProductForm({ members, onCreated, onCancel }: AddProductFormProps) {
         </div>
 
         <div className="grid grid-cols-4 gap-2">
-          <FormField label="Sq ft">
+          <FormField label="Integrations">
             <Input
               type="number"
               min="0"
@@ -439,7 +439,7 @@ function AddProductForm({ members, onCreated, onCancel }: AddProductFormProps) {
               onChange={(e) => set('squareFeet', e.target.value)}
             />
           </FormField>
-          <FormField label="Lot (sqft)">
+          <FormField label="Add-ons">
             <Input
               type="number"
               min="0"
@@ -447,7 +447,7 @@ function AddProductForm({ members, onCreated, onCancel }: AddProductFormProps) {
               onChange={(e) => set('lotSizeSqft', e.target.value)}
             />
           </FormField>
-          <FormField label="Year built">
+          <FormField label="Version year">
             <Input
               type="number"
               min="1600"
@@ -456,11 +456,11 @@ function AddProductForm({ members, onCreated, onCancel }: AddProductFormProps) {
               onChange={(e) => set('yearBuilt', e.target.value)}
             />
           </FormField>
-          <FormField label="List price">
+          <FormField label="Subscription price (MRR)">
             <Input
               type="number"
               min="0"
-              step="1000"
+              step="1"
               value={v.listPrice}
               onChange={(e) => set('listPrice', e.target.value)}
             />
@@ -679,7 +679,7 @@ export function ManagerProductsClient() {
             Quiet — no products in the pool yet.
           </p>
           <p className={cn('text-xs mt-1', BODY_MUTED)}>
-            Add the first listing to start assigning to your sellers.
+            Add the first product to start assigning to your sellers.
           </p>
           <button
             type="button"
@@ -698,9 +698,12 @@ export function ManagerProductsClient() {
              - AssignControl (rightmost column, hidden on mobile) */
         <StaggerList stagger={0.03} className="divide-y divide-border/60">
           {products.map((product) => {
-            const addr = formatProductAddress(product);
+            const productName =
+              (product as Record<string, unknown>).name as string | null
+              ?? formatProductAddress(product);
             const facts = formatProductFacts(product);
             const cover = product.photos?.[0];
+            const logoUrl = (product as Record<string, unknown>).logoUrl as string | null | undefined;
             const assignedMember = members.find(
               (m) => m.id === product.assignedSpaceId,
             );
@@ -708,28 +711,35 @@ export function ManagerProductsClient() {
             return (
               <StaggerItem key={product.id}>
                 <div className="flex items-center gap-4 py-4 -mx-2 px-2 rounded-md hover:bg-foreground/[0.04] transition-colors">
-                  {/* Thumbnail — 128px wide, 4:3 aspect, matches seller page */}
-                  <div className="w-[128px] aspect-[4/3] rounded-md bg-muted overflow-hidden flex-shrink-0">
-                    {cover ? (
+                  {/* Logo / thumbnail */}
+                  <div className="w-12 h-12 rounded-lg bg-muted overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    {logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={logoUrl}
+                        alt={productName}
+                        className="w-full h-full object-contain"
+                        loading="lazy"
+                      />
+                    ) : cover ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={cover}
-                        alt={addr}
+                        alt={productName}
                         className="w-full h-full object-cover"
                         loading="lazy"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-muted-foreground/40">
-                        <Building2 size={20} aria-hidden />
+                        <Building2 size={16} aria-hidden />
                       </div>
                     )}
                   </div>
 
-                  {/* Facts column — address, specs line, status badge,
-                      product type, and ownership badge */}
+                  {/* Facts column */}
                   <div className="flex-1 min-w-0 space-y-1">
                     <p className="text-sm font-medium text-foreground truncate">
-                      {addr}
+                      {productName}
                     </p>
                     {facts && (
                       <p className="text-xs text-muted-foreground truncate">

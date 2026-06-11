@@ -20,21 +20,19 @@ from tools.base import idempotent_tool
 from tools.streaming import publish_event
 
 _ALLOWED_PRODUCT_TYPES = {
-    "single_family",
-    "condo",
-    "townhouse",
-    "multi_family",
-    "land",
-    "commercial",
+    "saas",
+    "devtools",
+    "mobile_app",
+    "desktop_app",
+    "api_service",
+    "plugin",
     "other",
 }
 
 _ALLOWED_LISTING_STATUS = {
-    "active",
-    "pending",
-    "sold",
-    "off_market",
-    "owned",
+    "draft",
+    "published",
+    "archived",
 }
 
 
@@ -42,39 +40,42 @@ _ALLOWED_LISTING_STATUS = {
 @idempotent_tool
 async def add_product(
     ctx: RunContextWrapper[AgentContext],
-    address: str,
-    list_price: float | None = None,
+    name: str,
+    price_cents: int | None = None,
+    pricing_model: str | None = None,
     product_type: str | None = None,
     listing_status: str | None = None,
-    beds: int | None = None,
-    baths: float | None = None,
-    square_feet: int | None = None,
-    mls_number: str | None = None,
-    listing_url: str | None = None,
+    features: list[str] | None = None,
+    product_url: str | None = None,
     notes: str | None = None,
 ) -> dict[str, Any]:
-    """Add a product to the seller's inventory; later linkable to deals and demos."""
-    # address required. Capture only what the seller named; leave rest null.
-    # list_price in dollars. product_type: single_family|condo|townhouse|multi_family|land|commercial|other.
-    # listing_status: active|pending|sold|off_market|owned (default active).
+    """Add a software product to the seller's catalog; later linkable to deals and demos."""
+    # name required. Capture only what the seller named; leave rest null.
+    # price_cents in integer cents (e.g. 4900 = $49.00).
+    # pricing_model: one_time|subscription.
+    # product_type: saas|devtools|mobile_app|desktop_app|api_service|plugin|other.
+    # listing_status: draft|published|archived (default published).
     space_id = ctx.context.space_id
     db = await supabase()
 
-    address_clean = (address or "").strip()
-    if not address_clean:
-        return {"error": "address is required"}
-    if len(address_clean) > 500:
-        return {"error": "address must be 500 characters or fewer"}
+    name_clean = (name or "").strip()
+    if not name_clean:
+        return {"error": "name is required"}
+    if len(name_clean) > 500:
+        return {"error": "name must be 500 characters or fewer"}
 
-    if list_price is not None and (not isinstance(list_price, (int, float)) or list_price < 0):
-        return {"error": "list_price must be a non-negative number"}
+    if price_cents is not None and (not isinstance(price_cents, int) or price_cents < 0):
+        return {"error": "price_cents must be a non-negative integer"}
+
+    if pricing_model is not None and pricing_model not in {"one_time", "subscription"}:
+        return {"error": "pricing_model must be one_time or subscription"}
 
     if product_type is not None and product_type not in _ALLOWED_PRODUCT_TYPES:
         return {
             "error": "product_type must be one of: " + ", ".join(sorted(_ALLOWED_PRODUCT_TYPES)),
         }
 
-    status = listing_status or "active"
+    status = listing_status or "published"
     if status not in _ALLOWED_LISTING_STATUS:
         return {
             "error": "listing_status must be one of: " + ", ".join(sorted(_ALLOWED_LISTING_STATUS)),
@@ -84,15 +85,13 @@ async def add_product(
     row = {
         "id": product_id,
         "spaceId": space_id,
-        "address": address_clean,
-        "listPrice": list_price,
+        "name": name_clean,
+        "priceCents": price_cents,
+        "pricingModel": pricing_model,
         "productType": product_type,
         "listingStatus": status,
-        "beds": beds,
-        "baths": baths,
-        "squareFeet": square_feet,
-        "mlsNumber": mls_number,
-        "listingUrl": listing_url,
+        "features": features or [],
+        "productUrl": product_url,
         "notes": notes,
     }
 
@@ -106,8 +105,8 @@ async def add_product(
 
     return {
         "id": product_id,
-        "address": address_clean,
-        "list_price": list_price,
+        "name": name_clean,
+        "price_cents": price_cents,
         "listing_status": status,
     }
 
@@ -124,7 +123,7 @@ async def send_product_packet(
     subject: str | None = None,
     intro_message: str | None = None,
 ) -> dict[str, Any]:
-    """Draft a message to a contact with a shareable product packet URL pre-filled."""
+    """Draft a message to a contact with a shareable software product packet URL pre-filled."""
     # Pass exactly one of packet_id or product_id (latter picks newest non-revoked packet).
     # channel: email|sms|note (default email). subject required for email.
     # Creates a pending AgentDraft with same 48h auto-dedup as draft_message.
@@ -168,7 +167,7 @@ async def send_product_packet(
     else:
         prop = await (
             db.table("Product")
-            .select("id,address")
+            .select("id,name")
             .eq("id", product_id)
             .eq("spaceId", space_id)
             .maybe_single()

@@ -1,17 +1,13 @@
 /**
- * `/sellers` — Cola for the solo seller who's boots-on-the-ground.
+ * `/sellers` — Cola for the solo seller or small AE team.
  *
- * The story: a seller flying solo spends the day in the field — at the
- * showing, in the car, between doors. Cola is the extra teammate who works
- * alongside them, reachable on the phone, the installed web app, or the office
- * desktop. It reads the inbox, drafts in their voice, books the demo, scores
- * the lead, and keeps every deal current — saving time on the repetitive work
- * so the hours go to closing. Everything lands in one workspace instead of six
- * tabs, and the seller stays in the driver's seat on every send.
- *
- * This page absorbs the content of the now-retired /features/* pages, told in
- * the homepage's rebuilt vocabulary: AsciiBlob hero atmosphere, serif headlines,
- * Reveal/Stagger motion, live product diagrams, and the home kit throughout.
+ * The story: a software seller flies solo or with a lean team — hopping between
+ * demos, prospect calls, and trial follow-ups. Cola is the extra teammate who
+ * works alongside them, reachable on the phone, the installed web app, or the
+ * office desktop. It reads the inbox, drafts in their voice, books the demo,
+ * scores the lead, and keeps every deal current — saving time on the repetitive
+ * work so the hours go to closing. Everything lands in one workspace instead of
+ * six tabs, and the seller stays in the driver's seat on every send.
  *
  * Auth-aware like the homepage: signed-in sellers bounce to their workspace.
  */
@@ -38,9 +34,9 @@ import {
 } from '@/components/marketing/diagrams';
 
 export const metadata = {
-  title: 'For solo sellers · Cola',
+  title: 'For sellers · Cola',
   description:
-    'Cola is the extra teammate in the field, reachable on your phone, the web app, or the office desktop. It drafts in your voice, scores the lead, books the demo, and keeps every deal current.',
+    'Cola is the extra teammate for software sellers, reachable on your phone, the web app, or the office desktop. It drafts in your voice, scores the lead, books the demo, and keeps every deal current.',
 };
 
 export default async function SellersPage() {
