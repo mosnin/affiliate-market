@@ -1,4 +1,4 @@
-"""Studio tool — Chippi generates branded images and video for the realtor.
+"""Studio tool — Cola generates branded images and video for the seller.
 
 fal.ai and Wasabi live in the Next.js app, so this tool calls the internal
 Studio endpoint (AGENT_INTERNAL_SECRET-authed). Generation, storage, and
@@ -28,8 +28,8 @@ async def generate_studio_image(
     prompt: str,
     model: str | None = None,
 ) -> dict[str, Any]:
-    """Generate a branded image or short video via Studio for the realtor's Files library."""
-    # prompt: vivid plain-English description; realtor's brand palette is auto-applied.
+    """Generate a branded image or short video via Studio for the seller's Files library."""
+    # prompt: vivid plain-English description; seller's brand palette is auto-applied.
     # model: flux-schnell (fast, default), flux-2 (HQ image), seedream-4 (photoreal), seedance-video.
     space_id = ctx.context.space_id
 

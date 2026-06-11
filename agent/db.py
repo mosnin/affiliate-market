@@ -97,7 +97,7 @@ async def _get_pool() -> asyncpg.Pool:
             if _pool is None:
                 if not settings.database_url:
                     raise RuntimeError(
-                        "DATABASE_URL is not set. Configure the chippi-secrets "
+                        "DATABASE_URL is not set. Configure the cola-secrets "
                         "Modal secret with the direct-Postgres URL."
                     )
                 _pool = await asyncpg.create_pool(
@@ -205,7 +205,7 @@ class QueryBuilder:
         self._filters.append(_Filter(column, "is", value))
         return self
 
-    @property
+    @product
     def not_(self) -> _NotProxy:
         return _NotProxy(self)
 

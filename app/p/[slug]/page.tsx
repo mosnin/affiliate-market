@@ -1,5 +1,5 @@
 /**
- * Public realtor page — the "link in bio" surface at /p/[slug].
+ * Public seller page — the "link in bio" surface at /p/[slug].
  *
  * No auth (same pattern as /apply/[slug] and /book/[slug]): resolve the
  * Space by slug, read branding from SpaceSetting, the page config from
@@ -13,7 +13,7 @@ import { getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';
-import { PublicProfile, type PublicProperty } from '@/components/profile-page/public-profile';
+import { PublicProfile, type PublicProduct } from '@/components/profile-page/public-profile';
 
 /** viewport-fit=cover lets the page draw under the iOS notch / status-bar area
  *  instead of leaving a body-coloured strip above it. On the /p/[slug] page
@@ -26,7 +26,7 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
-/** Cover photo & realtor photo are stored as object KEYS in our buckets
+/** Cover photo & seller photo are stored as object KEYS in our buckets
  *  (the bucket isn't anonymously readable). Sign a 24h URL for render —
  *  the page revalidates every 60s so freshness is fine. Legacy values
  *  that start with `http(s)://` are URLs already; pass through verbatim.
@@ -45,7 +45,7 @@ async function resolveStoredPhoto(value: string | null | undefined): Promise<str
   }
 }
 
-/** Try Clerk's stored imageUrl as a last-resort fallback for the realtor's
+/** Try Clerk's stored imageUrl as a last-resort fallback for the seller's
  *  face. Returns null on any failure — the page just falls through to the
  *  generic avatar. Server-side fetch by clerkId; no auth required for
  *  reading another user's public profile fields.
@@ -72,31 +72,31 @@ interface ProfileConfig {
   enabled: boolean;
   headline: string | null;
   showIntake: boolean;
-  showTours: boolean;
-  showProperties: boolean;
+  showDemos: boolean;
+  showProducts: boolean;
   customLinks: Array<{ id: string; label: string; url: string; thumbnail?: string }>;
   videos: Array<{ id: string; url: string; title?: string }>;
   coverPhotoUrl: string | null;
   profilePhotoUrl: string | null;
-  /** Realtor-curated featured listings, in render order. Empty array falls
+  /** Seller-curated featured listings, in render order. Empty array falls
    *  back to the legacy auto-top-6-recent logic. */
-  featuredPropertyIds: string[];
+  featuredProductIds: string[];
 }
 
 const DEFAULT_CONFIG: ProfileConfig = {
   enabled: true,
   headline: null,
   showIntake: true,
-  showTours: true,
-  showProperties: true,
+  showDemos: true,
+  showProducts: true,
   customLinks: [],
   videos: [],
   coverPhotoUrl: null,
   profilePhotoUrl: null,
-  featuredPropertyIds: [],
+  featuredProductIds: [],
 };
 
-export default async function PublicRealtorPage({
+export default async function PublicSellerPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
@@ -109,71 +109,71 @@ export default async function PublicRealtorPage({
     supabase
       .from('SpaceSetting')
       .select(
-        'businessName, logoUrl, realtorPhotoUrl, bio, socialLinks, intakeAccentColor, intakeDarkMode, isVerified',
+        'businessName, logoUrl, sellerPhotoUrl, bio, socialLinks, intakeAccentColor, intakeDarkMode, isVerified',
       )
       .eq('spaceId', space.id)
       .maybeSingle(),
-    // clerkId added so we can fall back to the realtor's Clerk imageUrl when
-    // neither realtorPhotoUrl nor avatar is set (covers the common case
-    // where the realtor uploaded a photo to Clerk but never to Settings).
+    // clerkId added so we can fall back to the seller's Clerk imageUrl when
+    // neither sellerPhotoUrl nor avatar is set (covers the common case
+    // where the seller uploaded a photo to Clerk but never to Settings).
     supabase.from('User').select('name, avatar, clerkId').eq('id', space.ownerId).maybeSingle(),
     supabase
       .from('ProfilePage')
       .select(
-        'enabled, headline, showIntake, showTours, showProperties, customLinks, videos, coverPhotoUrl, profilePhotoUrl, featuredPropertyIds',
+        'enabled, headline, showIntake, showDemos, showProducts, customLinks, videos, coverPhotoUrl, profilePhotoUrl, featuredProductIds',
       )
       .eq('spaceId', space.id)
       .maybeSingle(),
   ]);
 
-  // No row yet = sensible defaults (the page works before the realtor edits
+  // No row yet = sensible defaults (the page works before the seller edits
   // it). enabled === false means they've explicitly unpublished it.
   const cfg: ProfileConfig = { ...DEFAULT_CONFIG, ...((profileRow ?? {}) as Partial<ProfileConfig>) };
   if (cfg.enabled === false) notFound();
 
-  let properties: PublicProperty[] = [];
-  if (cfg.showProperties) {
-    const featuredIds = Array.isArray(cfg.featuredPropertyIds)
-      ? cfg.featuredPropertyIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+  let products: PublicProduct[] = [];
+  if (cfg.showProducts) {
+    const featuredIds = Array.isArray(cfg.featuredProductIds)
+      ? cfg.featuredProductIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
       : [];
 
     if (featuredIds.length > 0) {
-      // Realtor-curated set. Postgres `.in()` doesn't preserve order — fetch
-      // the rows then reorder in JS to match the realtor's chosen sequence.
+      // Seller-curated set. Postgres `.in()` doesn't preserve order — fetch
+      // the rows then reorder in JS to match the seller's chosen sequence.
       // Stale ids (deleted listings, listings flipped off `active`) silently
       // drop out — same forgiving contract as the PATCH validator.
       const { data } = await supabase
-        .from('Property')
+        .from('Product')
         .select('id, address, city, stateRegion, listPrice, photos, listingUrl')
         .eq('spaceId', space.id)
         .eq('listingStatus', 'active')
         .in('id', featuredIds);
-      const byId = new Map((data ?? []).map((p) => [p.id, p as PublicProperty]));
-      properties = featuredIds
+      const byId = new Map((data ?? []).map((p) => [p.id, p as PublicProduct]));
+      products = featuredIds
         .map((id) => byId.get(id))
-        .filter((p): p is PublicProperty => Boolean(p));
+        .filter((p): p is PublicProduct => Boolean(p));
     } else {
-      // Legacy fallback: the realtor hasn't curated yet, so show the six
+      // Legacy fallback: the seller hasn't curated yet, so show the six
       // most-recently-updated active listings. Same query as before this
       // feature shipped — no behaviour change for un-curated pages.
       const { data } = await supabase
-        .from('Property')
+        .from('Product')
         .select('id, address, city, stateRegion, listPrice, photos, listingUrl')
         .eq('spaceId', space.id)
         .eq('listingStatus', 'active')
         .order('updatedAt', { ascending: false })
         .limit(6);
-      properties = ((data ?? []) as PublicProperty[]);
+      products = ((data ?? []) as PublicProduct[]);
     }
 
-    // Sign each property's first photo. Same contract as the cover/agent
+    // Sign each product's first photo. Same contract as the cover/agent
     // photos: values are stored as private storage KEYS (the Wasabi bucket
     // isn't anonymously readable, so even a `getPublicUrl()` link 403s).
     // The carousel only reads `photos[0]`, so we rewrite the array to a
     // single-element list holding the signed URL — keeps the type stable
     // and avoids signing photos the UI will never render.
-    properties = await Promise.all(
-      properties.map(async (p) => {
+    products = await Promise.all(
+      products.map(async (p) => {
         const first = Array.isArray(p.photos) ? p.photos[0] : null;
         const signed = await resolveStoredPhoto(first);
         return { ...p, photos: signed ? [signed] : null };
@@ -188,19 +188,19 @@ export default async function PublicRealtorPage({
 
   // Resolve photo URLs in parallel. Two distinct face slots now:
   //   - profilePhotoUrl on ProfilePage  → public-page-specific portrait the
-  //                                        realtor picked deliberately for /p/[slug]
-  //   - realtorPhotoUrl on SpaceSetting → the dashboard / intake / booking face
+  //                                        seller picked deliberately for /p/[slug]
+  //   - sellerPhotoUrl on SpaceSetting → the dashboard / intake / booking face
   // Public page prefers the ProfilePage one when set. If unset, fall through
-  // to the existing chain (realtorPhotoUrl → User.avatar → Clerk imageUrl)
-  // so legacy realtors who haven't picked a separate photo still see something.
-  const [coverPhotoUrl, profilePagePhoto, realtorPhotoFromStorage] = await Promise.all([
+  // to the existing chain (sellerPhotoUrl → User.avatar → Clerk imageUrl)
+  // so legacy sellers who haven't picked a separate photo still see something.
+  const [coverPhotoUrl, profilePagePhoto, sellerPhotoFromStorage] = await Promise.all([
     resolveStoredPhoto(cfg.coverPhotoUrl),
     resolveStoredPhoto(cfg.profilePhotoUrl),
-    resolveStoredPhoto(settings?.realtorPhotoUrl ?? owner?.avatar ?? null),
+    resolveStoredPhoto(settings?.sellerPhotoUrl ?? owner?.avatar ?? null),
   ]);
   const agentPhoto =
     profilePagePhoto ??
-    realtorPhotoFromStorage ??
+    sellerPhotoFromStorage ??
     (await clerkImageUrlFor((owner as { clerkId?: string | null } | null)?.clerkId));
 
   return (
@@ -216,12 +216,12 @@ export default async function PublicRealtorPage({
       accentColor={(settings?.intakeAccentColor as string | null) || '#ff964f'}
       darkMode={settings?.intakeDarkMode === true}
       showIntake={cfg.showIntake !== false}
-      showTours={cfg.showTours !== false}
+      showDemos={cfg.showDemos !== false}
       customLinks={Array.isArray(cfg.customLinks) ? cfg.customLinks : []}
       videos={Array.isArray(cfg.videos) ? cfg.videos : []}
       coverPhotoUrl={coverPhotoUrl}
       isVerified={settings?.isVerified === true}
-      properties={properties}
+      products={products}
       hidePoweredBy={hidePoweredBy}
     />
   );

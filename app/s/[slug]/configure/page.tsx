@@ -3,11 +3,11 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { ConfigureAccountForm } from './configure-account-form';
-import { getBrokerContext } from '@/lib/permissions';
+import { getManagerContext } from '@/lib/permissions';
 import { Building2, ExternalLink, ArrowRight } from 'lucide-react';
 import type { User, Space, SpaceSetting } from '@/lib/types';
 
-export const metadata = { title: 'Configure your account — Chippi' };
+export const metadata = { title: 'Configure your account — Cola' };
 
 type DbUser = User & {
   space: (Space & { settings: SpaceSetting | null }) | null;
@@ -20,7 +20,7 @@ export default async function ConfigurePage({
 }) {
   const { slug } = await params;
   const { userId } = await auth();
-  if (!userId) redirect('/login/realtor');
+  if (!userId) redirect('/login/seller');
 
   const clerkUser = await currentUser();
 
@@ -70,7 +70,7 @@ export default async function ConfigurePage({
     intakePageIntro: dbUser?.space?.settings?.intakePageIntro ?? '',
     notifications: dbUser?.space?.settings?.notifications ?? true,
     logoUrl: (dbUser?.space?.settings as any)?.logoUrl ?? '',
-    realtorPhotoUrl: (dbUser?.space?.settings as any)?.realtorPhotoUrl ?? '',
+    sellerPhotoUrl: (dbUser?.space?.settings as any)?.sellerPhotoUrl ?? '',
     intakeAccentColor: dbUser?.space?.settings?.intakeAccentColor ?? '#ff964f',
     intakeBorderRadius: dbUser?.space?.settings?.intakeBorderRadius ?? 'rounded',
     intakeFont: dbUser?.space?.settings?.intakeFont ?? 'system',
@@ -93,11 +93,11 @@ export default async function ConfigurePage({
     intakeCustomQuestions: dbUser?.space?.settings?.intakeCustomQuestions ?? [],
   };
 
-  // Check broker status for the brokerage section
-  let existingBrokerageName: string | null = null;
+  // Check manager status for the company section
+  let existingCompanyName: string | null = null;
   try {
-    const brokerCtx = await getBrokerContext();
-    existingBrokerageName = brokerCtx?.brokerage.name ?? null;
+    const managerCtx = await getManagerContext();
+    existingCompanyName = managerCtx?.company.name ?? null;
   } catch {
     // non-blocking
   }
@@ -106,18 +106,18 @@ export default async function ConfigurePage({
     <div className="space-y-6 max-w-3xl mx-auto pb-12">
       <ConfigureAccountForm initialData={initialData} slug={slug} />
 
-      {/* Brokerage section — links to dedicated page */}
+      {/* Company section — links to dedicated page */}
       <div>
         <div className="mb-3">
-          <p className="text-sm font-semibold">Brokerage</p>
+          <p className="text-sm font-semibold">Company</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {existingBrokerageName
-              ? 'Manage your brokerage or view the broker dashboard.'
-              : 'Create your own brokerage or join one with an invite code.'}
+            {existingCompanyName
+              ? 'Manage your company or view the manager dashboard.'
+              : 'Create your own company or join one with an invite code.'}
           </p>
         </div>
 
-        {existingBrokerageName ? (
+        {existingCompanyName ? (
           <div className="rounded-lg border border-border bg-card px-5 py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
@@ -125,20 +125,20 @@ export default async function ConfigurePage({
                   <Building2 size={15} className="text-primary" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate">{existingBrokerageName}</p>
-                  <p className="text-xs text-muted-foreground">Your brokerage</p>
+                  <p className="text-sm font-semibold truncate">{existingCompanyName}</p>
+                  <p className="text-xs text-muted-foreground">Your company</p>
                 </div>
               </div>
-              <Link href="/broker">
+              <Link href="/manager">
                 <button className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium hover:bg-muted transition-colors flex-shrink-0">
                   <ExternalLink size={13} />
-                  Broker dashboard
+                  Manager dashboard
                 </button>
               </Link>
             </div>
           </div>
         ) : (
-          <Link href="/brokerage">
+          <Link href="/company">
             <div className="rounded-lg border border-border bg-card px-5 py-4 hover:border-primary/40 transition-colors cursor-pointer group">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
@@ -146,8 +146,8 @@ export default async function ConfigurePage({
                     <Building2 size={15} className="text-primary" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold">Set up a brokerage</p>
-                    <p className="text-xs text-muted-foreground">Create a brokerage or join with a code</p>
+                    <p className="text-sm font-semibold">Set up a company</p>
+                    <p className="text-xs text-muted-foreground">Create a company or join with a code</p>
                   </div>
                 </div>
                 <ArrowRight size={15} className="text-muted-foreground group-hover:text-foreground transition-colors flex-shrink-0" />

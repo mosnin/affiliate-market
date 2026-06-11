@@ -1,15 +1,15 @@
 /**
  * Slack signal source — polled at gather() time via Composio actions.
  *
- * Two signals only. Slack is thin for realtors — it's the brokerage
+ * Two signals only. Slack is thin for sellers — it's the company
  * team's surface, not the client surface — so we resist surfacing every
  * channel message and reaction. The two that genuinely matter on a
- * realtor's morning:
+ * seller's morning:
  *
- *   1. Unread @-mention of the realtor in any channel, ≤18h old → reply
+ *   1. Unread @-mention of the seller in any channel, ≤18h old → reply
  *      urgency 1, confidence 0.88. A teammate explicitly tagged them;
  *      this is the only channel noise that earns a slot.
- *   2. Unread DM from a brokerage teammate, ≤18h old → reply urgency 2,
+ *   2. Unread DM from a company teammate, ≤18h old → reply urgency 2,
  *      confidence 0.80. DMs from strangers are dropped (cold outreach).
  *
  * Polled, not webhook-cached. Composio's `slack` triggers fire on every
@@ -72,21 +72,21 @@ export function extractMentions(text: string | undefined | null): string[] {
 }
 
 /**
- * Is the message addressed to the realtor? True only when the realtor's
+ * Is the message addressed to the seller? True only when the seller's
  * own slackUserId appears in the mention tokens. Prevents surfacing
  * mentions of other teammates that happen to land in shared channels.
  */
-export function mentionsRealtor(
+export function mentionsSeller(
   text: string | undefined | null,
-  realtorSlackId: string | null,
+  sellerSlackId: string | null,
 ): boolean {
-  if (!realtorSlackId) return false;
-  return extractMentions(text).includes(realtorSlackId);
+  if (!sellerSlackId) return false;
+  return extractMentions(text).includes(sellerSlackId);
 }
 
 /**
- * Does the DM sender belong to the realtor's known team? In Slack, every
- * user inside the realtor's workspace shows up in `users.list` — that's
+ * Does the DM sender belong to the seller's known team? In Slack, every
+ * user inside the seller's workspace shows up in `users.list` — that's
  * "the team." DMs from anyone outside (Slack Connect cross-org DMs,
  * external bots) are dropped to avoid surfacing cold outreach.
  */
@@ -196,7 +196,7 @@ export const slackSource: SignalGatherer = {
     const userById = new Map(users.map((u) => [u.id, u]));
     const teamUserIds = new Set(users.map((u) => u.id));
 
-    const realtorSlackId = (() => {
+    const sellerSlackId = (() => {
       if (!authResp || typeof authResp !== 'object') return null;
       const a = authResp as { data?: { user_id?: string; data?: { user_id?: string } } };
       return a.data?.user_id ?? a.data?.data?.user_id ?? null;
@@ -217,7 +217,7 @@ export const slackSource: SignalGatherer = {
         if (!msg.ts || !msg.user) continue;
         const ageMs = Date.now() - Number.parseFloat(msg.ts) * 1000;
         if (!Number.isFinite(ageMs) || ageMs > STALE_MS || ageMs < 0) continue;
-        if (realtorSlackId && msg.user === realtorSlackId) continue;
+        if (sellerSlackId && msg.user === sellerSlackId) continue;
 
         if (ch.is_im) {
           if (!isTeammate(msg.user, teamUserIds)) continue;
@@ -231,12 +231,12 @@ export const slackSource: SignalGatherer = {
             subject: {
               id: `slack-dm-${ch.id}`,
               name: `DM from ${name}`,
-              href: `/chippi/today`,
+              href: `/cola/today`,
             },
             evidence: `DM from ${name} at ${formatLocalTime(msg.ts)}.`,
-            draftedAction: { kind: 'open', href: `/chippi/today` },
+            draftedAction: { kind: 'open', href: `/cola/today` },
           });
-        } else if (mentionsRealtor(msg.text, realtorSlackId)) {
+        } else if (mentionsSeller(msg.text, sellerSlackId)) {
           const sender = userById.get(msg.user);
           const name = teammateDisplayName(sender);
           const channelLabel = ch.name ? `#${ch.name}` : 'a channel';
@@ -249,12 +249,12 @@ export const slackSource: SignalGatherer = {
             subject: {
               id: `slack-mention-${ch.id}-${msg.ts}`,
               name: `${name} in ${channelLabel}`,
-              href: `/chippi/today`,
+              href: `/cola/today`,
             },
             evidence: snippet
               ? `${name} in ${channelLabel}: "${snippet}".`
               : `${name} mentioned you in ${channelLabel}.`,
-            draftedAction: { kind: 'open', href: `/chippi/today` },
+            draftedAction: { kind: 'open', href: `/cola/today` },
           });
         }
       }

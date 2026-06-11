@@ -192,8 +192,8 @@ describe('toSdkTool — strict-mode schema rewriting', () => {
       'maxItems',
       'pattern',
       'multipleOf',
-      'minProperties',
-      'maxProperties',
+      'minProducts',
+      'maxProducts',
       'uniqueItems',
     ];
     for (const key of banned) {
@@ -211,10 +211,10 @@ describe('toSdkTool — strict-mode schema rewriting', () => {
     }
   }
 
-  it('strips `format: "uri"` from .url() fields (the add_property bug)', () => {
+  it('strips `format: "uri"` from .url() fields (the add_product bug)', () => {
     const def = defineTool({
-      name: 'add_property_like',
-      description: 'mimics add_property',
+      name: 'add_product_like',
+      description: 'mimics add_product',
       parameters: z.object({
         listingUrl: z.string().trim().url().max(2000).optional(),
       }),
@@ -322,10 +322,10 @@ describe('toSdkTool — strict-mode schema rewriting', () => {
 
     const sdk = toSdkTool(def, makeCtx());
     // The SDK normalises our zod into a JSON schema on the `parameters`
-    // field. Inspect it directly: every key in `properties` must also
+    // field. Inspect it directly: every key in `products` must also
     // appear in `required`, and the OPTIONAL fields must allow null.
     const schema = (sdk as { parameters: Record<string, unknown> }).parameters;
-    const props = schema.properties as Record<string, unknown>;
+    const props = schema.products as Record<string, unknown>;
     const required = schema.required as string[];
 
     expect(Object.keys(props).sort()).toEqual(['limit', 'query']);
@@ -528,7 +528,7 @@ describe('summariseInterruption', () => {
     }),
   ];
 
-  it('renders the realtor-facing approval message via the original tool definition', () => {
+  it('renders the seller-facing approval message via the original tool definition', () => {
     expect(summariseInterruption('send_thing', { to: 'jane@x.com' }, registry)).toBe(
       'Send to jane@x.com',
     );

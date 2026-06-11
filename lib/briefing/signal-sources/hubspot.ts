@@ -1,22 +1,22 @@
 /**
  * HubSpot signal source — Phase D1.
  *
- * Three signals, each cross-walked back to a Chippi entity so the brief
- * only names people the realtor recognises. The new-contact tip is the
- * one exception — its whole point is "this person isn't in Chippi yet."
+ * Three signals, each cross-walked back to a Cola entity so the brief
+ * only names people the seller recognises. The new-contact tip is the
+ * one exception — its whole point is "this person isn't in Cola yet."
  *
  *   review (1 / 0.85)  HubSpot deal closedate within 7 days, matched to
- *                      a Chippi Deal NOT already in the `closing` stage.
- *                      The realtor's pipeline is out of sync; surface it
+ *                      a Cola Deal NOT already in the `closing` stage.
+ *                      The seller's pipeline is out of sync; surface it
  *                      before the close date arrives.
  *
  *   review (2 / 0.82)  HubSpot deal stage advanced in the last 24h, but
- *                      Chippi Deal stage is earlier. HubSpot is ahead;
- *                      Chippi needs to catch up.
+ *                      Cola Deal stage is earlier. HubSpot is ahead;
+ *                      Cola needs to catch up.
  *
  *   reply  (2 / 0.78)  HubSpot Contact created in the last 24h, no
- *                      matching Chippi Contact by email. A lead landed
- *                      somewhere else; the realtor should pull them in.
+ *                      matching Cola Contact by email. A lead landed
+ *                      somewhere else; the seller should pull them in.
  *
  * Data source: hybrid.
  *
@@ -31,7 +31,7 @@
  * Cross-walk is by email (Contact.email ↔ HubSpot contact.email,
  * case-insensitive) and by deal title for deals. Cross-ID storage
  * (IntegrationExternalId) is deferred — when a HubSpot deal can't match
- * a Chippi Deal by title, the signal is dropped rather than guessed at.
+ * a Cola Deal by title, the signal is dropped rather than guessed at.
  * The brief stays honest.
  */
 
@@ -48,7 +48,7 @@ const CLOSING_STAGE_KIND = 'closing';
 const CLOSE_DATE_WINDOW_DAYS = 7;
 const TRIGGER_WINDOW_HOURS = 24;
 
-type ChippiDealRow = {
+type ColaDealRow = {
   id: string;
   title: string;
   closeDate: string | null;
@@ -56,7 +56,7 @@ type ChippiDealRow = {
   DealStage: { kind: string | null; position: number } | null;
 };
 
-type ChippiContactRow = {
+type ColaContactRow = {
   id: string;
   name: string;
   email: string | null;
@@ -79,41 +79,41 @@ interface HubspotContact {
 }
 
 /**
- * Find the Chippi Deal that best matches a HubSpot deal. Case-insensitive
+ * Find the Cola Deal that best matches a HubSpot deal. Case-insensitive
  * title match — the simplest cross-walk that works without an external-id
  * table. When titles drift between systems, the signal silently drops
- * (correct behaviour — we won't name a deal the realtor won't recognise).
+ * (correct behaviour — we won't name a deal the seller won't recognise).
  */
 export function matchDealByTitle(
   hubspotDealName: string | null,
-  chippiDeals: ChippiDealRow[],
-): ChippiDealRow | null {
+  colaDeals: ColaDealRow[],
+): ColaDealRow | null {
   if (!hubspotDealName) return null;
   const needle = hubspotDealName.trim().toLowerCase();
   if (needle.length === 0) return null;
-  return chippiDeals.find((d) => d.title.trim().toLowerCase() === needle) ?? null;
+  return colaDeals.find((d) => d.title.trim().toLowerCase() === needle) ?? null;
 }
 
 /**
- * Find the Chippi Contact whose email matches a HubSpot contact's email,
+ * Find the Cola Contact whose email matches a HubSpot contact's email,
  * case-insensitively. Whitespace-trimmed.
  */
 export function matchContactByEmail(
   email: string | null,
-  chippiContacts: ChippiContactRow[],
-): ChippiContactRow | null {
+  colaContacts: ColaContactRow[],
+): ColaContactRow | null {
   if (!email) return null;
   const needle = email.trim().toLowerCase();
   if (needle.length === 0) return null;
-  return chippiContacts.find((c) => c.email?.trim().toLowerCase() === needle) ?? null;
+  return colaContacts.find((c) => c.email?.trim().toLowerCase() === needle) ?? null;
 }
 
 /**
- * Is the Chippi Deal already in the `closing` stage? The closedate
- * signal only fires when Chippi is BEHIND HubSpot — if the realtor has
+ * Is the Cola Deal already in the `closing` stage? The closedate
+ * signal only fires when Cola is BEHIND HubSpot — if the seller has
  * already moved the deal to closing, the systems agree and we say nothing.
  */
-export function isAlreadyClosing(deal: ChippiDealRow): boolean {
+export function isAlreadyClosing(deal: ColaDealRow): boolean {
   return deal.DealStage?.kind === CLOSING_STAGE_KIND;
 }
 
@@ -185,7 +185,7 @@ async function withTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T | nul
 /**
  * Pull HubSpot deals that have a close date inside the 7-day window.
  * Composio's HUBSPOT_DEAL_LIST returns the canonical HubSpot list shape;
- * we normalise to a flat HubspotDeal[] tolerant of nested `properties`.
+ * we normalise to a flat HubspotDeal[] tolerant of nested `products`.
  */
 async function fetchHubspotDeals(entityId: string): Promise<HubspotDeal[]> {
   const { executeToolForEntity } = await import('@/lib/integrations/composio');
@@ -198,12 +198,12 @@ async function fetchHubspotDeals(entityId: string): Promise<HubspotDeal[]> {
         entityId,
         slug: 'HUBSPOT_DEAL_LIST',
         arguments: {
-          properties: ['dealname', 'dealstage', 'closedate', 'hs_lastmodifieddate'],
+          products: ['dealname', 'dealstage', 'closedate', 'hs_lastmodifieddate'],
           limit: 100,
           // HubSpot list endpoints accept a `filters` array. If the
           // underlying tool ignores the filter (older Composio version),
           // we still filter client-side on closedate + lastmodified below.
-          filters: [{ propertyName: 'closedate', operator: 'LTE', value: sevenDaysOut }],
+          filters: [{ productName: 'closedate', operator: 'LTE', value: sevenDaysOut }],
         },
       }),
     COMPOSIO_TIMEOUT_MS,
@@ -220,7 +220,7 @@ async function fetchHubspotContacts(entityId: string): Promise<HubspotContact[]>
         entityId,
         slug: 'HUBSPOT_CONTACT_LIST',
         arguments: {
-          properties: ['email', 'firstname', 'lastname', 'createdate'],
+          products: ['email', 'firstname', 'lastname', 'createdate'],
           limit: 100,
         },
       }),
@@ -234,7 +234,7 @@ function normalizeHubspotDeals(data: unknown): HubspotDeal[] {
   const results = pickResults(data);
   return results
     .map((r) => {
-      const props = (r.properties ?? r) as Record<string, unknown>;
+      const props = (r.products ?? r) as Record<string, unknown>;
       return {
         id: String(r.id ?? props.hs_object_id ?? ''),
         name: asString(props.dealname),
@@ -250,7 +250,7 @@ function normalizeHubspotContacts(data: unknown): HubspotContact[] {
   const results = pickResults(data);
   return results
     .map((r) => {
-      const props = (r.properties ?? r) as Record<string, unknown>;
+      const props = (r.products ?? r) as Record<string, unknown>;
       return {
         id: String(r.id ?? props.hs_object_id ?? ''),
         email: asString(props.email),
@@ -280,16 +280,16 @@ function asString(v: unknown): string | null {
 export const hubspotSource: SignalGatherer = {
   source: 'hubspot',
   async gather(spaceId: string): Promise<Signal[]> {
-    // 1. Skip entirely without an active HubSpot connection. The realtor
+    // 1. Skip entirely without an active HubSpot connection. The seller
     //    hasn't connected; we don't poll Composio for nothing.
     const connection = await findActiveConnection(spaceId);
     if (!connection) return [];
 
-    // 2. Pull Chippi-side rows ONCE — the cross-walk references — and
+    // 2. Pull Cola-side rows ONCE — the cross-walk references — and
     //    the trigger rows in parallel.
-    const [chippiDeals, chippiContacts, triggerRows] = await Promise.all([
-      loadChippiDeals(spaceId),
-      loadChippiContacts(spaceId),
+    const [colaDeals, colaContacts, triggerRows] = await Promise.all([
+      loadColaDeals(spaceId),
+      loadColaContacts(spaceId),
       listTriggersForConnection(connection.id).catch(() => []),
     ]);
 
@@ -315,10 +315,10 @@ export const hubspotSource: SignalGatherer = {
 
     // ── Closedate mismatch + stage-advance: both read from the deal list.
     for (const hsDeal of hubspotDeals) {
-      const matched = matchDealByTitle(hsDeal.name, chippiDeals);
+      const matched = matchDealByTitle(hsDeal.name, colaDeals);
       if (!matched) continue; // can't name it — drop
 
-      // Closedate mismatch: HubSpot says closing soon, Chippi isn't in
+      // Closedate mismatch: HubSpot says closing soon, Cola isn't in
       // closing yet. Highest urgency in this source.
       const closeDays = daysFromNow(hsDeal.closedate);
       if (
@@ -337,24 +337,24 @@ export const hubspotSource: SignalGatherer = {
             name: matched.title,
             href: `/deals/${matched.id}`,
           },
-          evidence: `${matched.title} closes ${formatCloseDate(hsDeal.closedate, closeDays)} in HubSpot — still '${describeChippiStage(matched)}' in Chippi.`,
+          evidence: `${matched.title} closes ${formatCloseDate(hsDeal.closedate, closeDays)} in HubSpot — still '${describeColaStage(matched)}' in Cola.`,
           draftedAction: { kind: 'open', href: `/deals/${matched.id}` },
         });
         continue;
       }
 
-      // Stage-advance: HubSpot moved the deal recently, Chippi's stage
+      // Stage-advance: HubSpot moved the deal recently, Cola's stage
       // is earlier. Only fires when the stage-updated trigger has
       // actually delivered in the last 24h (trigger row is the cache).
       if (!stageTriggerFired) continue;
       if (!withinLastHours(hsDeal.hs_lastmodifieddate, TRIGGER_WINDOW_HOURS)) continue;
       const hubspotStage = hsDeal.dealstage;
       if (!hubspotStage) continue;
-      const chippiStage = describeChippiStage(matched);
-      // Lossy comparison — Chippi and HubSpot use different stage labels,
-      // but the realtor knows their own pipeline. Surface the mismatch
+      const colaStage = describeColaStage(matched);
+      // Lossy comparison — Cola and HubSpot use different stage labels,
+      // but the seller knows their own pipeline. Surface the mismatch
       // and let them confirm.
-      if (hubspotStage.toLowerCase() === chippiStage.toLowerCase()) continue;
+      if (hubspotStage.toLowerCase() === colaStage.toLowerCase()) continue;
       signals.push({
         source: 'hubspot',
         kind: 'review',
@@ -365,17 +365,17 @@ export const hubspotSource: SignalGatherer = {
           name: matched.title,
           href: `/deals/${matched.id}`,
         },
-        evidence: `HubSpot moved the ${matched.title} to '${hubspotStage}'. Chippi still has it at '${chippiStage}'.`,
+        evidence: `HubSpot moved the ${matched.title} to '${hubspotStage}'. Cola still has it at '${colaStage}'.`,
         draftedAction: { kind: 'open', href: `/deals/${matched.id}` },
       });
     }
 
     // ── New contact: a HubSpot contact created in the last 24h with no
-    //    matching Chippi Contact. The one signal where we name someone
-    //    NOT in Chippi — its whole point is "pull them in."
+    //    matching Cola Contact. The one signal where we name someone
+    //    NOT in Cola — its whole point is "pull them in."
     for (const hsContact of hubspotContacts) {
       if (!withinLastHours(hsContact.createdate, TRIGGER_WINDOW_HOURS)) continue;
-      if (matchContactByEmail(hsContact.email, chippiContacts)) continue;
+      if (matchContactByEmail(hsContact.email, colaContacts)) continue;
       const name = contactDisplayName(hsContact);
       if (!name) continue;
       signals.push({
@@ -385,14 +385,14 @@ export const hubspotSource: SignalGatherer = {
         confidence: 0.78,
         subject: {
           // The hubspot id is the only stable handle we have for a
-          // contact that isn't in Chippi yet. Deduplication in the
+          // contact that isn't in Cola yet. Deduplication in the
           // composer is by subject.id — prefixing prevents collision
-          // with any Chippi-side card.
+          // with any Cola-side card.
           id: `hubspot:contact:${hsContact.id}`,
           name,
           href: '/contacts',
         },
-        evidence: `New HubSpot contact: ${name}. Not in Chippi.`,
+        evidence: `New HubSpot contact: ${name}. Not in Cola.`,
         draftedAction: { kind: 'open', href: '/contacts' },
       });
     }
@@ -417,27 +417,27 @@ async function findActiveConnection(spaceId: string): Promise<{
   return (data ?? null) as { id: string; userId: string } | null;
 }
 
-async function loadChippiDeals(spaceId: string): Promise<ChippiDealRow[]> {
+async function loadColaDeals(spaceId: string): Promise<ColaDealRow[]> {
   const { data, error } = await supabase
     .from('Deal')
     .select('id, title, closeDate, stageId, DealStage:stageId(kind, position)')
     .eq('spaceId', spaceId)
     .eq('status', 'active');
   if (error || !data) return [];
-  return data as unknown as ChippiDealRow[];
+  return data as unknown as ColaDealRow[];
 }
 
-async function loadChippiContacts(spaceId: string): Promise<ChippiContactRow[]> {
+async function loadColaContacts(spaceId: string): Promise<ColaContactRow[]> {
   const { data, error } = await supabase
     .from('Contact')
     .select('id, name, email')
     .eq('spaceId', spaceId)
     .not('email', 'is', null);
   if (error || !data) return [];
-  return data as ChippiContactRow[];
+  return data as ColaContactRow[];
 }
 
-function describeChippiStage(deal: ChippiDealRow): string {
+function describeColaStage(deal: ColaDealRow): string {
   return deal.DealStage?.kind ?? 'open';
 }
 

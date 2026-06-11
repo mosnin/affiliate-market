@@ -59,7 +59,7 @@ const LOST_REASONS = [
   'Financing fell through',
   'Chose another agent',
   'Timing',
-  'Property issue',
+  'Product issue',
   'Other',
 ];
 

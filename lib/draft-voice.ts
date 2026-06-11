@@ -1,14 +1,14 @@
 /**
- * Voice samples — what the realtor actually wrote, post-edit.
+ * Voice samples — what the seller actually wrote, post-edit.
  *
  * The compose path used to read like a template because the model only ever
- * saw the SYSTEM_PROMPT and the subject's facts. After a realtor edits a
+ * saw the SYSTEM_PROMPT and the subject's facts. After a seller edits a
  * draft, the corrected body is the closest thing we have to ground truth on
  * how *they* sound. This helper pulls the last few of those edits so the
  * compose route can paste them in as a style reference.
  *
- * What we're NOT doing: storing a per-realtor "voice profile," running a
- * fine-tune, or building a vector index. The realtor's last 3 edited drafts
+ * What we're NOT doing: storing a per-seller "voice profile," running a
+ * fine-tune, or building a vector index. The seller's last 3 edited drafts
  * is the simplest thing that could possibly work; if it's not enough we'll
  * know from the next batch of edit_distance numbers.
  *
@@ -23,7 +23,7 @@
  *      person. Structural — enforced at the DB boundary.
  *   2. Server prompt instruction at the compose call site: the model is told
  *      explicitly not to address the new recipient by any name from the
- *      samples and not to reuse deals/properties/dates from them. That's
+ *      samples and not to reuse deals/products/dates from them. That's
  *      where the actual recipient-name protection lives.
  *
  * We do NOT try to regex-scrub names out of the body. A regex catches "Hi
@@ -48,13 +48,13 @@ export interface VoiceSample {
 // teach voice. Tune up if signal-to-noise is bad once we have data.
 //
 // MIN_SAMPLES = 2. One outlier sample skews the model harder than zero
-// samples does. Require two before we ship any. If the realtor has only
+// samples does. Require two before we ship any. If the seller has only
 // edited once in 60 days, they're effectively still on the default voice.
 //
 // MAX_SAMPLES = 3. Three is enough for the model to triangulate cadence; more
 // inflates prompt size with diminishing return.
 //
-// LOOKBACK_DAYS = 60. Any older than that and the realtor's voice has
+// LOOKBACK_DAYS = 60. Any older than that and the seller's voice has
 // probably moved on (or the team has). Bounded query, bounded staleness.
 //
 // SAMPLE_MAX_CHARS = 400. Email bodies that long are fine to truncate — the
@@ -70,7 +70,7 @@ const SAMPLE_MAX_CHARS = 400;
 // ── Cache (same shape as lib/ai-tools/context-enrichment.ts) ────────────────
 //
 // 5-minute TTL keyed by spaceId. The voice samples don't change often (the
-// realtor edits maybe a handful per day), and the compose route fires
+// seller edits maybe a handful per day), and the compose route fires
 // repeatedly during a single dashboard session. Cheap memoization.
 //
 // Per-space, never global — voice never bleeds across tenants.

@@ -56,7 +56,7 @@ export function ConvertLeadDialog({
           phone: contact.phone ?? '',
           budget: contact.budget ?? '',
           preferences: contact.preferences ?? '',
-          properties: contact.properties ?? [],
+          products: contact.products ?? [],
           address: contact.address ?? '',
           notes: contact.notes ?? '',
           type: contact.type ?? 'QUALIFICATION',
@@ -91,7 +91,7 @@ export function ConvertLeadDialog({
             Move{' '}
             <span className="font-semibold text-foreground">{leadName}</span> to
             your Clients pipeline? They&apos;ll be removed from the Leads inbox and
-            you can track them through Qualifying → Tour → Applied.
+            you can track them through Qualifying → Demo → Applied.
           </p>
           <div className="flex gap-2 justify-end">
             <Button

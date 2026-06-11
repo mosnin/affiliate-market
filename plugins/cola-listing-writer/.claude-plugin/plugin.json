@@ -1,0 +1,8 @@
+{
+  "name": "cola-listing-writer",
+  "description": "Generate product listing copy, social media posts, and email campaigns using your Cola deal data.",
+  "version": "1.0.0",
+  "author": { "name": "Cola", "url": "https://usecola.com" },
+  "homepage": "https://usecola.com",
+  "keywords": ["crm", "listings", "marketing", "real-estate", "cola"]
+}

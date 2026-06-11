@@ -352,7 +352,7 @@ function SortableSection({
   );
 }
 
-// ── Property editor (right panel) ──
+// ── Product editor (right panel) ──
 
 function QuestionEditor({
   question,
@@ -1120,7 +1120,7 @@ export function FormBuilder({ config, onChange }: FormBuilderProps) {
         onDragEnd={handleDragEnd}
       >
         {/*
-          overflow-hidden prevents the fixed-width palette + properties panels
+          overflow-hidden prevents the fixed-width palette + products panels
           from leaking outside the grid column when viewport is narrow.
           The DragOverlay is portalled out of this container by dnd-kit so it
           is unaffected by overflow-hidden.
@@ -1187,11 +1187,11 @@ export function FormBuilder({ config, onChange }: FormBuilderProps) {
           </div>
         </div>
 
-        {/* Right Panel - Property Editor */}
+        {/* Right Panel - Product Editor */}
         <div className="w-full lg:w-80 xl:w-96 flex-shrink-0">
           {/* top-[4.5rem] keeps panel below sticky header; maxHeight fills the rest of the viewport */}
           <div className="sticky top-[4.5rem] space-y-3">
-            <p className={SECTION_LABEL}>Properties</p>
+            <p className={SECTION_LABEL}>Products</p>
             <div
               className="rounded-xl border border-border/70 bg-background overflow-y-auto"
               style={{ maxHeight: 'calc(100vh - 5.5rem - 4rem)' }}
@@ -1214,7 +1214,7 @@ export function FormBuilder({ config, onChange }: FormBuilderProps) {
                   />
                 ) : (
                   <p className="text-sm text-muted-foreground py-8">
-                    Select a question or section to edit its properties.
+                    Select a question or section to edit its products.
                   </p>
                 )}
               </div>

@@ -45,7 +45,7 @@ export function YourDataSection({ spaceName }: { spaceName: string }) {
       a.href = url;
       const disposition = res.headers.get('Content-Disposition') ?? '';
       const match = disposition.match(/filename="([^"]+)"/);
-      a.download = match?.[1] ?? 'chippi-export.json';
+      a.download = match?.[1] ?? 'cola-export.json';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -63,7 +63,7 @@ export function YourDataSection({ spaceName }: { spaceName: string }) {
       <div className="space-y-3">
         <p className={BODY_MUTED}>
           download a complete copy of your workspace — your people, deals,
-          properties, conversations, and documents — as a single json file.
+          products, conversations, and documents — as a single json file.
         </p>
         <button
           type="button"

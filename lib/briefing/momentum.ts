@@ -1,14 +1,14 @@
 /**
- * Momentum line — the one-sentence summary of what the realtor did
+ * Momentum line — the one-sentence summary of what the seller did
  * yesterday. Rendered as plain prose at the bottom of the brief.
  *
  * The rule: only one sentence, only render when there was real movement,
  * return null otherwise. The right to say nothing applies here too — a
- * realtor who didn't act yesterday doesn't need a momentum line that
+ * seller who didn't act yesterday doesn't need a momentum line that
  * sounds like a tiny disappointment.
  *
  * Counted today:
- *   - AgentDrafts that flipped to 'sent' yesterday (the agent + realtor
+ *   - AgentDrafts that flipped to 'sent' yesterday (the agent + seller
  *     loop's main output)
  *   - ContactActivity rows authored yesterday by type (call, email logged
  *     manually, note, meeting)

@@ -1,0 +1,8 @@
+{
+  "name": "cola-demo-assistant",
+  "description": "Prepare for product demos with your Cola data. Get demo schedules, prep sheets, and post-demo follow-up guidance.",
+  "version": "1.0.0",
+  "author": { "name": "Cola", "url": "https://usecola.com" },
+  "homepage": "https://usecola.com",
+  "keywords": ["crm", "demos", "real-estate", "cola"]
+}

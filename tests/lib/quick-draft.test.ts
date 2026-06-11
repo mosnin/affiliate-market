@@ -1,6 +1,6 @@
 /**
  * Phase 7 — tests for the inline draft-and-send endpoint that backs the
- * /chippi home action sheet.
+ * /cola home action sheet.
  *
  * Two modes share the route: 'preview' (call OpenAI, return composed
  * subject+body) and 'send' (insert AgentDraft, call sendDraft, flip
@@ -140,7 +140,7 @@ describe('POST /api/agent/quick-draft — preview mode', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns 404 when the deal is not in the realtor space', async () => {
+  it('returns 404 when the deal is not in the seller space', async () => {
     mockByTable.Deal = { single: null };
     const res = await POST(makeReq({ context: 'deal', id: 'd_missing', intent: 'check-in' }) as never);
     expect(res.status).toBe(404);
@@ -221,9 +221,9 @@ describe('POST /api/agent/quick-draft — voice wiring', () => {
     const args = (openaiCreateMock.mock.calls[0] as unknown as [{ messages: Array<{ role: string; content: string }> }])[0];
     const systemMessages = args.messages.filter((m) => m.role === 'system');
     expect(systemMessages).toHaveLength(1);
-    expect(systemMessages[0].content).toContain('You are Chippi');
+    expect(systemMessages[0].content).toContain('You are Cola');
     // No reference to the voice block label.
-    expect(args.messages.some((m) => m.content.includes("realtor's voice"))).toBe(false);
+    expect(args.messages.some((m) => m.content.includes("seller's voice"))).toBe(false);
   });
 
   it('appends a voice block AFTER the SYSTEM_PROMPT when samples exist, with raw bodies and the recipient-leak instruction', async () => {
@@ -247,15 +247,15 @@ describe('POST /api/agent/quick-draft — voice wiring', () => {
     const systemMessages = args.messages.filter((m) => m.role === 'system');
     expect(systemMessages).toHaveLength(2);
     // SYSTEM_PROMPT is first, voice block second — order matters for the model.
-    expect(systemMessages[0].content).toContain('You are Chippi');
+    expect(systemMessages[0].content).toContain('You are Cola');
     // Raw bodies pass through verbatim, including the names. The prompt
     // does the work, not a regex.
     expect(systemMessages[1].content).toContain('Hi Sam, got your note. Quick yes from me.');
     expect(systemMessages[1].content).toContain('Tuesday at 3 works. See you there. — Maya');
     // The instruction is specific to the failure mode (recipient name +
-    // deal/property/date reuse), not generic safety hedging.
+    // deal/product/date reuse), not generic safety hedging.
     expect(systemMessages[1].content).toMatch(/do NOT address the new recipient by any name/i);
-    expect(systemMessages[1].content).toMatch(/deal, property, address, date/i);
+    expect(systemMessages[1].content).toMatch(/deal, product, address, date/i);
   });
 
   it('skips voice samples for note channel (log-call intent)', async () => {

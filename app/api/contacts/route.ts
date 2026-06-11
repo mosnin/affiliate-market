@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     .from('Contact')
     .select('*')
     .eq('spaceId', space.id)
-    .is('brokerageId', null); // Exclude brokerage leads — those show on /broker/leads
+    .is('companyId', null); // Exclude company leads — those show on /manager/leads
 
   if (!includeSnoozed && !onlySnoozed) {
     query = query.or(`snoozedUntil.is.null,snoozedUntil.lte.${new Date().toISOString()}`);
@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { slug, name, email, phone, budget, preferences, properties, address, notes, type, tags } = body;
+  const { slug, name, email, phone, budget, preferences, products, address, notes, type, tags } = body;
 
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 });
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
 
   // Dedupe by email (case-insensitive) within this space. The intake flow
   // and CSV imports occasionally re-create the same person — better to
-  // hand back the existing record than make the realtor merge later.
+  // hand back the existing record than make the seller merge later.
   // No new DB constraint: case-mismatched emails would be rejected by a
   // unique index, which may not be desired across all data.
   if (emailVal) {
@@ -134,8 +134,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const propsVal = Array.isArray(properties)
-    ? properties
+  const propsVal = Array.isArray(products)
+    ? products
         .filter((p: unknown): p is string => typeof p === 'string')
         .slice(0, 50)
         .map((p) => p.slice(0, 500))
@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
         .map((t) => t.slice(0, 100))
     : [];
 
-  const VALID_TYPES = ['QUALIFICATION', 'TOUR', 'APPLICATION'] as const;
+  const VALID_TYPES = ['QUALIFICATION', 'DEMO', 'APPLICATION'] as const;
   const contactType = VALID_TYPES.includes(type) ? type : 'QUALIFICATION';
 
   const { data: contact, error } = await supabase.from('Contact').insert({
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
     type: contactType,
     budget: budgetVal,
     preferences: preferencesVal,
-    properties: propsVal,
+    products: propsVal,
     tags: tagsVal,
   }).select().single();
   if (error) {
@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) { console.error('[contacts] notification failed:', e); }
 
-  // Fire the agent trigger so Chippi can act on the new lead in real time
+  // Fire the agent trigger so Cola can act on the new lead in real time
   // instead of waiting for the 4-hour cron sweep. Never lets a trigger
   // failure fail the response — the contact write is what was requested.
   try {

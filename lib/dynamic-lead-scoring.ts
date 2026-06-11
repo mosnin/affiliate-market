@@ -98,15 +98,15 @@ async function getAIScore(input: {
           strict: true,
           schema: {
             type: 'object',
-            additionalProperties: false,
-            properties: {
+            additionalProducts: false,
+            products: {
               leadScore: { type: 'number' },
               scoreLabel: { type: 'string', enum: ['hot', 'warm', 'cold'] },
               scoreSummary: { type: 'string' },
               scoreDetails: {
                 type: 'object',
-                additionalProperties: false,
-                properties: {
+                additionalProducts: false,
+                products: {
                   tags: { type: 'array', items: { type: 'string' } },
                   strengths: { type: 'array', items: { type: 'string' } },
                   weaknesses: { type: 'array', items: { type: 'string' } },
@@ -187,11 +187,11 @@ function collectMissingRequired(
 function deriveNextAction(tier: string, leadType: string): string {
   if (leadType === 'buyer') {
     if (tier === 'hot') return 'Schedule showing or buyer consultation within 2 hours';
-    if (tier === 'warm') return 'Send property listings and follow up within 24 hours';
+    if (tier === 'warm') return 'Send product listings and follow up within 24 hours';
     return 'Add to nurture campaign with market updates';
   }
   // rental / general
-  if (tier === 'hot') return 'Schedule tour or call within 2 hours';
+  if (tier === 'hot') return 'Schedule demo or call within 2 hours';
   if (tier === 'warm') return 'Send follow-up within 24 hours';
   return 'Add to weekly follow-up queue';
 }

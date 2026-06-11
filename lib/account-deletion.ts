@@ -10,7 +10,7 @@
  *   - `Space.ownerId REFERENCES "User"(id) ON DELETE CASCADE`
  *   - almost every Space-scoped table is `REFERENCES "Space"(id) ON DELETE CASCADE`
  *   So deleting the single User row cascades to the Space row, which cascades
- *   to Contact, Deal, Property, Conversation, Message, Note, Tour, etc. We do
+ *   to Contact, Deal, Product, Conversation, Message, Note, Demo, etc. We do
  *   not hand-roll a deletion order — Postgres enforces it via the FK graph.
  *
  * What does NOT cascade (and so is swept explicitly here, BEFORE the User
@@ -20,8 +20,8 @@
  *
  * What is intentionally retained (see docs/DATA-DELETION.md §retention):
  *   - Stripe customer/invoice records (held by Stripe; legal/financial retention)
- *   - CommissionLedger (brokerage-owned financial record, not space-owned)
- *   - SupportTicket / Property pool rows that ON DELETE SET NULL rather than cascade
+ *   - CommissionLedger (company-owned financial record, not space-owned)
+ *   - SupportTicket / Product pool rows that ON DELETE SET NULL rather than cascade
  *
  * The feature flag (ACCOUNT_DELETION_HARD_DELETE) gates the irreversible DB
  * sweep. With it off, the route still deletes the Clerk user and records the
@@ -40,20 +40,20 @@ export function hardDeleteEnabled(): boolean {
  * Returns a reason string if the space's owner cannot be hard-deleted yet, or
  * null if deletion is safe to proceed.
  *
- * The one structural blocker: `Brokerage.ownerId REFERENCES "User"(id) ON
- * DELETE RESTRICT`. A broker who owns a brokerage cannot have their User row
- * deleted until the brokerage is transferred or removed — Postgres will reject
+ * The one structural blocker: `Company.ownerId REFERENCES "User"(id) ON
+ * DELETE RESTRICT`. A manager who owns a company cannot have their User row
+ * deleted until the company is transferred or removed — Postgres will reject
  * the delete. We surface that as a clear message rather than letting the DB
  * throw an opaque FK error at the user.
  */
 export async function checkDeletionBlockers(ownerId: string): Promise<string | null> {
-  const { data: ownedBrokerages } = await supabase
-    .from('Brokerage')
+  const { data: ownedCompanies } = await supabase
+    .from('Company')
     .select('id, name')
     .eq('ownerId', ownerId);
 
-  if (ownedBrokerages && ownedBrokerages.length > 0) {
-    return 'you own a brokerage. transfer or close it before deleting your account, or contact help@usechippi.com.';
+  if (ownedCompanies && ownedCompanies.length > 0) {
+    return 'you own a company. transfer or close it before deleting your account, or contact help@usecola.com.';
   }
   return null;
 }

@@ -36,9 +36,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { EASE_APPLE } from '@/lib/motion';
 import {
-  ChippiDiagramShell,
+  ColaDiagramShell,
   useDiagramMotion,
-} from './chippi-diagram-shell';
+} from './cola-diagram-shell';
 
 interface LeadScoreDiagramProps {
   aspect?: 'video' | 'square' | 'wide' | 'tall';
@@ -73,9 +73,9 @@ export function LeadScoreDiagram({
   className,
 }: LeadScoreDiagramProps) {
   return (
-    <ChippiDiagramShell aspect={aspect} pad={6} className={className}>
+    <ColaDiagramShell aspect={aspect} pad={6} className={className}>
       <LeadScoreContent />
-    </ChippiDiagramShell>
+    </ColaDiagramShell>
   );
 }
 

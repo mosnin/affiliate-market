@@ -2,17 +2,17 @@
 
 /**
  * Marketing footer: fortitudo's inset rounded-card footer, retooled for
- * Chippi. Made theme-aware: a deep charcoal card in both modes (it reads as a
+ * Cola. Made theme-aware: a deep charcoal card in both modes (it reads as a
  * deliberate dark base on the light canvas, same call as the home stats card)
- * with brand-orange small-caps column heads. Chippi routes only.
+ * with brand-orange small-caps column heads. Cola routes only.
  */
 
 import Link from 'next/link';
 
 const footerLinks = {
   product: [
-    { label: 'For realtors', href: '/realtors' },
-    { label: 'For brokerages', href: '/brokerages' },
+    { label: 'For sellers', href: '/sellers' },
+    { label: 'For companies', href: '/companies' },
     { label: 'Integrations', href: '/integrations' },
     { label: 'Pricing', href: '/pricing' },
   ],
@@ -20,7 +20,7 @@ const footerLinks = {
     { label: 'Company', href: '/company' },
     { label: 'Book a demo', href: '/demo' },
     { label: 'Status', href: '/status' },
-    { label: 'Log in', href: '/login/realtor' },
+    { label: 'Log in', href: '/login/seller' },
   ],
   legal: [
     { label: 'Privacy', href: '/privacy' },
@@ -37,13 +37,13 @@ export function FortitudoFooter() {
           <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
             {/* Brand. */}
             <div className="col-span-2 space-y-4 md:col-span-1">
-              <Link href="/" className="flex items-center gap-2" aria-label="Chippi home">
+              <Link href="/" className="flex items-center gap-2" aria-label="Cola home">
                 {/* Footer is always dark, so the white wordmark always applies. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo-white.png" alt="Chippi" className="block h-5 w-auto" />
+                <img src="/logo-white.png" alt="Cola" className="block h-5 w-auto" />
               </Link>
               <p className="max-w-xs text-sm text-white/50">
-                The agentic OS for real-estate agents and brokerages. The
+                The agentic OS for real-estate agents and companies. The
                 busywork runs itself, so the hours go to closing.
               </p>
             </div>
@@ -97,7 +97,7 @@ export function FortitudoFooter() {
 
         <div className="flex flex-col items-center gap-2 border-t border-white/10 px-6 py-4 sm:flex-row sm:justify-between sm:px-8 lg:px-12">
           <p className="text-xs text-white/40">
-            &copy; {new Date().getFullYear()} Chippi. All rights reserved.
+            &copy; {new Date().getFullYear()} Cola. All rights reserved.
           </p>
           <Link
             href="/status"

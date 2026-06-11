@@ -1,28 +1,28 @@
 'use client';
 
 /**
- * `<LeadRoutingDiagram />` — every lead, the right realtor.
+ * `<LeadRoutingDiagram />` — every lead, the right seller.
  *
  * One beat: a new-lead card; a hairline draws to a center routing-engine
- * card; a second hairline draws to one of three realtor pills; the chosen
- * realtor's pill firms up (border darkens a hairline) and reads "assigned".
+ * card; a second hairline draws to one of three seller pills; the chosen
+ * seller's pill firms up (border darkens a hairline) and reads "assigned".
  * That's it.
  *
  * Motion contract (≈8s cycle):
  *   - Phase 0 (700ms): connectors empty, lead pill quiet.
  *   - Phase 1 (≈320ms): first connector draws (lead → engine) via stroke-dashoffset.
- *   - Phase 2 (≈320ms, after a beat): second connector draws (engine → realtor).
- *   - Phase 3 (≈220ms): assigned realtor pill's border firms + "assigned" fades in.
+ *   - Phase 2 (≈320ms, after a beat): second connector draws (engine → seller).
+ *   - Phase 3 (≈220ms): assigned seller pill's border firms + "assigned" fades in.
  *   - hold, then everything fades to empty, a pause, restart.
  *
- * Reduced-motion: connectors drawn full, assigned realtor highlighted.
+ * Reduced-motion: connectors drawn full, assigned seller highlighted.
  *
  * FLUID-FIT — the layout is orientation-aware and the connectors live IN
  * the flex gaps:
  *   - Landscape aspects (wide / video / tall) run the flow on the X axis:
- *     lead → engine → realtors, left to right.
+ *     lead → engine → sellers, left to right.
  *   - The square aspect runs the SAME flow on the Y axis (lead on top,
- *     engine in the middle, realtors at the bottom) so a horizontal flow
+ *     engine in the middle, sellers at the bottom) so a horizontal flow
  *     never gets crushed into a square box.
  *   - Each connector is its OWN `flex-1` SVG that fills the gap cell between
  *     two real nodes (`w-full h-full`, `preserveAspectRatio="none"`, a line
@@ -38,9 +38,9 @@ import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { EASE_APPLE } from '@/lib/motion';
 import {
-  ChippiDiagramShell,
+  ColaDiagramShell,
   useDiagramMotion,
-} from './chippi-diagram-shell';
+} from './cola-diagram-shell';
 
 type Aspect = 'video' | 'square' | 'wide' | 'tall';
 
@@ -49,12 +49,12 @@ interface LeadRoutingDiagramProps {
   className?: string;
 }
 
-const REALTORS = [
+const SELLERS = [
   { id: 'k', name: 'Kira', initials: 'KW', load: '5 in flight' },
   { id: 'd', name: 'Dom', initials: 'DM', load: '3 in flight · 2 today' },
   { id: 't', name: 'Theo', initials: 'TL', load: '5 in flight' },
 ];
-const ASSIGNED_REALTOR_ID = 'd';
+const ASSIGNED_SELLER_ID = 'd';
 
 const P1_AT = 700;
 const P2_AT = 1250;
@@ -67,15 +67,15 @@ export function LeadRoutingDiagram({
   className,
 }: LeadRoutingDiagramProps) {
   return (
-    <ChippiDiagramShell aspect={aspect} pad={8} className={className}>
+    <ColaDiagramShell aspect={aspect} pad={8} className={className}>
       <LeadRoutingContent aspect={aspect} />
-    </ChippiDiagramShell>
+    </ColaDiagramShell>
   );
 }
 
 function LeadRoutingContent({ aspect }: { aspect: Aspect }) {
   const { reduced } = useDiagramMotion();
-  // 0 = nothing drawn; 1 = path 1 drawn; 2 = path 2 drawn; 3 = realtor pill firmed.
+  // 0 = nothing drawn; 1 = path 1 drawn; 2 = path 2 drawn; 3 = seller pill firmed.
   const [phase, setPhase] = useState<0 | 1 | 2 | 3>(reduced ? 3 : 0);
 
   // Square reads top→down; every other aspect reads left→right. Same flow,
@@ -116,7 +116,7 @@ function LeadRoutingContent({ aspect }: { aspect: Aspect }) {
 
       <Connector vertical={vertical} drawn={phase >= 2} />
 
-      <RealtorGroup vertical={vertical} firmed={phase >= 3} />
+      <SellerGroup vertical={vertical} firmed={phase >= 3} />
     </div>
   );
 }
@@ -220,7 +220,7 @@ function EngineCard({ vertical }: { vertical: boolean }) {
   );
 }
 
-function RealtorGroup({
+function SellerGroup({
   vertical,
   firmed,
 }: {
@@ -231,16 +231,16 @@ function RealtorGroup({
     <div
       className={cn(
         'min-h-0 min-w-0 flex',
-        // Horizontal flow: realtors stack in a right rail and the column
-        // distributes them. Vertical flow: realtors sit in a row of three
+        // Horizontal flow: sellers stack in a right rail and the column
+        // distributes them. Vertical flow: sellers sit in a row of three
         // at the bottom.
         vertical
           ? 'w-full flex-shrink-0 flex-row gap-2'
           : 'flex-shrink-0 basis-[34%] max-w-[200px] flex-col justify-center gap-2',
       )}
     >
-      {REALTORS.map((r) => {
-        const isAssigned = r.id === ASSIGNED_REALTOR_ID;
+      {SELLERS.map((r) => {
+        const isAssigned = r.id === ASSIGNED_SELLER_ID;
         const highlight = isAssigned && firmed;
         return (
           <motion.div

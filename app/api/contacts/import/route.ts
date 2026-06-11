@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 
-const VALID_TYPES = new Set(['QUALIFICATION', 'TOUR', 'APPLICATION']);
+const VALID_TYPES = new Set(['QUALIFICATION', 'DEMO', 'APPLICATION']);
 
 // 1 MB ceiling — 500 rows × generous per-row size is comfortably under this.
 // Cuts off pathological JSON bodies before parsing into memory.
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
         type: r.type && VALID_TYPES.has(r.type) ? r.type : 'QUALIFICATION',
         notes: r.notes?.trim().slice(0, 5000) || null,
         tags: [],
-        properties: [],
+        products: [],
         scoringStatus: 'unscored',
         createdAt: now,
         updatedAt: now,

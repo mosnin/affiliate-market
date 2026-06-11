@@ -12,12 +12,12 @@ import { MonogramAvatar } from './visuals/editorial-visuals';
 import { cn } from '@/lib/utils';
 
 const QUOTES = [
-  { name: 'Realtor name', role: 'Agent · City', body: 'Chippi drafts the reply I was about to type, then waits for my tap. It feels like having an assistant who already knows my book.' },
-  { name: 'Realtor name', role: 'Agent · City', body: 'I stopped losing leads in my inbox. Every morning the day is already triaged for me.' },
-  { name: 'Broker name', role: 'Broker · Team of 12', body: 'For the first time I can see what the whole floor is closing without nagging anyone for updates.' },
-  { name: 'Realtor name', role: 'Agent · City', body: 'Booked three tours from my phone between showings. Chippi handled the calendar and the confirmations.' },
-  { name: 'Realtor name', role: 'Agent · City', body: 'The pipeline is finally honest. I move a card and everything else just updates.' },
-  { name: 'Broker name', role: 'Broker · Team of 30', body: 'Onboarding a new agent used to take a week. Now they walk in and the workspace is already running.' },
+  { name: 'Seller name', role: 'Agent · City', body: 'Cola drafts the reply I was about to type, then waits for my tap. It feels like having an assistant who already knows my book.' },
+  { name: 'Seller name', role: 'Agent · City', body: 'I stopped losing leads in my inbox. Every morning the day is already triaged for me.' },
+  { name: 'Manager name', role: 'Manager · Team of 12', body: 'For the first time I can see what the whole floor is closing without nagging anyone for updates.' },
+  { name: 'Seller name', role: 'Agent · City', body: 'Booked three demos from my phone between showings. Cola handled the calendar and the confirmations.' },
+  { name: 'Seller name', role: 'Agent · City', body: 'The pipeline is finally honest. I move a card and everything else just updates.' },
+  { name: 'Manager name', role: 'Manager · Team of 30', body: 'Onboarding a new agent used to take a week. Now they walk in and the workspace is already running.' },
 ];
 
 function Row({ items, reverse }: { items: typeof QUOTES; reverse?: boolean }) {

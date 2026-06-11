@@ -1,12 +1,12 @@
 /**
- * E-signature via Composio — the realtor's OWN connected DocuSign account.
+ * E-signature via Composio — the seller's OWN connected DocuSign account.
  *
  * There is no platform DocuSign app, no JWT, no integration key, no token
  * storage here. DocuSign is a live Composio toolkit (see catalog.ts). The
- * realtor connects it through the same OAuth flow as Gmail/Slack; Composio
+ * seller connects it through the same OAuth flow as Gmail/Slack; Composio
  * owns the OAuth app and holds the tokens. We send and read envelopes on
- * the realtor's behalf by executing Composio DocuSign actions, scoped to
- * the realtor's Clerk userId (the Composio "entity").
+ * the seller's behalf by executing Composio DocuSign actions, scoped to
+ * the seller's Clerk userId (the Composio "entity").
  *
  * Every exported function gates cleanly: if DocuSign isn't connected or
  * Composio isn't configured, it returns a structured result — it never
@@ -139,7 +139,7 @@ interface ComposioExecuteResult {
 
 // ── Connection check ───────────────────────────────────────────────────────────
 
-/** True when the realtor has an active DocuSign connection on Composio. */
+/** True when the seller has an active DocuSign connection on Composio. */
 export async function isDocusignConnected(userId: string): Promise<boolean> {
   if (!composioConfigured()) return false;
   try {
@@ -233,7 +233,7 @@ function extractEnvelopeId(data: unknown): string | null {
 }
 
 /**
- * Send a stored document out for signature on the realtor's DocuSign account.
+ * Send a stored document out for signature on the seller's DocuSign account.
  * Fetches the document bytes, base64-encodes them, fires the Composio
  * CREATE_ENVELOPE action, and records a SignatureRequest row.
  */
@@ -284,7 +284,7 @@ export async function sendForSignature(
   const signerName = input.signerName?.trim() || signerEmail;
   const subject = (input.subject?.trim() || 'Please sign this document').slice(0, 200);
 
-  // 4. Fire the Composio CREATE_ENVELOPE action on the realtor's account.
+  // 4. Fire the Composio CREATE_ENVELOPE action on the seller's account.
   let envelopeId: string | null = null;
   try {
     const result = (await executeToolForEntity({

@@ -1,14 +1,14 @@
 /**
- * /cma/[token] — the PUBLIC, polished CMA report a realtor shares with a seller.
+ * /cma/[token] — the PUBLIC, polished CMA report a seller shares with a seller.
  *
  * No Clerk gate. Access is the unguessable shareToken; only a `published`
  * report renders (a draft 404s, so a half-finished analysis never leaks). The
- * report renders the frozen `payload`, so it stays stable even if the realtor
- * later edits or deletes the underlying Property rows.
+ * report renders the frozen `payload`, so it stays stable even if the seller
+ * later edits or deletes the underlying Product rows.
  *
  * Design (Jobs lens): this is a deliverable a seller will read, screenshot, and
  * forward. Paper-flat, one focal element (the suggested range), the comps as a
- * clean table, the realtor's workspace name as the only branding. Print-friendly
+ * clean table, the seller's workspace name as the only branding. Print-friendly
  * via a scoped @media print block — "save as PDF" from the browser is our v1
  * export, no PDF library.
  *
@@ -122,7 +122,7 @@ export default async function CmaPublicPage({ params }: Props) {
             {report.title?.trim() || subject.address}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {report.title?.trim() ? subject.address : subjectLocation || 'Prepared for the property owner.'}
+            {report.title?.trim() ? subject.address : subjectLocation || 'Prepared for the product owner.'}
           </p>
         </header>
 
@@ -154,10 +154,10 @@ export default async function CmaPublicPage({ params }: Props) {
           <Stat label="High" value={money(stats.high)} />
         </section>
 
-        {/* ── Subject property ───────────────────────────────────────────── */}
+        {/* ── Subject product ───────────────────────────────────────────── */}
         <section className="space-y-3">
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Subject property
+            Subject product
           </p>
           <div className="rounded-xl border border-border/70 bg-card px-5 py-4 space-y-1.5">
             <p className="text-[17px] font-semibold text-foreground">{subject.address}</p>
@@ -221,7 +221,7 @@ export default async function CmaPublicPage({ params }: Props) {
         <footer className="border-t border-border/60 pt-6 space-y-2">
           <p className="text-xs text-muted-foreground">
             Prepared {brand?.name ? `by ${brand.name} ` : ''}on {generated}. This analysis is an
-            estimate based on comparable properties, not an appraisal.
+            estimate based on comparable products, not an appraisal.
           </p>
           <p className="text-[11px] text-muted-foreground print:hidden">
             Tip: use your browser&apos;s print to save this report as a PDF.

@@ -129,17 +129,17 @@ export default async function ApplicationStatusPage({
     readAt: string | null;
     createdAt: string;
   }[] = [];
-  let tours: {
+  let demos: {
     id: string;
     startsAt: string;
     endsAt: string;
-    propertyAddress: string | null;
+    productAddress: string | null;
     notes: string | null;
     status: string;
   }[] = [];
 
   if (portalMode) {
-    const [historyResult, messageResult, tourResult] = await Promise.all([
+    const [historyResult, messageResult, demoResult] = await Promise.all([
       supabase
         .from('ApplicationStatusUpdate')
         .select('id, fromStatus, toStatus, note, createdAt')
@@ -151,8 +151,8 @@ export default async function ApplicationStatusPage({
         .eq('contactId', contact.id)
         .order('createdAt', { ascending: true }),
       supabase
-        .from('Tour')
-        .select('id, startsAt, endsAt, propertyAddress, notes, status')
+        .from('Demo')
+        .select('id, startsAt, endsAt, productAddress, notes, status')
         .eq('contactId', contact.id)
         .in('status', ['scheduled', 'confirmed', 'completed'])
         .order('startsAt', { ascending: true }),
@@ -160,17 +160,17 @@ export default async function ApplicationStatusPage({
 
     statusHistory = historyResult.data ?? [];
     messages = messageResult.data ?? [];
-    tours = tourResult.data ?? [];
+    demos = demoResult.data ?? [];
 
-    // Mark unread realtor messages as read
-    const unreadRealtorIds = messages
-      .filter((m) => m.senderType === 'realtor' && !m.readAt)
+    // Mark unread seller messages as read
+    const unreadSellerIds = messages
+      .filter((m) => m.senderType === 'seller' && !m.readAt)
       .map((m) => m.id);
-    if (unreadRealtorIds.length > 0) {
+    if (unreadSellerIds.length > 0) {
       await supabase
         .from('ApplicationMessage')
         .update({ readAt: new Date().toISOString() })
-        .in('id', unreadRealtorIds);
+        .in('id', unreadSellerIds);
     }
   }
 
@@ -193,7 +193,7 @@ export default async function ApplicationStatusPage({
         portalMode={portalMode}
         statusHistory={statusHistory}
         messages={messages}
-        tours={tours}
+        demos={demos}
         token={portalMode ? token! : null}
         slug={slug}
       />

@@ -1,8 +1,8 @@
 /**
- * Bind a realtor's connected Composio toolkits as callable tools on the
- * Chippi chat agent.
+ * Bind a seller's connected Composio toolkits as callable tools on the
+ * Cola chat agent.
  *
- * The story this closes — Musk lens: the realtor can already OAuth into
+ * The story this closes — Musk lens: the seller can already OAuth into
  * Facebook, LinkedIn, Slack, Twilio, etc. via Composio (the handshake
  * works, `IntegrationConnection` rows persist). But the agent loop had
  * zero awareness of those toolkits, so "post this on LinkedIn" went
@@ -11,7 +11,7 @@
  * Why we DON'T use Composio's `OpenAIAgentsProvider` wrapping here:
  * the provider's `wrapTools` produces SDK tools with `needsApproval`
  * hard-OFF. A connected Twilio account would let the model fire an SMS
- * to a client with zero realtor confirmation. Unacceptable. So we fetch
+ * to a client with zero seller confirmation. Unacceptable. So we fetch
  * the RAW Composio tool metadata (`getRawComposioTools`) and build each
  * SDK tool ourselves — which lets us set `needsApproval` per action.
  *
@@ -22,7 +22,7 @@
  *                   through as a NON-strict schema (the model sees it
  *                   verbatim; Composio re-validates server-side anyway).
  *   - execute     — delegates to `executeToolForEntity`, the same path
- *                   the post-tour executor uses.
+ *                   the post-demo executor uses.
  *   - needsApproval — true for any action that posts/sends publicly, or
  *                   any action in a `social`/`messaging` toolkit. See
  *                   `actionNeedsApproval` for the discovery rule.
@@ -51,7 +51,7 @@ interface ComposioRawTool {
   description?: string;
   inputParameters?: {
     type: 'object';
-    properties?: Record<string, unknown>;
+    products?: Record<string, unknown>;
     required?: string[];
   };
 }
@@ -67,15 +67,15 @@ const PUBLIC_ACTION_SEGMENTS = ['post', 'send', 'publish', 'create_post', 'reply
 /**
  * Toolkit categories whose actions are inherently public-facing — every
  * action gets approval-gated, not just the obvious posters. A `social`
- * or `messaging` toolkit reaching out on the realtor's behalf is always
+ * or `messaging` toolkit reaching out on the seller's behalf is always
  * something they should see before it happens.
  */
 const ALWAYS_APPROVE_CATEGORIES = new Set(['social', 'messaging']);
 
 /**
- * Decide whether a Composio action needs realtor approval before it
+ * Decide whether a Composio action needs seller approval before it
  * fires. Conservative by design: when in doubt, gate it. A false
- * positive costs one tap; a false negative posts to the realtor's
+ * positive costs one tap; a false negative posts to the seller's
  * LinkedIn without consent.
  *
  *   - Toolkit category is `social` or `messaging` → always approve.
@@ -93,7 +93,7 @@ export function actionNeedsApproval(actionSlug: string, toolkitSlug: string): bo
 /**
  * The SDK's tool `name` must match `^[a-zA-Z0-9_-]+$` and be ≤64 chars.
  * Composio slugs (e.g. `LINKEDIN_CREATE_LINKED_IN_POST`) already satisfy
- * the charset; we lowercase them so they read like the rest of Chippi's
+ * the charset; we lowercase them so they read like the rest of Cola's
  * snake_case catalog and truncate defensively at 64.
  */
 function toSdkToolName(slug: string): string {
@@ -123,7 +123,7 @@ const MAX_RESULT_CHARS = 4_000;
 
 /**
  * Verb segments that mark an action as core (reads + the comms verbs a
- * realtor actually asks for). When a toolkit exceeds the per-toolkit cap,
+ * seller actually asks for). When a toolkit exceeds the per-toolkit cap,
  * core actions survive first — "fetch emails" must never lose its slot
  * to "update workflow enrollment settings v3".
  */
@@ -140,7 +140,7 @@ function isCoreAction(slug: string): boolean {
 /**
  * Catalog cache: raw Composio action metadata per toolkit. The catalog is
  * ENTITY-INDEPENDENT (schemas, not credentials — the userId binding
- * happens at wrap time), so one fetch serves every realtor. Without this,
+ * happens at wrap time), so one fetch serves every seller. Without this,
  * every chat turn paid one Composio HTTP round-trip per connected toolkit
  * before the first token — the dominant slow term for integration users.
  * 10 minutes is conservative: Composio action schemas change on the order
@@ -196,22 +196,22 @@ function buildOneTool(raw: ComposioRawTool, toolkitSlug: string, userId: string)
 
   // Composio's inputParameters is a JSON Schema object. Pass it through
   // as a non-strict schema: `strict: false` means the SDK does not
-  // demand every property be `required`, which matches how Composio
+  // demand every product be `required`, which matches how Composio
   // actions actually work (most params are optional). Composio
   // re-validates the arguments server-side on `tools.execute`, so a
   // loose client-side schema is safe.
-  const properties = raw.inputParameters?.properties ?? {};
+  const products = raw.inputParameters?.products ?? {};
   const required = raw.inputParameters?.required ?? [];
   const parameters = {
     type: 'object' as const,
-    properties: properties as Record<string, Record<string, unknown>>,
+    products: products as Record<string, Record<string, unknown>>,
     required,
-    additionalProperties: true as const,
+    additionalProducts: true as const,
   };
 
   const fullDescription =
     raw.description?.trim() ||
-    `${raw.name ?? actionSlug} — ${toolkitSlug} action available via the realtor's connected account.`;
+    `${raw.name ?? actionSlug} — ${toolkitSlug} action available via the seller's connected account.`;
   const description =
     fullDescription.length > MAX_DESCRIPTION_CHARS
       ? `${fullDescription.slice(0, MAX_DESCRIPTION_CHARS - 1)}…`
@@ -288,7 +288,7 @@ export async function buildToolkitAgentTools(args: {
 }
 
 /**
- * Build the full Composio tool list for a realtor's chat turn.
+ * Build the full Composio tool list for a seller's chat turn.
  *
  * Reads the space's active `IntegrationConnection` rows, then fetches +
  * wraps each toolkit's actions. Per-toolkit isolation: a single dead
@@ -322,7 +322,7 @@ export async function buildComposioAgentTools(
       collected.push(...tools);
     } catch (err) {
       // Re-throw is the caller's job; here we just log + skip so a
-      // single sick toolkit doesn't deny the realtor every other tool.
+      // single sick toolkit doesn't deny the seller every other tool.
       logger.warn('[integrations.agent-tools] toolkit tool build failed — skipping', {
         spaceId,
         userId,

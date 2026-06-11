@@ -1,4 +1,4 @@
--- Chat attachments: files the realtor uploads via the prompt box.
+-- Chat attachments: files the seller uploads via the prompt box.
 -- Owned by spaceId; the cowork agent reads them via the read_attachment tool.
 
 CREATE TABLE IF NOT EXISTS "Attachment" (

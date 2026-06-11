@@ -5,8 +5,8 @@
  *
  * Why this is in Phase B and not Phase A: AgentDraft is the OUTPUT of
  * the agent's autonomous work. Surfacing drafts in the brief gives the
- * realtor "what Chippi did overnight, ready for your approve" — the
- * single highest-value card type for a working realtor whose agent
+ * seller "what Cola did overnight, ready for your approve" — the
+ * single highest-value card type for a working seller whose agent
  * actually ran.
  *
  * Why this is its own source (not folded into pipeline/leads): drafts
@@ -21,7 +21,7 @@
  *   - Standard draft, any tier:                0.83
  *
  * The brief shows the top drafts as REPLY cards; the rest stay in the
- * FocusCard queue on /chippi/today. The two surfaces complement: the
+ * FocusCard queue on /cola/today. The two surfaces complement: the
  * brief is the morning curated view, the focus card is the working queue.
  */
 
@@ -54,11 +54,11 @@ function kindForChannel(channel: DraftRow['channel']): SignalKind {
 function evidenceFor(channel: DraftRow['channel']): string {
   switch (channel) {
     case 'sms':
-      return 'Chippi drafted a text. Approve or edit.';
+      return 'Cola drafted a text. Approve or edit.';
     case 'email':
-      return 'Chippi drafted an email. Approve or edit.';
+      return 'Cola drafted an email. Approve or edit.';
     case 'note':
-      return 'Chippi flagged a note for your review.';
+      return 'Cola flagged a note for your review.';
   }
 }
 
@@ -66,7 +66,7 @@ export const draftsSource: SignalGatherer = {
   // 'drafts' tag is origin-agnostic — these rows are produced by the
   // autonomous agent regardless of what triggered the run (Gmail webhook,
   // routine cron, calendar handler, manual quick-draft). The brief surface
-  // shows the realtor "Chippi did this overnight, ready for your approve."
+  // shows the seller "Cola did this overnight, ready for your approve."
   // Provenance per draft lives on AgentDraft.triggerSource for the rare
   // case the surface wants to attribute (Phase C breadcrumbs).
   source: 'drafts',
@@ -88,7 +88,7 @@ export const draftsSource: SignalGatherer = {
 
     for (const draft of data as unknown as DraftRow[]) {
       // Drafts without a contact link don't surface on the brief — they're
-      // working state for the agent, not actionable for the realtor's
+      // working state for the agent, not actionable for the seller's
       // morning. They still appear in the FocusCard queue if relevant.
       if (!draft.Contact) continue;
 
@@ -116,7 +116,7 @@ export const draftsSource: SignalGatherer = {
         evidence: evidenceFor(draft.channel),
         // Open the contact page where the draft surfaces in context. The
         // brief intentionally doesn't carry the draft body inline — that's
-        // the FocusCard's job, where the realtor has the editing UI ready.
+        // the FocusCard's job, where the seller has the editing UI ready.
         draftedAction: {
           kind: 'open',
           href: `/contacts/${draft.Contact.id}?draftId=${draft.id}`,

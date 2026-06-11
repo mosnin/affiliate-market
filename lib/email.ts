@@ -29,11 +29,11 @@ function redactEmail(email: string | null | undefined): string {
 
 /**
  * Normalize RESEND_FROM_EMAIL — if someone sets it to just a domain like
- * "alerts.usechippi.com" instead of "notifications@alerts.usechippi.com",
+ * "alerts.usecola.com" instead of "notifications@alerts.usecola.com",
  * fix it automatically.
  */
 function getFromAddress(): string {
-  const raw = process.env.RESEND_FROM_EMAIL ?? 'notifications@alerts.usechippi.com';
+  const raw = process.env.RESEND_FROM_EMAIL ?? 'notifications@alerts.usecola.com';
   if (raw.includes('@')) return raw;
   // It's just a domain — prepend "notifications@"
   return `notifications@${raw}`;
@@ -88,7 +88,7 @@ export async function sendNewLeadNotification(params: NewLeadEmailParams): Promi
 
   const { toEmail, spaceName, spaceSlug, contactId, name, phone, email, budget, leadScore, scoreLabel, scoreSummary, applicationData: app, formConfigSnapshot } = params;
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usechippi.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com';
   const contactUrl = `${appUrl}/s/${spaceSlug}/contacts/${contactId}`;
 
   const tierColor = scoreLabel === 'hot' ? '#059669' : scoreLabel === 'warm' ? '#d97706' : '#6b7280';
@@ -116,7 +116,7 @@ export async function sendNewLeadNotification(params: NewLeadEmailParams): Promi
       row('Phone', phone),
       row('Email', email),
       row('Budget', budget != null ? fmt(budget) : null),
-      row('Property', app.propertyAddress),
+      row('Product', app.productAddress),
       row('Move-in date', app.targetMoveInDate),
       row('Monthly rent', app.monthlyRent != null ? fmt(Number(app.monthlyRent)) : null),
       row('Employment', app.employmentStatus),
@@ -204,7 +204,7 @@ export async function sendFollowUpDigest(params: FollowUpDigestParams): Promise<
   const FROM = getFromAddress();
 
   const { toEmail, spaceName, spaceSlug, contacts } = params;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usechippi.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com';
   const leadsUrl = `${appUrl}/s/${spaceSlug}/leads`;
 
   const contactRows = contacts
@@ -298,7 +298,7 @@ export interface SendEmailFromCRMParams {
  * or network failure so callers can distinguish "delivered" from "the
  * provider said no". Previously this returned `Promise<void>` and swallowed
  * every failure, which meant /api/agent/send reported `success: true` for
- * emails Resend rejected — realtors were told their messages went out when
+ * emails Resend rejected — sellers were told their messages went out when
  * they didn't. That's fiduciary harm.
  *
  * Misconfiguration (no RESEND_API_KEY in dev) is the one exception: we log
@@ -333,7 +333,7 @@ export async function sendEmailFromCRM(params: SendEmailFromCRMParams): Promise<
           <p style="margin:0;font-size:15px;color:#111827;line-height:1.7;white-space:pre-wrap">${esc(body)}</p>
         </td></tr>
         <tr><td style="padding:16px 32px;border-top:1px solid #f1f5f9">
-          <p style="margin:0;font-size:12px;color:#9ca3af">Sent by ${esc(fromName)} via your property management system.</p>
+          <p style="margin:0;font-size:12px;color:#9ca3af">Sent by ${esc(fromName)} via your product management system.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -396,7 +396,7 @@ export async function sendNewDealNotification(params: NewDealEmailParams): Promi
   const FROM = getFromAddress();
 
   const { toEmail, spaceName, spaceSlug, dealTitle, dealValue, dealAddress, dealPriority, contactNames } = params;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usechippi.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com';
   const dealsUrl = `${appUrl}/s/${spaceSlug}/deals`;
 
   const detailRows = [
@@ -455,24 +455,24 @@ export async function sendNewDealNotification(params: NewDealEmailParams): Promi
   }
 }
 
-export interface BrokerageInvitationEmailParams {
+export interface CompanyInvitationEmailParams {
   toEmail: string;
-  brokerageName: string;
+  companyName: string;
   inviterName: string;
-  roleToAssign: 'broker_admin' | 'realtor_member';
+  roleToAssign: 'manager_admin' | 'seller_member';
   token: string;
 }
 
-export async function sendBrokerageInvitation(params: BrokerageInvitationEmailParams): Promise<void> {
+export async function sendCompanyInvitation(params: CompanyInvitationEmailParams): Promise<void> {
   if (!process.env.RESEND_API_KEY) { logger.warn('[email] RESEND_API_KEY not set — skipping'); return; }
   const { Resend } = await import('resend');
   const resend = new Resend(process.env.RESEND_API_KEY);
   const FROM = getFromAddress();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usechippi.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com';
 
-  const { toEmail, brokerageName, inviterName, roleToAssign, token } = params;
+  const { toEmail, companyName, inviterName, roleToAssign, token } = params;
   const acceptUrl = `${appUrl}/invite/${token}`;
-  const roleLabel = roleToAssign === 'broker_admin' ? 'Brokerage Admin' : 'Realtor';
+  const roleLabel = roleToAssign === 'manager_admin' ? 'Company Admin' : 'Seller';
   const safeEmail = toEmail.replace(/[\r\n\t]/g, ' ').slice(0, 200);
 
   const html = `
@@ -483,15 +483,15 @@ export async function sendBrokerageInvitation(params: BrokerageInvitationEmailPa
     <tr><td align="center">
       <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden">
         <tr><td style="background:#0f172a;padding:20px 28px">
-          <p style="margin:0;color:#94a3b8;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Brokerage Invitation</p>
-          <p style="margin:4px 0 0;color:#ffffff;font-size:20px;font-weight:700">${esc(brokerageName)}</p>
+          <p style="margin:0;color:#94a3b8;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Company Invitation</p>
+          <p style="margin:4px 0 0;color:#ffffff;font-size:20px;font-weight:700">${esc(companyName)}</p>
         </td></tr>
         <tr><td style="padding:24px 28px">
           <p style="margin:0;font-size:15px;color:#111827;line-height:1.6">
-            <strong>${esc(inviterName)}</strong> has invited you to join <strong>${esc(brokerageName)}</strong> as a <strong>${esc(roleLabel)}</strong> on Chippi.
+            <strong>${esc(inviterName)}</strong> has invited you to join <strong>${esc(companyName)}</strong> as a <strong>${esc(roleLabel)}</strong> on Cola.
           </p>
           <p style="margin:12px 0 0;font-size:13px;color:#6b7280;line-height:1.5">
-            You'll keep your own workspace, leads, and pipeline. This just adds you to the brokerage network.
+            You'll keep your own workspace, leads, and pipeline. This just adds you to the company network.
           </p>
           <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px">
             <tr><td>
@@ -499,11 +499,11 @@ export async function sendBrokerageInvitation(params: BrokerageInvitationEmailPa
             </td></tr>
           </table>
           <p style="margin:16px 0 0;font-size:11px;color:#9ca3af">
-            This invitation expires in 7 days. If you don't have a Chippi account yet, you'll be prompted to create one after clicking the link above.
+            This invitation expires in 7 days. If you don't have a Cola account yet, you'll be prompted to create one after clicking the link above.
           </p>
         </td></tr>
         <tr><td style="padding:16px 28px;border-top:1px solid #f1f5f9">
-          <p style="margin:0;font-size:11px;color:#9ca3af">You received this because someone invited ${esc(safeEmail)} to a Chippi brokerage. If this was a mistake, you can ignore this email.</p>
+          <p style="margin:0;font-size:11px;color:#9ca3af">You received this because someone invited ${esc(safeEmail)} to a Cola company. If this was a mistake, you can ignore this email.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -515,16 +515,16 @@ export async function sendBrokerageInvitation(params: BrokerageInvitationEmailPa
     const result = await resend.emails.send({
       from: FROM,
       to: toEmail,
-      subject: `You're invited to join ${brokerageName.replace(/[\r\n\t]/g, ' ').slice(0, 100)} on Chippi`,
+      subject: `You're invited to join ${companyName.replace(/[\r\n\t]/g, ' ').slice(0, 100)} on Cola`,
       html,
     });
     if (result.error) {
-      logger.error('[email] brokerage invitation: Resend API error', { to: redactEmail(toEmail), resendError: result.error });
+      logger.error('[email] company invitation: Resend API error', { to: redactEmail(toEmail), resendError: result.error });
     } else {
-      logger.info('[email] brokerage invitation sent', { to: redactEmail(toEmail), messageId: result.data?.id });
+      logger.info('[email] company invitation sent', { to: redactEmail(toEmail), messageId: result.data?.id });
     }
   } catch (err) {
-    logger.error('[email] brokerage invitation failed', { to: redactEmail(toEmail) }, err);
+    logger.error('[email] company invitation failed', { to: redactEmail(toEmail) }, err);
   }
 }
 
@@ -553,7 +553,7 @@ export async function sendApplicationConfirmation(params: ApplicationConfirmatio
   const FROM = getFromAddress();
 
   const { toEmail, applicantName, businessName, slug, applicationRef, leadType, customMessage, statusPortalToken } = params;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usechippi.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com';
   let statusUrl = `${appUrl}/apply/${encodeURIComponent(slug)}/status?ref=${encodeURIComponent(applicationRef)}`;
   if (statusPortalToken) {
     statusUrl += `&token=${encodeURIComponent(statusPortalToken)}`;
@@ -591,7 +591,7 @@ export async function sendApplicationConfirmation(params: ApplicationConfirmatio
         </td></tr>
         <!-- Footer -->
         <tr><td style="padding:16px 28px;border-top:1px solid #f1f5f9">
-          <p style="margin:0;font-size:11px;color:#9ca3af">This email was sent by ${safeBusinessName} via Chippi</p>
+          <p style="margin:0;font-size:11px;color:#9ca3af">This email was sent by ${safeBusinessName} via Cola</p>
         </td></tr>
       </table>
     </td></tr>
@@ -633,20 +633,20 @@ export async function sendWelcomeEmail(params: {
 
   const { toEmail, userName, spaceName, spaceSlug } = params;
   const name = esc(userName) || 'there';
-  const domain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'my.usechippi.com';
+  const domain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'my.usecola.com';
   const dashboardUrl = spaceSlug ? `https://${domain}/s/${spaceSlug}` : `https://${domain}/setup`;
 
   const html = `
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:520px;margin:0 auto;padding:32px 0">
   <div style="text-align:center;margin-bottom:28px">
-    <span style="font-size:28px;font-weight:700;color:#111827">Welcome to Chippi</span>
+    <span style="font-size:28px;font-weight:700;color:#111827">Welcome to Cola</span>
   </div>
   <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:28px 24px">
     <p style="margin:0 0 16px;font-size:15px;color:#111827;line-height:1.6">
       Hi ${name},
     </p>
     <p style="margin:0 0 16px;font-size:14px;color:#374151;line-height:1.6">
-      Your Chippi account is ready${spaceName ? ` and your workspace <strong>${esc(spaceName)}</strong> has been created` : ''}. Here's what you can do now:
+      Your Cola account is ready${spaceName ? ` and your workspace <strong>${esc(spaceName)}</strong> has been created` : ''}. Here's what you can do now:
     </p>
     <table style="width:100%;border-collapse:collapse;margin:0 0 20px">
       <tr>
@@ -664,7 +664,7 @@ export async function sendWelcomeEmail(params: {
       <tr>
         <td style="padding:8px 0;font-size:14px;color:#374151;line-height:1.5">
           <strong style="color:#111827">3. Set up follow-up reminders</strong><br/>
-          Never miss a callback. Chippi reminds you when to reach out.
+          Never miss a callback. Cola reminds you when to reach out.
         </td>
       </tr>
     </table>
@@ -676,15 +676,15 @@ export async function sendWelcomeEmail(params: {
   </div>
   <p style="text-align:center;font-size:12px;color:#9ca3af;margin-top:20px;line-height:1.5">
     Questions? Just reply to this email. We're here to help.<br/>
-    — The Chippi team
+    — The Cola team
   </p>
 </div>`;
 
   try {
     const result = await resend.emails.send({
-      from: `Chippi <${FROM}>`,
+      from: `Cola <${FROM}>`,
       to: toEmail,
-      subject: `Welcome to Chippi — your workspace is ready`,
+      subject: `Welcome to Cola — your workspace is ready`,
       html,
     });
     if (result.error) {
@@ -819,7 +819,7 @@ export async function sendMfaEnrollmentPrompt(params: MfaEnrollmentPromptParams)
   const FROM = getFromAddress();
 
   const { toEmail, userName } = params;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usechippi.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com';
   const accountSettingsUrl = `${appUrl}/settings/account`;
   const name = esc(userName) || 'there';
 
@@ -837,7 +837,7 @@ export async function sendMfaEnrollmentPrompt(params: MfaEnrollmentPromptParams)
         <tr><td style="padding:24px 28px">
           <p style="margin:0 0 16px;font-size:15px;color:#111827;line-height:1.6">Hi ${name},</p>
           <p style="margin:0 0 16px;font-size:14px;color:#374151;line-height:1.6">
-            To better protect your Chippi account, we recommend enabling two-factor authentication (2FA). 2FA adds a second layer of security by requiring a verification code in addition to your password when signing in.
+            To better protect your Cola account, we recommend enabling two-factor authentication (2FA). 2FA adds a second layer of security by requiring a verification code in addition to your password when signing in.
           </p>
           <p style="margin:0 0 20px;font-size:14px;color:#374151;line-height:1.6">
             You can set this up in under a minute from your account settings.
@@ -852,7 +852,7 @@ export async function sendMfaEnrollmentPrompt(params: MfaEnrollmentPromptParams)
           </p>
         </td></tr>
         <tr><td style="padding:16px 28px;border-top:1px solid #f1f5f9">
-          <p style="margin:0;font-size:11px;color:#9ca3af">The Chippi team</p>
+          <p style="margin:0;font-size:11px;color:#9ca3af">The Cola team</p>
         </td></tr>
       </table>
     </td></tr>
@@ -862,9 +862,9 @@ export async function sendMfaEnrollmentPrompt(params: MfaEnrollmentPromptParams)
 
   try {
     const result = await resend.emails.send({
-      from: `Chippi <${FROM}>`,
+      from: `Cola <${FROM}>`,
       to: toEmail,
-      subject: 'Secure your Chippi account \u2014 enable two-factor authentication',
+      subject: 'Secure your Cola account \u2014 enable two-factor authentication',
       html,
     });
     if (result.error) {
@@ -882,7 +882,7 @@ export async function sendMfaEnrollmentPrompt(params: MfaEnrollmentPromptParams)
 const STATUS_LABELS: Record<string, string> = {
   received: 'Received',
   under_review: 'Under Review',
-  tour_scheduled: 'Tour Scheduled',
+  demo_scheduled: 'Demo Scheduled',
   approved: 'Approved',
   declined: 'Declined',
   waitlisted: 'Waitlisted',
@@ -910,7 +910,7 @@ export async function sendStatusUpdateEmail(params: StatusUpdateEmailParams): Pr
   const FROM = getFromAddress();
 
   const { toEmail, applicantName, businessName, slug, applicationRef, statusPortalToken, newStatus, note } = params;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usechippi.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com';
   let portalUrl = `${appUrl}/apply/${encodeURIComponent(slug)}/status?ref=${encodeURIComponent(applicationRef)}`;
   if (statusPortalToken) {
     portalUrl += `&token=${encodeURIComponent(statusPortalToken)}`;
@@ -925,7 +925,7 @@ export async function sendStatusUpdateEmail(params: StatusUpdateEmailParams): Pr
     newStatus === 'approved' ? '#059669' :
     newStatus === 'declined' ? '#dc2626' :
     newStatus === 'waitlisted' ? '#d97706' :
-    newStatus === 'tour_scheduled' ? '#7c3aed' :
+    newStatus === 'demo_scheduled' ? '#7c3aed' :
     '#2563eb';
 
   // Explicit background colors for email client compatibility (no hex+alpha trick)
@@ -933,7 +933,7 @@ export async function sendStatusUpdateEmail(params: StatusUpdateEmailParams): Pr
     newStatus === 'approved' ? '#ecfdf5' :
     newStatus === 'declined' ? '#fef2f2' :
     newStatus === 'waitlisted' ? '#fffbeb' :
-    newStatus === 'tour_scheduled' ? '#f5f3ff' :
+    newStatus === 'demo_scheduled' ? '#f5f3ff' :
     '#eff6ff';
 
   const html = `
@@ -981,7 +981,7 @@ export async function sendStatusUpdateEmail(params: StatusUpdateEmailParams): Pr
         </td></tr>
         <!-- Footer -->
         <tr><td style="padding:16px 28px;border-top:1px solid #f1f5f9">
-          <p style="margin:0;font-size:11px;color:#9ca3af">This email was sent by ${safeBusinessName} via Chippi</p>
+          <p style="margin:0;font-size:11px;color:#9ca3af">This email was sent by ${safeBusinessName} via Cola</p>
         </td></tr>
       </table>
     </td></tr>

@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
 import { audit } from '@/lib/audit';
-import { notifyBroker } from '@/lib/broker-notify';
+import { notifyManager } from '@/lib/manager-notify';
 import { notificationForMemberJoined } from '@/lib/notification-voice';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
-import { checkSeatCapacity } from '@/lib/brokerage-seats';
+import { checkSeatCapacity } from '@/lib/company-seats';
 
 /**
  * GET /api/invitations/[token]
@@ -33,21 +33,21 @@ export async function GET(req: Request, { params }: Params) {
 
   const { data: inv } = await supabase
     .from('Invitation')
-    .select('id, status, email, roleToAssign, expiresAt, brokerageId, Brokerage(name, logoUrl)')
+    .select('id, status, email, roleToAssign, expiresAt, companyId, Company(name, logoUrl)')
     .eq('token', token)
     .maybeSingle();
 
   if (!inv) return NextResponse.json({ error: 'Invitation not found' }, { status: 404 });
 
-  const brokerage = inv.Brokerage as unknown as { name: string; logoUrl: string | null } | null;
+  const company = inv.Company as unknown as { name: string; logoUrl: string | null } | null;
   return NextResponse.json({
     id: inv.id,
     status: inv.status,
     email: inv.email,
     roleToAssign: inv.roleToAssign,
     expiresAt: inv.expiresAt,
-    brokerageName: brokerage?.name ?? '',
-    logoUrl: brokerage?.logoUrl ?? null,
+    companyName: company?.name ?? '',
+    logoUrl: company?.logoUrl ?? null,
   });
 }
 
@@ -61,7 +61,7 @@ export async function POST(_req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Invalid token' }, { status: 400 });
   }
 
-  // Fetch the invitation with its brokerage
+  // Fetch the invitation with its company
   const { data: inv } = await supabase
     .from('Invitation')
     .select('*')
@@ -78,15 +78,15 @@ export async function POST(_req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Invitation has expired' }, { status: 410 });
   }
 
-  // Check brokerage is still active
-  const { data: brokerage } = await supabase
-    .from('Brokerage')
+  // Check company is still active
+  const { data: company } = await supabase
+    .from('Company')
     .select('id, status')
-    .eq('id', inv.brokerageId)
+    .eq('id', inv.companyId)
     .maybeSingle();
-  if (!brokerage) return NextResponse.json({ error: 'Brokerage not found' }, { status: 404 });
-  if (brokerage.status === 'suspended') {
-    return NextResponse.json({ error: 'This brokerage has been suspended' }, { status: 403 });
+  if (!company) return NextResponse.json({ error: 'Company not found' }, { status: 404 });
+  if (company.status === 'suspended') {
+    return NextResponse.json({ error: 'This company has been suspended' }, { status: 403 });
   }
 
   // Resolve current user — auto-create the DB record if they just signed up
@@ -138,9 +138,9 @@ export async function POST(_req: Request, { params }: Params) {
 
   // Idempotent: already a member?
   const { data: existingMembership } = await supabase
-    .from('BrokerageMembership')
+    .from('CompanyMembership')
     .select('id')
-    .eq('brokerageId', inv.brokerageId)
+    .eq('companyId', inv.companyId)
     .eq('userId', user.id)
     .maybeSingle();
   if (existingMembership) {
@@ -149,36 +149,36 @@ export async function POST(_req: Request, { params }: Params) {
     return NextResponse.json({ message: 'Already a member', roleToAssign: inv.roleToAssign }, { status: 200 });
   }
 
-  // Enforce the brokerage's seat cap at accept time, not just at invite time.
-  // The invite-time check (broker/invite) can be outrun: invites issued under
+  // Enforce the company's seat cap at accept time, not just at invite time.
+  // The invite-time check (manager/invite) can be outrun: invites issued under
   // the cap, concurrent accepts, or memberships added by other paths can push a
-  // brokerage over its paid seats. This pending invite is already counted in
+  // company over its paid seats. This pending invite is already counted in
   // `used` (members + pending), so we ask for 0 additional and simply refuse if
-  // the brokerage is already at/over its limit. Fails closed on infra error.
-  const seat = await checkSeatCapacity(inv.brokerageId, 0);
+  // the company is already at/over its limit. Fails closed on infra error.
+  const seat = await checkSeatCapacity(inv.companyId, 0);
   if (!seat.ok) {
     return NextResponse.json(
-      { error: 'This brokerage has reached its seat limit. Ask the broker to upgrade the plan or free up a seat.' },
+      { error: 'This company has reached its seat limit. Ask the manager to upgrade the plan or free up a seat.' },
       { status: 402 },
     );
   }
 
   // Create membership
   const { error: memberErr } = await supabase
-    .from('BrokerageMembership')
+    .from('CompanyMembership')
     .insert({
-      brokerageId: inv.brokerageId,
+      companyId: inv.companyId,
       userId: user.id,
       role: inv.roleToAssign,
       invitedById: inv.invitedById,
     });
   if (memberErr) {
     console.error('[invitations/accept] membership insert failed', memberErr);
-    return NextResponse.json({ error: 'Failed to join brokerage' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to join company' }, { status: 500 });
   }
 
   // If this user had been offboarded previously (BP1 set User.status =
-  // 'offboarded' and requireAuth gates on that), joining a new brokerage
+  // 'offboarded' and requireAuth gates on that), joining a new company
   // revives them. Without this flip, the agent would create the membership
   // row, then bounce at every API call because the auth gate still 403s.
   // Best-effort — a failure here is not fatal (the membership exists, a
@@ -189,49 +189,49 @@ export async function POST(_req: Request, { params }: Params) {
     .eq('id', user.id)
     .eq('status', 'offboarded');
 
-  // Adopt this brokerage's intake form-config ONLY if the Space isn't already
-  // linked. Never overwrite an existing link: a realtor already in brokerage A
-  // accepting an invite to brokerage B keeps A as their workspace's form-config
-  // owner. Access comes from the membership row above; Space.brokerageId is only
+  // Adopt this company's intake form-config ONLY if the Space isn't already
+  // linked. Never overwrite an existing link: a seller already in company A
+  // accepting an invite to company B keeps A as their workspace's form-config
+  // owner. Access comes from the membership row above; Space.companyId is only
   // the intake-config owner.
   const { data: space } = await supabase
     .from('Space')
-    .select('id, brokerageId')
+    .select('id, companyId')
     .eq('ownerId', user.id)
     .maybeSingle();
-  if (space && !space.brokerageId) {
+  if (space && !space.companyId) {
     await supabase
       .from('Space')
-      .update({ brokerageId: inv.brokerageId })
+      .update({ companyId: inv.companyId })
       .eq('id', space.id);
   }
 
-  // For broker_admin invitees without a Space, set them as broker_only
+  // For manager_admin invitees without a Space, set them as manager_only
   // so they skip subscription/workspace requirements.
-  if (inv.roleToAssign === 'broker_admin' && !space) {
+  if (inv.roleToAssign === 'manager_admin' && !space) {
     await supabase
       .from('User')
-      .update({ accountType: 'broker_only', onboard: true })
+      .update({ accountType: 'manager_only', onboard: true })
       .eq('id', user.id);
   }
 
   // Mark invitation accepted
   await supabase.from('Invitation').update({ status: 'accepted' }).eq('id', inv.id);
 
-  void audit({ actorClerkId: clerkId, action: 'CREATE', resource: 'BrokerageMembership', metadata: { brokerageId: inv.brokerageId, role: inv.roleToAssign, method: 'email_invitation', invitationId: inv.id } });
+  void audit({ actorClerkId: clerkId, action: 'CREATE', resource: 'CompanyMembership', metadata: { companyId: inv.companyId, role: inv.roleToAssign, method: 'email_invitation', invitationId: inv.id } });
 
   const inviteCopy = notificationForMemberJoined(
     user.email,
-    inv.roleToAssign === 'broker_admin' ? 'broker_admin' : 'realtor_member',
+    inv.roleToAssign === 'manager_admin' ? 'manager_admin' : 'seller_member',
     'email_invitation',
   );
-  void notifyBroker({
-    brokerageId: inv.brokerageId,
+  void notifyManager({
+    companyId: inv.companyId,
     type: 'member_joined',
     title: inviteCopy.title,
     body: inviteCopy.description,
     metadata: { userId: user.id, method: 'email_invitation' },
   });
 
-  return NextResponse.json({ message: 'Joined brokerage successfully', roleToAssign: inv.roleToAssign }, { status: 200 });
+  return NextResponse.json({ message: 'Joined company successfully', roleToAssign: inv.roleToAssign }, { status: 200 });
 }

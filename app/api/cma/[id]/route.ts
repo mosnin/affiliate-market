@@ -1,5 +1,5 @@
 /**
- * A single CMA report (realtor-facing) — GET / PATCH / DELETE
+ * A single CMA report (seller-facing) — GET / PATCH / DELETE
  *
  *   GET    ?slug=<slug>            → { report }   full report incl. payload
  *   PATCH  { slug, status?, title? } → { report } publish / rename
@@ -19,7 +19,7 @@ export const runtime = 'nodejs';
 const TITLE_MAX = 200;
 
 const FULL_COLUMNS =
-  'id, spaceId, subjectAddress, subjectPropertyId, shareToken, title, status, payload, createdAt, updatedAt';
+  'id, spaceId, subjectAddress, subjectProductId, shareToken, title, status, payload, createdAt, updatedAt';
 
 type Params = { params: Promise<{ id: string }> };
 

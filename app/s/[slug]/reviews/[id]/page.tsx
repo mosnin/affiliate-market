@@ -8,11 +8,11 @@ interface PageProps {
   params: Promise<{ slug: string; id: string }>;
 }
 
-export default async function RealtorReviewDetailPage({ params }: PageProps) {
+export default async function SellerReviewDetailPage({ params }: PageProps) {
   const { slug, id } = await params;
 
   const { userId: clerkId } = await auth();
-  if (!clerkId) redirect('/login/realtor');
+  if (!clerkId) redirect('/login/seller');
 
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
@@ -29,11 +29,11 @@ export default async function RealtorReviewDetailPage({ params }: PageProps) {
   const userId = (dbUserRow as { id: string }).id;
 
   // 1. Load the review. 404 if it doesn't exist, belongs to a different user,
-  //    or belongs to a different brokerage — we must not leak existence.
+  //    or belongs to a different company — we must not leak existence.
   type ReviewRow = {
     id: string;
     dealId: string;
-    brokerageId: string;
+    companyId: string;
     status: 'open' | 'approved' | 'closed';
     reason: string;
     createdAt: string;
@@ -46,7 +46,7 @@ export default async function RealtorReviewDetailPage({ params }: PageProps) {
   const { data: reviewRow } = await supabase
     .from('DealReviewRequest')
     .select(
-      'id, dealId, brokerageId, status, reason, createdAt, resolvedAt, resolvedNote, resolvedByUserId, requestingUserId',
+      'id, dealId, companyId, status, reason, createdAt, resolvedAt, resolvedNote, resolvedByUserId, requestingUserId',
     )
     .eq('id', id)
     .maybeSingle();
@@ -56,7 +56,7 @@ export default async function RealtorReviewDetailPage({ params }: PageProps) {
   if (
     !review ||
     review.requestingUserId !== userId ||
-    review.brokerageId !== space.brokerageId
+    review.companyId !== space.companyId
   ) {
     notFound();
   }

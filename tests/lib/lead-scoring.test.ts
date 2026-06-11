@@ -30,7 +30,7 @@ describe('computeLeadScore — rental engine', () => {
       numberOfOccupants: 2,
       hasPets: false,
       leaseTermPreference: 'ready',
-      propertyAddress: '123 Main St',
+      productAddress: '123 Main St',
     } as never,
   };
 
@@ -47,7 +47,7 @@ describe('computeLeadScore — rental engine', () => {
       targetMoveInDate: '1-2months',
       numberOfOccupants: 3,
       hasPets: false,
-      propertyAddress: '45 Oak Ave',
+      productAddress: '45 Oak Ave',
     } as never,
   };
 
@@ -99,7 +99,7 @@ describe('computeLeadScore — buyer engine', () => {
       preApprovalStatus: 'yes',
       buyerBudget: '600000',
       buyerTimeline: 'asap',
-      propertyType: 'single-family',
+      productType: 'single-family',
       bedrooms: '3',
       bathrooms: '2',
       mustHaves: 'garage,yard',
@@ -118,7 +118,7 @@ describe('computeLeadScore — buyer engine', () => {
       preApprovalStatus: 'not-yet',
       buyerBudget: '300000',
       buyerTimeline: '3-6mo',
-      propertyType: 'condo',
+      productType: 'condo',
       bedrooms: '2',
       housingSituation: 'renting',
       firstTimeBuyer: 'yes',

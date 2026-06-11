@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     .eq('id', contact.spaceId)
     .maybeSingle();
 
-  const businessName = settings?.businessName || space?.name || 'Property Management';
+  const businessName = settings?.businessName || space?.name || 'Product Management';
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
   const fmt = (v: any, prefix = '') => v != null && v !== '' ? `${prefix}${v}` : '—';
@@ -94,9 +94,9 @@ ${contact.leadScore != null ? `
   <tr><td>Date of Birth</td><td>${fmt(app.dateOfBirth)}</td></tr>
 </table>
 
-<h2>Property</h2>
+<h2>Product</h2>
 <table>
-  <tr><td>Property Address</td><td>${fmt(app.propertyAddress)}</td></tr>
+  <tr><td>Product Address</td><td>${fmt(app.productAddress)}</td></tr>
   <tr><td>Unit Type</td><td>${fmt(app.unitType)}</td></tr>
   <tr><td>Target Move-in</td><td>${fmt(app.targetMoveInDate)}</td></tr>
   <tr><td>Monthly Rent</td><td>${fmtMoney(app.monthlyRent)}</td></tr>

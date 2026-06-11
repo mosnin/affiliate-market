@@ -3,7 +3,7 @@ import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 import { FormAnalyticsClient } from './form-analytics-client';
 
-export const metadata = { title: 'Form Analytics — Admin — Chippi' };
+export const metadata = { title: 'Form Analytics — Admin — Cola' };
 
 export type ScoreDistribution = {
   hot: number;
@@ -12,9 +12,9 @@ export type ScoreDistribution = {
   unqualified: number;
 };
 
-export type BrokerageSubmissionRow = {
-  brokerageId: string;
-  brokerageName: string | null;
+export type CompanySubmissionRow = {
+  companyId: string;
+  companyName: string | null;
   count: number;
 };
 
@@ -28,7 +28,7 @@ export type SpaceSubmissionRow = {
 export type SourceRow = { source: string; count: number };
 export type TrendPoint = { date: string; count: number };
 
-const FORM_TAGS = ['application-link', 'brokerage-lead'];
+const FORM_TAGS = ['application-link', 'company-lead'];
 
 export default async function FormAnalyticsPage() {
   const isAdmin = await isPlatformAdmin();
@@ -44,7 +44,7 @@ export default async function FormAnalyticsPage() {
   let avgScore = 0;
   let distribution: ScoreDistribution = { hot: 0, warm: 0, cold: 0, unqualified: 0 };
   let emptyApplications = 0;
-  let topBrokerages: BrokerageSubmissionRow[] = [];
+  let topCompanies: CompanySubmissionRow[] = [];
   let topSpaces: SpaceSubmissionRow[] = [];
   let trend: TrendPoint[] = [];
   let perSource: SourceRow[] = [];
@@ -57,7 +57,7 @@ export default async function FormAnalyticsPage() {
       scoreRowsRes,
       distRes,
       emptyRes,
-      brokerageRowsRes,
+      companyRowsRes,
       spaceRowsRes,
       trendRowsRes,
       sourceRowsRes,
@@ -95,9 +95,9 @@ export default async function FormAnalyticsPage() {
         .is('applicationData', null),
       supabase
         .from('Contact')
-        .select('brokerageId')
+        .select('companyId')
         .overlaps('tags', FORM_TAGS)
-        .not('brokerageId', 'is', null)
+        .not('companyId', 'is', null)
         .limit(5000),
       supabase
         .from('Contact')
@@ -136,29 +136,29 @@ export default async function FormAnalyticsPage() {
       else if (label === 'unqualified') distribution.unqualified++;
     }
 
-    // Top brokerages
-    const brokerageCounts = new Map<string, number>();
-    for (const r of (brokerageRowsRes.data ?? []) as { brokerageId: string | null }[]) {
-      if (!r.brokerageId) continue;
-      brokerageCounts.set(r.brokerageId, (brokerageCounts.get(r.brokerageId) ?? 0) + 1);
+    // Top companies
+    const companyCounts = new Map<string, number>();
+    for (const r of (companyRowsRes.data ?? []) as { companyId: string | null }[]) {
+      if (!r.companyId) continue;
+      companyCounts.set(r.companyId, (companyCounts.get(r.companyId) ?? 0) + 1);
     }
-    const topBrokerageIds = Array.from(brokerageCounts.entries())
+    const topCompanyIds = Array.from(companyCounts.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10);
 
-    if (topBrokerageIds.length > 0) {
-      const ids = topBrokerageIds.map(([id]) => id);
-      const { data: brokerageNames } = await supabase
-        .from('Brokerage')
+    if (topCompanyIds.length > 0) {
+      const ids = topCompanyIds.map(([id]) => id);
+      const { data: companyNames } = await supabase
+        .from('Company')
         .select('id, name')
         .in('id', ids);
       const nameById = new Map<string, string>();
-      for (const b of (brokerageNames ?? []) as { id: string; name: string | null }[]) {
+      for (const b of (companyNames ?? []) as { id: string; name: string | null }[]) {
         if (b.name) nameById.set(b.id, b.name);
       }
-      topBrokerages = topBrokerageIds.map(([id, count]) => ({
-        brokerageId: id,
-        brokerageName: nameById.get(id) ?? null,
+      topCompanies = topCompanyIds.map(([id, count]) => ({
+        companyId: id,
+        companyName: nameById.get(id) ?? null,
         count,
       }));
     }
@@ -223,7 +223,7 @@ export default async function FormAnalyticsPage() {
         emptyApplications,
       }}
       distribution={distribution}
-      topBrokerages={topBrokerages}
+      topCompanies={topCompanies}
       topSpaces={topSpaces}
       trend={trend}
       perSource={perSource}

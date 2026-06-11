@@ -25,9 +25,9 @@ export default function ScrollFAQAccordion({
   data = [
     {
       id: 1,
-      question: "What is Chippi?",
+      question: "What is Cola?",
       answer:
-        "Chippi is a lightweight leasing lead workflow that helps solo agents capture applications, qualify renters, and follow up faster from one clear command center."
+        "Cola is a lightweight leasing lead workflow that helps solo agents capture applications, qualify renters, and follow up faster from one clear command center."
     },
     {
       id: 2,
@@ -39,7 +39,7 @@ export default function ScrollFAQAccordion({
       id: 3,
       question: "How does AI scoring work?",
       answer:
-        "Chippi reviews application context and surfaces a practical lead score with summary notes so you can prioritize follow-up with confidence."
+        "Cola reviews application context and surfaces a practical lead score with summary notes so you can prioritize follow-up with confidence."
     },
     {
       id: 4,
@@ -49,9 +49,9 @@ export default function ScrollFAQAccordion({
     },
     {
       id: 5,
-      question: "Is this built for solo realtors?",
+      question: "Is this built for solo sellers?",
       answer:
-        "Absolutely. Chippi is designed for solo operators and small teams who want cleaner intake and faster day-to-day leasing execution."
+        "Absolutely. Cola is designed for solo operators and small teams who want cleaner intake and faster day-to-day leasing execution."
     }
   ],
   className,

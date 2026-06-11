@@ -1,6 +1,6 @@
 /**
  * Phase 15 (Phase B) tool catalog — happy + sad path coverage for the 10
- * deal/tour/property tools. Mock pattern mirrors phase5: a `mockByTable`
+ * deal/demo/product tools. Mock pattern mirrors phase5: a `mockByTable`
  * dictionary maps table name → either {single} or {rows} so chained query
  * shapes resolve to the right data on each .from('Table') call.
  */
@@ -67,13 +67,13 @@ vi.mock('@/lib/vectorize', () => ({
 
 import { updateDealValueTool } from '@/lib/ai-tools/tools/update-deal-value';
 import { updateDealCloseDateTool, resolveCloseDate } from '@/lib/ai-tools/tools/update-deal-close-date';
-import { attachPropertyToDealTool } from '@/lib/ai-tools/tools/attach-property-to-deal';
-import { rescheduleTourTool } from '@/lib/ai-tools/tools/reschedule-tour';
-import { cancelTourTool } from '@/lib/ai-tools/tools/cancel-tour';
-import { findToursTool } from '@/lib/ai-tools/tools/find-tours';
-import { updatePropertyStatusTool } from '@/lib/ai-tools/tools/update-property-status';
-import { noteOnPropertyTool } from '@/lib/ai-tools/tools/note-on-property';
-import { findPropertyTool } from '@/lib/ai-tools/tools/find-property';
+import { attachProductToDealTool } from '@/lib/ai-tools/tools/attach-product-to-deal';
+import { rescheduleDemoTool } from '@/lib/ai-tools/tools/reschedule-demo';
+import { cancelDemoTool } from '@/lib/ai-tools/tools/cancel-demo';
+import { findDemosTool } from '@/lib/ai-tools/tools/find-demos';
+import { updateProductStatusTool } from '@/lib/ai-tools/tools/update-product-status';
+import { noteOnProductTool } from '@/lib/ai-tools/tools/note-on-product';
+import { findProductTool } from '@/lib/ai-tools/tools/find-product';
 import { mergePersonsTool } from '@/lib/ai-tools/tools/merge-persons';
 import type { ToolContext } from '@/lib/ai-tools/types';
 
@@ -163,61 +163,61 @@ describe('updateDealCloseDateTool', () => {
   });
 });
 
-// ── attach_property_to_deal ──────────────────────────────────────────────
-describe('attachPropertyToDealTool', () => {
+// ── attach_product_to_deal ──────────────────────────────────────────────
+describe('attachProductToDealTool', () => {
   it('requires approval', () => {
-    expect(attachPropertyToDealTool.requiresApproval).toBe(true);
+    expect(attachProductToDealTool.requiresApproval).toBe(true);
   });
 
-  it('errors when the property is in a different space (not found)', async () => {
+  it('errors when the product is in a different space (not found)', async () => {
     mockByTable = {
-      Deal: { single: { id: 'd_1', title: 'X', propertyId: null } },
-      Property: { single: null },
+      Deal: { single: { id: 'd_1', title: 'X', productId: null } },
+      Product: { single: null },
     };
-    const result = await attachPropertyToDealTool.handler(
-      { dealId: 'd_1', propertyId: 'p_other_space' },
+    const result = await attachProductToDealTool.handler(
+      { dealId: 'd_1', productId: 'p_other_space' },
       makeCtx(),
     );
     expect(result.display).toBe('error');
-    expect(result.summary).toMatch(/No property/);
+    expect(result.summary).toMatch(/No product/);
   });
 });
 
-// ── reschedule_tour ──────────────────────────────────────────────────────
-describe('rescheduleTourTool', () => {
+// ── reschedule_demo ──────────────────────────────────────────────────────
+describe('rescheduleDemoTool', () => {
   it('requires approval', () => {
-    expect(rescheduleTourTool.requiresApproval).toBe(true);
+    expect(rescheduleDemoTool.requiresApproval).toBe(true);
   });
 
-  it('errors when tour is missing', async () => {
-    mockByTable = { Tour: { single: null } };
-    const result = await rescheduleTourTool.handler(
+  it('errors when demo is missing', async () => {
+    mockByTable = { Demo: { single: null } };
+    const result = await rescheduleDemoTool.handler(
       {
-        tourId: 'missing',
+        demoId: 'missing',
         newStartsAt: '2026-06-01T15:00:00.000Z',
       },
       makeCtx(),
     );
     expect(result.display).toBe('error');
-    expect(result.summary).toMatch(/No tour/);
+    expect(result.summary).toMatch(/No demo/);
   });
 
   it('reschedules and preserves duration when newEndsAt is omitted', async () => {
     mockByTable = {
-      Tour: {
+      Demo: {
         single: {
           id: 't_1',
           startsAt: '2026-05-01T14:00:00.000Z',
           endsAt: '2026-05-01T15:00:00.000Z',
           contactId: null,
-          propertyAddress: null,
+          productAddress: null,
           guestName: 'Sam',
           status: 'scheduled',
         },
       },
     };
-    const result = await rescheduleTourTool.handler(
-      { tourId: 't_1', newStartsAt: '2026-06-01T18:00:00.000Z' },
+    const result = await rescheduleDemoTool.handler(
+      { demoId: 't_1', newStartsAt: '2026-06-01T18:00:00.000Z' },
       makeCtx(),
     );
     expect(result.display).toBe('success');
@@ -226,36 +226,36 @@ describe('rescheduleTourTool', () => {
   });
 });
 
-// ── cancel_tour ──────────────────────────────────────────────────────────
-describe('cancelTourTool', () => {
+// ── cancel_demo ──────────────────────────────────────────────────────────
+describe('cancelDemoTool', () => {
   it('requires approval', () => {
-    expect(cancelTourTool.requiresApproval).toBe(true);
+    expect(cancelDemoTool.requiresApproval).toBe(true);
   });
 
-  it('errors when the tour is missing', async () => {
-    mockByTable = { Tour: { single: null } };
-    const result = await cancelTourTool.handler(
-      { tourId: 'missing', reason: 'guest fell ill' },
+  it('errors when the demo is missing', async () => {
+    mockByTable = { Demo: { single: null } };
+    const result = await cancelDemoTool.handler(
+      { demoId: 'missing', reason: 'guest fell ill' },
       makeCtx(),
     );
     expect(result.display).toBe('error');
-    expect(result.summary).toMatch(/No tour/);
+    expect(result.summary).toMatch(/No demo/);
   });
 
   it('flips status to cancelled and acknowledges the guest', async () => {
     mockByTable = {
-      Tour: {
+      Demo: {
         single: {
           id: 't_1',
           contactId: null,
           guestName: 'Sam',
-          propertyAddress: '123 Main',
+          productAddress: '123 Main',
           status: 'scheduled',
         },
       },
     };
-    const result = await cancelTourTool.handler(
-      { tourId: 't_1', reason: 'guest fell ill' },
+    const result = await cancelDemoTool.handler(
+      { demoId: 't_1', reason: 'guest fell ill' },
       makeCtx(),
     );
     expect(result.display).toBe('success');
@@ -264,28 +264,28 @@ describe('cancelTourTool', () => {
   });
 });
 
-// ── find_tours ───────────────────────────────────────────────────────────
-describe('findToursTool', () => {
+// ── find_demos ───────────────────────────────────────────────────────────
+describe('findDemosTool', () => {
   it('is read-only', () => {
-    expect(findToursTool.requiresApproval).toBe(false);
+    expect(findDemosTool.requiresApproval).toBe(false);
   });
 
   it('returns an empty list cleanly', async () => {
-    mockByTable = { Tour: { rows: [] } };
-    const result = await findToursTool.handler({ status: 'scheduled' }, makeCtx());
-    expect(result.summary).toMatch(/No tours/);
-    expect((result.data as { tours: unknown[] }).tours).toHaveLength(0);
+    mockByTable = { Demo: { rows: [] } };
+    const result = await findDemosTool.handler({ status: 'scheduled' }, makeCtx());
+    expect(result.summary).toMatch(/No demos/);
+    expect((result.data as { demos: unknown[] }).demos).toHaveLength(0);
   });
 
-  it('summarises a list of tours', async () => {
+  it('summarises a list of demos', async () => {
     mockByTable = {
-      Tour: {
+      Demo: {
         rows: [
           {
             id: 't_1',
             startsAt: '2026-05-02T14:00:00.000Z',
             endsAt: '2026-05-02T15:00:00.000Z',
-            propertyAddress: '123 Main',
+            productAddress: '123 Main',
             guestName: 'Sam',
             status: 'scheduled',
           },
@@ -293,39 +293,39 @@ describe('findToursTool', () => {
             id: 't_2',
             startsAt: '2026-05-03T14:00:00.000Z',
             endsAt: '2026-05-03T15:00:00.000Z',
-            propertyAddress: '456 Oak',
+            productAddress: '456 Oak',
             guestName: 'Jane',
             status: 'confirmed',
           },
         ],
       },
     };
-    const result = await findToursTool.handler({}, makeCtx());
-    expect(result.display).toBe('tours');
-    expect((result.data as { tours: unknown[] }).tours).toHaveLength(2);
+    const result = await findDemosTool.handler({}, makeCtx());
+    expect(result.display).toBe('demos');
+    expect((result.data as { demos: unknown[] }).demos).toHaveLength(2);
     expect(result.summary).toMatch(/Sam/);
     expect(result.summary).toMatch(/Jane/);
   });
 });
 
-// ── update_property_status ───────────────────────────────────────────────
-describe('updatePropertyStatusTool', () => {
+// ── update_product_status ───────────────────────────────────────────────
+describe('updateProductStatusTool', () => {
   it('requires approval', () => {
-    expect(updatePropertyStatusTool.requiresApproval).toBe(true);
+    expect(updateProductStatusTool.requiresApproval).toBe(true);
   });
 
   it('rejects an unknown status at parse time', () => {
     expect(() =>
-      updatePropertyStatusTool.parameters.parse({ propertyId: 'p_1', newStatus: 'bogus' }),
+      updateProductStatusTool.parameters.parse({ productId: 'p_1', newStatus: 'bogus' }),
     ).toThrow();
   });
 
   it('updates the status and echoes the address', async () => {
     mockByTable = {
-      Property: { single: { id: 'p_1', address: '123 Main', listingStatus: 'active' } },
+      Product: { single: { id: 'p_1', address: '123 Main', listingStatus: 'active' } },
     };
-    const result = await updatePropertyStatusTool.handler(
-      { propertyId: 'p_1', newStatus: 'pending' },
+    const result = await updateProductStatusTool.handler(
+      { productId: 'p_1', newStatus: 'pending' },
       makeCtx(),
     );
     expect(result.display).toBe('success');
@@ -334,28 +334,28 @@ describe('updatePropertyStatusTool', () => {
   });
 });
 
-// ── note_on_property ─────────────────────────────────────────────────────
-describe('noteOnPropertyTool', () => {
+// ── note_on_product ─────────────────────────────────────────────────────
+describe('noteOnProductTool', () => {
   it('requires approval', () => {
-    expect(noteOnPropertyTool.requiresApproval).toBe(true);
+    expect(noteOnProductTool.requiresApproval).toBe(true);
   });
 
-  it('errors when property is missing', async () => {
-    mockByTable = { Property: { single: null } };
-    const result = await noteOnPropertyTool.handler(
-      { propertyId: 'missing', content: 'hello' },
+  it('errors when product is missing', async () => {
+    mockByTable = { Product: { single: null } };
+    const result = await noteOnProductTool.handler(
+      { productId: 'missing', content: 'hello' },
       makeCtx(),
     );
     expect(result.display).toBe('error');
-    expect(result.summary).toMatch(/No property/);
+    expect(result.summary).toMatch(/No product/);
   });
 
   it('appends a dated note line', async () => {
     mockByTable = {
-      Property: { single: { id: 'p_1', address: '123 Main', notes: null } },
+      Product: { single: { id: 'p_1', address: '123 Main', notes: null } },
     };
-    const result = await noteOnPropertyTool.handler(
-      { propertyId: 'p_1', content: 'Sellers want a quick close' },
+    const result = await noteOnProductTool.handler(
+      { productId: 'p_1', content: 'Sellers want a quick close' },
       makeCtx(),
     );
     expect(result.display).toBe('success');
@@ -364,19 +364,19 @@ describe('noteOnPropertyTool', () => {
   });
 });
 
-// ── find_property ────────────────────────────────────────────────────────
-describe('findPropertyTool', () => {
+// ── find_product ────────────────────────────────────────────────────────
+describe('findProductTool', () => {
   it('is read-only', () => {
-    expect(findPropertyTool.requiresApproval).toBe(false);
+    expect(findProductTool.requiresApproval).toBe(false);
   });
 
   it('rejects with no filters', () => {
-    expect(() => findPropertyTool.parameters.parse({})).toThrow();
+    expect(() => findProductTool.parameters.parse({})).toThrow();
   });
 
   it('returns a single match richly', async () => {
     mockByTable = {
-      Property: {
+      Product: {
         single: null, // exact-id miss falls through to query
         rows: [
           {
@@ -393,10 +393,10 @@ describe('findPropertyTool', () => {
         ],
       },
     };
-    const result = await findPropertyTool.handler({ query: '123 Main' }, makeCtx());
-    const data = result.data as { match: string; property?: { address: string } };
+    const result = await findProductTool.handler({ query: '123 Main' }, makeCtx());
+    const data = result.data as { match: string; product?: { address: string } };
     expect(data.match).toBe('single');
-    expect(data.property?.address).toBe('123 Main');
+    expect(data.product?.address).toBe('123 Main');
   });
 });
 

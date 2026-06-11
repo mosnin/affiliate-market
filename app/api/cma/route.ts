@@ -1,11 +1,11 @@
 /**
- * CMA reports (realtor-facing) — GET / POST
+ * CMA reports (seller-facing) — GET / POST
  *
  *   GET  ?slug=<slug>  → { reports: [...] }   the space's CMAs, newest first
- *   POST { slug, subjectPropertyId? | subject:{address,...}, title? }
+ *   POST { slug, subjectProductId? | subject:{address,...}, title? }
  *        → { report }   builds the CMA, inserts a CmaReport with a shareToken
  *
- * Auth: requireSpaceOwner(slug). Comps come from the space's own Property rows
+ * Auth: requireSpaceOwner(slug). Comps come from the space's own Product rows
  * (in-house, no MLS). The analysis is frozen into `payload` at insert time so
  * the public page stays stable even if the underlying rows later change.
  */
@@ -24,7 +24,7 @@ const TITLE_MAX = 200;
 
 // The list view never needs the (potentially large) payload — select lean.
 const LIST_COLUMNS =
-  'id, spaceId, subjectAddress, subjectPropertyId, shareToken, title, status, createdAt, updatedAt';
+  'id, spaceId, subjectAddress, subjectProductId, shareToken, title, status, createdAt, updatedAt';
 
 // ── GET — the space's CMAs ────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
 
 interface PostBody {
   slug?: string;
-  subjectPropertyId?: string;
+  subjectProductId?: string;
   subject?: SubjectFields;
   title?: string;
 }
@@ -81,7 +81,7 @@ function coerceSubjectFields(raw: unknown): SubjectFields | undefined {
     beds: num(s.beds),
     baths: num(s.baths),
     squareFeet: num(s.squareFeet),
-    propertyType: str(s.propertyType, 60),
+    productType: str(s.productType, 60),
     listPrice: num(s.listPrice),
   };
 }
@@ -108,22 +108,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Too many requests. Try again shortly.' }, { status: 429 });
   }
 
-  const subjectPropertyId =
-    typeof body.subjectPropertyId === 'string' && body.subjectPropertyId.trim()
-      ? body.subjectPropertyId.trim()
+  const subjectProductId =
+    typeof body.subjectProductId === 'string' && body.subjectProductId.trim()
+      ? body.subjectProductId.trim()
       : undefined;
-  const subjectFields = subjectPropertyId ? undefined : coerceSubjectFields(body.subject);
+  const subjectFields = subjectProductId ? undefined : coerceSubjectFields(body.subject);
 
-  if (!subjectPropertyId && !subjectFields) {
+  if (!subjectProductId && !subjectFields) {
     return NextResponse.json(
-      { error: 'Pick a subject property or enter an address.' },
+      { error: 'Pick a subject product or enter an address.' },
       { status: 400 },
     );
   }
 
   let payload;
   try {
-    payload = await buildCma({ spaceId: space.id, subjectPropertyId, subjectFields });
+    payload = await buildCma({ spaceId: space.id, subjectProductId, subjectFields });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not build the analysis.';
     // A missing subject is the caller's fault (404-ish); everything else is 500.
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
       id: crypto.randomUUID(),
       spaceId: space.id,
       subjectAddress: payload.subject.address,
-      subjectPropertyId: payload.subject.propertyId,
+      subjectProductId: payload.subject.productId,
       shareToken: generateShareToken(),
       title,
       status: 'draft',

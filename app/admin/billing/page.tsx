@@ -63,7 +63,7 @@ export default async function AdminBillingPage() {
     stripeCustomerId: string | null;
     stripeSubscriptionId: string | null;
   }[] = [];
-  let brokerageSubscriptions: {
+  let companySubscriptions: {
     id: string;
     name: string;
     plan: string;
@@ -82,7 +82,7 @@ export default async function AdminBillingPage() {
   }[] = [];
 
   try {
-    const [allSpacesRes, recentRes, trialExpiringRes, brokerageRes] = await Promise.all([
+    const [allSpacesRes, recentRes, trialExpiringRes, companyRes] = await Promise.all([
       // All spaces for status counts
       supabase
         .from('Space')
@@ -102,10 +102,10 @@ export default async function AdminBillingPage() {
         .lte('stripePeriodEnd', sevenDaysFromNow)
         .gte('stripePeriodEnd', now.toISOString())
         .order('stripePeriodEnd', { ascending: true }),
-      // Brokerage-scoped subscriptions (the brokerage checkout writes these to
-      // the Brokerage row, not a Space — previously invisible on this page)
+      // Company-scoped subscriptions (the company checkout writes these to
+      // the Company row, not a Space — previously invisible on this page)
       supabase
-        .from('Brokerage')
+        .from('Company')
         .select('id, name, plan, stripeSubscriptionStatus, stripePeriodEnd, stripeCustomerId, stripeSubscriptionId')
         .neq('stripeSubscriptionStatus', 'inactive')
         .order('stripePeriodEnd', { ascending: false, nullsFirst: false })
@@ -134,7 +134,7 @@ export default async function AdminBillingPage() {
       stripeSubscriptionId: row.stripeSubscriptionId,
     }));
 
-    brokerageSubscriptions = ((brokerageRes.data ?? []) as any[]).map((row) => ({
+    companySubscriptions = ((companyRes.data ?? []) as any[]).map((row) => ({
       id: row.id,
       name: row.name,
       plan: row.plan ?? '—',
@@ -421,16 +421,16 @@ export default async function AdminBillingPage() {
         )}
       </div>
 
-      {/* ── Brokerage subscriptions ─────────────────────────────── */}
-      {/* Brokerage-scoped subs live on the Brokerage row (written by the
-          brokerage checkout + webhook) and were invisible on this page, which
+      {/* ── Company subscriptions ─────────────────────────────── */}
+      {/* Company-scoped subs live on the Company row (written by the
+          company checkout + webhook) and were invisible on this page, which
           only listed Space subs. Same Stripe deep links for one-click control. */}
       <div>
-        <p className={`${H3} mb-3`}>Brokerage subscriptions</p>
-        {brokerageSubscriptions.length === 0 ? (
+        <p className={`${H3} mb-3`}>Company subscriptions</p>
+        {companySubscriptions.length === 0 ? (
           <Card>
             <CardContent className="px-5 py-8 text-center">
-              <p className="text-sm text-muted-foreground">No brokerage subscriptions yet.</p>
+              <p className="text-sm text-muted-foreground">No company subscriptions yet.</p>
             </CardContent>
           </Card>
         ) : (
@@ -439,7 +439,7 @@ export default async function AdminBillingPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Brokerage</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Company</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Plan</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Status</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Period End</th>
@@ -447,7 +447,7 @@ export default async function AdminBillingPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {brokerageSubscriptions.map((b) => (
+                  {companySubscriptions.map((b) => (
                     <tr key={b.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="py-3 px-4 font-medium">{b.name}</td>
                       <td className="py-3 px-4 text-muted-foreground">{b.plan}</td>

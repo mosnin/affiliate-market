@@ -1,6 +1,6 @@
 export const metadata = {
-  title: 'Cookie Policy | Chippi',
-  description: 'Cookie Policy for Chippi, a B2B SaaS agentic OS for real estate agents and brokerages.',
+  title: 'Cookie Policy | Cola',
+  description: 'Cookie Policy for Cola, a B2B SaaS agentic OS for real estate agents and companies.',
 };
 
 export default function CookiePolicyPage() {
@@ -13,8 +13,8 @@ export default function CookiePolicyPage() {
       </header>
 
       <p className="text-sm leading-6 text-muted-foreground">
-        This Cookie Policy explains how Chippi Inc. (&quot;Chippi,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) uses cookies and similar
-        technologies on the Chippi platform available at usechippi.com and my.usechippi.com (the &quot;Service&quot;).
+        This Cookie Policy explains how Cola Inc. (&quot;Cola,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) uses cookies and similar
+        technologies on the Cola platform available at usecola.com and my.usecola.com (the &quot;Service&quot;).
       </p>
 
       {/* 1. What Are Cookies */}
@@ -117,9 +117,9 @@ export default function CookiePolicyPage() {
         <div className="mt-3 text-sm text-muted-foreground space-y-3 leading-6">
           <p>If you have questions about this Cookie Policy, please contact us:</p>
           <p>
-            Chippi Inc.<br />
-            Email: <a href="mailto:help@usechippi.com" className="underline hover:text-foreground">help@usechippi.com</a><br />
-            Website: <a href="https://usechippi.com" className="underline hover:text-foreground">usechippi.com</a>
+            Cola Inc.<br />
+            Email: <a href="mailto:help@usecola.com" className="underline hover:text-foreground">help@usecola.com</a><br />
+            Website: <a href="https://usecola.com" className="underline hover:text-foreground">usecola.com</a>
           </p>
         </div>
       </section>

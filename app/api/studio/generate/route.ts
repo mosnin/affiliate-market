@@ -1,9 +1,9 @@
 /**
  * POST /api/studio/generate — generate an image or video with fal.ai.
  *
- * The realtor-facing entry point: Clerk auth, subscription gate, and rate
+ * The seller-facing entry point: Clerk auth, subscription gate, and rate
  * limiting live here; the generation itself runs in the shared core
- * (lib/studio/generate.ts), which the Chippi agent's internal route reuses.
+ * (lib/studio/generate.ts), which the Cola agent's internal route reuses.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

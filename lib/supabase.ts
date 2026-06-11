@@ -23,7 +23,7 @@ export function getSupabase(): SupabaseClient {
   return _client;
 }
 
-// Convenience export — a Proxy that lazily initializes on first property access.
+// Convenience export — a Proxy that lazily initializes on first product access.
 // This lets consumers write `supabase.from(...)` without calling `getSupabase()`.
 export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
   get(_target, prop, receiver) {

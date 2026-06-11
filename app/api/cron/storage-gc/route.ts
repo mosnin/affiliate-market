@@ -3,7 +3,7 @@
  *
  * Daily sweep that diffs Wasabi against DB row references and removes
  * orphan objects. Pairs with inline `deleteObjectsBestEffort` calls in
- * Contact/Deal/Property DELETE handlers — the inline path is the fast
+ * Contact/Deal/Product DELETE handlers — the inline path is the fast
  * path, this sweeper catches anything that fell through (Wasabi 5xx
  * during the inline delete, historical rows from before the inline
  * fix shipped, race conditions on cascade deletes).
@@ -140,16 +140,16 @@ const PREFIX_SPECS: PrefixSpec[] = [
     },
   },
   {
-    prefix: STORAGE_PREFIXES.propertyPhotos,
-    label: 'property-photos',
+    prefix: STORAGE_PREFIXES.productPhotos,
+    label: 'product-photos',
     referencedKeys: async (candidates) => {
-      // Property.photos is a JSONB array of public URLs; we map every
+      // Product.photos is a JSONB array of public URLs; we map every
       // candidate KEY back through getPublicUrl-shape and check if any
-      // listed property contains the URL. Easier: pull every Property
+      // listed product contains the URL. Easier: pull every Product
       // row's photos array for any space that has at least one row
       // (Supabase doesn't have a clean "URL contains key" predicate),
       // build the reverse map, then check membership.
-      const { data } = await supabase.from('Property').select('photos').limit(5000);
+      const { data } = await supabase.from('Product').select('photos').limit(5000);
       const referenced = new Set<string>();
       for (const row of (data ?? []) as { photos: unknown }[]) {
         const urls = Array.isArray(row.photos)
@@ -172,7 +172,7 @@ const PREFIX_SPECS: PrefixSpec[] = [
     // previous object inline now, but historical replacements (pre-
     // inline-fix) plus any inline-cleanup misses survive in storage
     // — the sweeper catches them. The DELETE handler intentionally
-    // keeps the object until the next upload so the realtor can
+    // keeps the object until the next upload so the seller can
     // revert, so the active row's coverPhotoUrl is the only thing
     // we need to keep.
     prefix: STORAGE_PREFIXES.profileCover,
@@ -205,14 +205,14 @@ const PREFIX_SPECS: PrefixSpec[] = [
     },
   },
   {
-    // Branding assets uploaded via /api/upload — logo, realtor photo,
+    // Branding assets uploaded via /api/upload — logo, seller photo,
     // favicon. SpaceSetting columns store full public URLs; we map each
     // back to a key via publicUrlToKey and intersect with the
     // candidates the sweeper just listed.
     //
     // Also covers /api/upload/onboarding pre-space uploads — those
     // start under onboarding/{userId}/ and are orphaned at the point
-    // the realtor abandons onboarding or replaces the file before
+    // the seller abandons onboarding or replaces the file before
     // committing it to a SpaceSetting column. Either way, the active
     // SpaceSetting reference is the only thing that should survive.
     prefix: STORAGE_PREFIXES.onboarding,
@@ -220,15 +220,15 @@ const PREFIX_SPECS: PrefixSpec[] = [
     referencedKeys: async (candidates) => {
       const { data } = await supabase
         .from('SpaceSetting')
-        .select('logoUrl, realtorPhotoUrl, intakeFaviconUrl')
+        .select('logoUrl, sellerPhotoUrl, intakeFaviconUrl')
         .limit(5000);
       const referenced = new Set<string>();
       for (const row of (data ?? []) as {
         logoUrl: string | null;
-        realtorPhotoUrl: string | null;
+        sellerPhotoUrl: string | null;
         intakeFaviconUrl: string | null;
       }[]) {
-        for (const url of [row.logoUrl, row.realtorPhotoUrl, row.intakeFaviconUrl]) {
+        for (const url of [row.logoUrl, row.sellerPhotoUrl, row.intakeFaviconUrl]) {
           if (!url) continue;
           const key = publicUrlToKey(url);
           if (key) referenced.add(key);

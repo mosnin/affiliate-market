@@ -168,7 +168,7 @@ export function buildDynamicSystemPrompt(input: {
       '- Stable employment or verifiable income source',
       '- Budget-to-income ratio (rent should be under 30% of gross monthly income)',
       '- Move-in timeline urgency (ASAP or within 30 days = stronger lead)',
-      '- Number of occupants and pet situation (affects property matching)',
+      '- Number of occupants and pet situation (affects product matching)',
       '- Completeness of application (all required fields answered = more serious)',
     );
   } else if (leadType === 'buyer') {
@@ -178,7 +178,7 @@ export function buildDynamicSystemPrompt(input: {
       '- Pre-approval status (already approved = strongest signal)',
       '- Budget adequacy relative to market (higher budget = more options)',
       '- Timeline to close (ASAP or 1-3 months = serious buyer)',
-      '- Property type clarity (knows what they want = further along)',
+      '- Product type clarity (knows what they want = further along)',
       '- First-time buyer status (may need more guidance but often highly motivated)',
     );
   }

@@ -1,5 +1,5 @@
 /**
- * AI Enhancement Layer for Chippi Lead Scoring
+ * AI Enhancement Layer for Cola Lead Scoring
  *
  * Adds qualitative analysis on top of the deterministic engine score.
  * The AI does NOT determine the score — it explains it and recommends actions.
@@ -112,8 +112,8 @@ export async function enhanceWithAI(
           strict: true,
           schema: {
             type: 'object',
-            additionalProperties: false,
-            properties: {
+            additionalProducts: false,
+            products: {
               summary: { type: 'string' },
               explanationTags: { type: 'array', items: { type: 'string' } },
               recommendedNextAction: { type: 'string' },
@@ -164,7 +164,7 @@ function buildBuyerContext(app: ApplicationData | null): string {
   if (app.buyerTimeline) lines.push(`Timeline to buy: ${app.buyerTimeline}`);
   if (app.housingSituation) lines.push(`Current housing: ${app.housingSituation}`);
   if (app.firstTimeBuyer) lines.push(`First-time buyer: ${app.firstTimeBuyer}`);
-  if (app.propertyType) lines.push(`Property type: ${app.propertyType}`);
+  if (app.productType) lines.push(`Product type: ${app.productType}`);
   if (app.bedrooms) lines.push(`Bedrooms: ${app.bedrooms}`);
   if (app.bathrooms) lines.push(`Bathrooms: ${app.bathrooms}`);
   if (app.mustHaves) {

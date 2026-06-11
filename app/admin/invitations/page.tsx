@@ -16,7 +16,7 @@ export default async function AdminInvitationsPage() {
   if (!isAdmin) redirect('/');
   const { data: invitations, error } = await supabase
     .from('Invitation')
-    .select('id, email, roleToAssign, status, expiresAt, createdAt, brokerageId, Brokerage(name)')
+    .select('id, email, roleToAssign, status, expiresAt, createdAt, companyId, Company(name)')
     .order('createdAt', { ascending: false })
     .limit(200);
 
@@ -35,11 +35,11 @@ export default async function AdminInvitationsPage() {
     status: string;
     expiresAt: string;
     createdAt: string;
-    brokerageId: string | null;
-    Brokerage: { name: string } | null;
+    companyId: string | null;
+    Company: { name: string } | null;
   }>;
 
-  const roleLabel = (r: string) => r === 'broker_admin' ? 'Admin' : 'Realtor';
+  const roleLabel = (r: string) => r === 'manager_admin' ? 'Admin' : 'Seller';
 
   return (
     <div className="space-y-8 pb-12 max-w-5xl mx-auto">
@@ -52,7 +52,7 @@ export default async function AdminInvitationsPage() {
           Invitations
         </h1>
         <p className="text-sm text-muted-foreground">
-          {invs.length} invitation{invs.length !== 1 ? 's' : ''} across all brokerages.
+          {invs.length} invitation{invs.length !== 1 ? 's' : ''} across all companies.
         </p>
       </header>
 
@@ -73,7 +73,7 @@ export default async function AdminInvitationsPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-semibold truncate">{inv.email}</p>
                     <p className="text-xs text-muted-foreground">
-                      {inv.Brokerage?.name ?? '—'} · {roleLabel(inv.roleToAssign)} · Sent {sentAt}
+                      {inv.Company?.name ?? '—'} · {roleLabel(inv.roleToAssign)} · Sent {sentAt}
                       {inv.status === 'pending' && ` · Expires ${expiresAt}`}
                     </p>
                   </div>

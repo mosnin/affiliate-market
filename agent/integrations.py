@@ -40,8 +40,8 @@ logger = structlog.get_logger()
 # this triggers, shrink the curated allowlist before raising the cap.
 MAX_TOTAL_TOOLS = 100
 
-# Number of native tools shipped on every Chippi agent. Source of truth
-# is chippi.py:make_chippi_agent's base_tools list — bump this constant
+# Number of native tools shipped on every Cola agent. Source of truth
+# is cola.py:make_cola_agent's base_tools list — bump this constant
 # when adding/removing natives so the budget math stays honest.
 _NATIVE_TOOL_COUNT = 36
 
@@ -52,7 +52,7 @@ _SCHEMA_FETCH_TIMEOUT = 30.0
 # so curated and dispatched calls behave the same on slow upstreams.
 _EXEC_TIMEOUT = 120.0
 
-# Native tool names that ship on every Chippi agent. Any curated tool
+# Native tool names that ship on every Cola agent. Any curated tool
 # whose lowercased slug would collide gets a toolkit prefix added
 # defensively. The xAI Chat Completions endpoint rejects the entire
 # request with `Duplicate function definition` when two functions share
@@ -60,16 +60,16 @@ _EXEC_TIMEOUT = 120.0
 # user-visible symptom is a chat that says "integrations connected"
 # then fails on the next turn with a 400 from the model provider.
 #
-# Keep this in sync with chippi.py:make_chippi_agent's base_tools list.
+# Keep this in sync with cola.py:make_cola_agent's base_tools list.
 _NATIVE_TOOL_NAMES = frozenset({
     "create_contact", "find_contacts", "get_contact_activity", "update_contact",
     "create_deal", "find_deals", "update_deal", "advance_deal_stage",
     "request_deal_review",
-    "book_tour", "route_lead", "add_property", "send_property_packet",
+    "book_demo", "route_lead", "add_product", "send_product_packet",
     "recall_memory", "store_memory", "manage_goal", "manage_routines",
     "draft_message", "send_email_now", "send_sms_now",
     "outcome", "analyze_portfolio", "generate_priority_list",
-    "process_inbound_message", "read_attachment", "ask_realtor",
+    "process_inbound_message", "read_attachment", "ask_seller",
     "log_activity_run", "recall_docs", "create_plan",
     "get_intake_form", "add_intake_question", "remove_intake_question",
     "update_intake_question", "save_intake_form",
@@ -80,7 +80,7 @@ _NATIVE_TOOL_NAMES = frozenset({
 
 
 async def active_toolkits(space_id: str, user_id: str) -> list[str]:
-    """Toolkit slugs the realtor has connected and our DB has marked active.
+    """Toolkit slugs the seller has connected and our DB has marked active.
 
     Returned in deterministic alphabetical order — stable across turns so
     the agent's tool list (which derives from this) keeps a stable prefix
@@ -199,7 +199,7 @@ def _sanitize_enums_for_xai(node: Any) -> Any:
     enum string values:
 
       Error code: 400 - Schema validation failed: [engine_imposed]
-        /properties/hs_legal_basis/enum/0: '/' in 'enum' string value
+        /products/hs_legal_basis/enum/0: '/' in 'enum' string value
         is currently not supported
 
     HubSpot ships canonical values like `Performance / Contract` for
@@ -210,16 +210,16 @@ def _sanitize_enums_for_xai(node: Any) -> Any:
     The cleanest fix is to drop the offending enum constraint and append
     the valid values to the field's `description`, so the model still
     knows what to send and the upstream API (HubSpot) revalidates with
-    the canonical strings intact. Recurses into properties, items, the
+    the canonical strings intact. Recurses into products, items, the
     composite keywords (anyOf/oneOf/allOf), and $defs so nested schemas
     are covered.
     """
     if isinstance(node, dict):
         out: dict[str, Any] = {}
         for k, v in node.items():
-            if k in ("properties", "patternProperties", "$defs", "definitions") and isinstance(v, dict):
+            if k in ("products", "patternProducts", "$defs", "definitions") and isinstance(v, dict):
                 out[k] = {sub_k: _sanitize_enums_for_xai(sub_v) for sub_k, sub_v in v.items()}
-            elif k in ("items", "additionalProperties", "not", "if", "then", "else"):
+            elif k in ("items", "additionalProducts", "not", "if", "then", "else"):
                 out[k] = _sanitize_enums_for_xai(v)
             elif k in ("anyOf", "oneOf", "allOf") and isinstance(v, list):
                 out[k] = [_sanitize_enums_for_xai(item) for item in v]
@@ -261,7 +261,7 @@ def _build_curated_tool(
     The execute proxy is the only file that knows how to talk to Composio
     (auth, version-skip, error envelope shape). Curated tools deliberately
     go through it instead of calling Composio directly from Modal — so
-    runtime behavior, error shapes, and the realtor's `IntegrationConnection`
+    runtime behavior, error shapes, and the seller's `IntegrationConnection`
     side-effects stay identical between the curated and dispatcher paths.
     """
     try:
@@ -313,22 +313,22 @@ def _build_curated_tool(
         # the model uses to self-correct. 2xx already carries {ok,data,error}.
         return body_text or json.dumps({"ok": True, "data": None})
 
-    # `additionalProperties: True` matches the TS side (lib/integrations/
+    # `additionalProducts: True` matches the TS side (lib/integrations/
     # agent-tools.ts) — Composio re-validates server-side anyway, so loose
     # client schemas are safe and avoid spurious validation errors when
     # the model wants to pass a parameter the schema doesn't enumerate.
-    # Run xAI-enum sanitization on the properties before assembling, so any
+    # Run xAI-enum sanitization on the products before assembling, so any
     # HubSpot-style `Performance / Contract` enums get demoted to
     # description hints and don't crash the chat turn at the provider.
-    raw_properties = (parameters or {}).get("properties", {}) or {}
-    sanitized_properties = {
-        k: _sanitize_enums_for_xai(v) for k, v in raw_properties.items()
+    raw_products = (parameters or {}).get("products", {}) or {}
+    sanitized_products = {
+        k: _sanitize_enums_for_xai(v) for k, v in raw_products.items()
     }
     safe_parameters: dict[str, Any] = {
         "type": "object",
-        "properties": sanitized_properties,
+        "products": sanitized_products,
         "required": (parameters or {}).get("required", []) or [],
-        "additionalProperties": True,
+        "additionalProducts": True,
     }
 
     return FunctionTool(
@@ -366,10 +366,10 @@ async def load_integration_tools(
     Degradation policy: when the proxy env is missing or the connected
     lookup fails, return the DISPATCHER PAIR rather than nothing. The
     dispatcher fails loudly and instructively at call time ("integration
-    proxy not configured — tell the realtor…"), which the model can relay
+    proxy not configured — tell the seller…"), which the model can relay
     as "temporarily unavailable". Returning [] here made every config
-    failure indistinguishable from "the realtor connected nothing", and
-    the model told realtors their integrations were gone.
+    failure indistinguishable from "the seller connected nothing", and
+    the model told sellers their integrations were gone.
     """
     proxy = _proxy_base()
     if proxy is None:
@@ -401,14 +401,14 @@ async def load_integration_tools(
     # ── Curated per-toolkit tools: ON by default ────────────────────────────
     # History: curated was DISABLED by default as a token guard (each curated
     # schema is 1-3k tokens, re-sent every agent-loop step). But the
-    # dispatcher-only default meant a realtor's connected Gmail surfaced as
+    # dispatcher-only default meant a seller's connected Gmail surfaced as
     # two generic search tools while the prompt told the model gmail_* tools
     # were pre-loaded — the model concluded it had no Gmail and SAID SO. The
     # most-reported integration bug was this default. Tokens are managed by
     # the curated-slug budget below (MAX_TOTAL_TOOLS cap), not by hiding the
-    # tools. Opt OUT with CHIPPI_CURATED_INTEGRATIONS=0 if a deploy must.
+    # tools. Opt OUT with COLA_CURATED_INTEGRATIONS=0 if a deploy must.
     curated_enabled = (
-        os.environ.get("CHIPPI_CURATED_INTEGRATIONS", "1") or "1"
+        os.environ.get("COLA_CURATED_INTEGRATIONS", "1") or "1"
     ).strip().lower() not in ("0", "false", "no", "off")
     if not curated_enabled:
         logger.info(
@@ -420,7 +420,7 @@ async def load_integration_tools(
         )
         return _dispatcher_pair()
 
-    # Collect curated slugs across the realtor's connected toolkits. A
+    # Collect curated slugs across the seller's connected toolkits. A
     # toolkit with no curated entry contributes nothing here and falls
     # back to dispatcher-only — intentional, not a bug.
     slug_to_toolkit: dict[str, str] = {}
@@ -463,7 +463,7 @@ async def load_integration_tools(
         if not slug:
             continue
         description = spec.get("description") or slug
-        parameters = spec.get("parameters") or {"type": "object", "properties": {}}
+        parameters = spec.get("parameters") or {"type": "object", "products": {}}
         name = _safe_tool_name(slug, toolkit)
         # If two slugs canonicalize to the same name (rare, but a future
         # rename could create one), keep the first; skip the second

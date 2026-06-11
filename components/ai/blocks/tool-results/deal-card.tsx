@@ -30,7 +30,7 @@ interface DealDetail {
   stage: string;
   amount: number | null;
   commissionEstimate: number | null;
-  property: { id: string; address: string } | null;
+  product: { id: string; address: string } | null;
   contacts: Array<{ id: string; name: string }>;
   notes: Array<{ id: string; content: string; createdAt: string }>;
   nextStep: string | null;
@@ -217,10 +217,10 @@ function ExpandedDetail({ detail, slug }: { detail: DealDetail; slug: string }) 
           <span className="text-muted-foreground w-24 flex-shrink-0">Priority</span>
           <span className="font-medium text-foreground capitalize">{detail.priority ?? '—'}</span>
         </div>
-        {detail.property && (
+        {detail.product && (
           <div className="flex gap-1.5">
-            <span className="text-muted-foreground w-24 flex-shrink-0">Property</span>
-            <span className="font-medium text-foreground truncate">{detail.property.address}</span>
+            <span className="text-muted-foreground w-24 flex-shrink-0">Product</span>
+            <span className="font-medium text-foreground truncate">{detail.product.address}</span>
           </div>
         )}
       </div>

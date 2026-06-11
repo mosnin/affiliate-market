@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cola": {
+      "type": "url",
+      "url": "https://my.usecola.com/api/mcp",
+      "note": "After installing, go to Cola Settings → Integrations to generate an API key"
+    }
+  }
+}

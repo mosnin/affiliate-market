@@ -60,17 +60,17 @@ function parseBudgetToNumber(val: unknown): number | null {
  * Fallback chain:
  *   1. Dual config: SpaceSetting.[rental|buyer]FormConfig (custom per-agent)
  *   2. Legacy single: SpaceSetting.formConfig (if leadType matches)
- *   3. Brokerage dual: Brokerage.[brokerage[Rental|Buyer]FormConfig]
- *   4. Brokerage legacy: Brokerage.brokerageFormConfig (if leadType matches)
+ *   3. Company dual: Company.[company[Rental|Buyer]FormConfig]
+ *   4. Company legacy: Company.companyFormConfig (if leadType matches)
  *   5. null (use legacy schema / default template)
  */
 async function fetchFormConfigForLeadType(
   spaceId: string,
-  brokerageId: string | null,
+  companyId: string | null,
   leadType: 'rental' | 'buyer',
 ): Promise<IntakeFormConfig | null> {
   try {
-    const dual = await getFormConfigs(spaceId, brokerageId);
+    const dual = await getFormConfigs(spaceId, companyId);
 
     const config = leadType === 'buyer'
       ? dual.buyer
@@ -100,16 +100,16 @@ async function fetchFormConfigForLeadType(
       }
     }
 
-    // Fall back to brokerage-level config
-    if (brokerageId) {
-      const { data: brokerage } = await supabase
-        .from('Brokerage')
-        .select('brokerageFormConfig')
-        .eq('id', brokerageId)
+    // Fall back to company-level config
+    if (companyId) {
+      const { data: company } = await supabase
+        .from('Company')
+        .select('companyFormConfig')
+        .eq('id', companyId)
         .maybeSingle();
 
-      if (brokerage?.brokerageFormConfig) {
-        const parsed = formConfigSchema.safeParse(brokerage.brokerageFormConfig);
+      if (company?.companyFormConfig) {
+        const parsed = formConfigSchema.safeParse(company.companyFormConfig);
         if (parsed.success) {
           const configLeadType = parsed.data.leadType;
           if (configLeadType === leadType || configLeadType === 'general') {
@@ -330,7 +330,7 @@ export async function POST(req: NextRequest) {
     // Fetch the CORRECT config based on leadType (rental vs buyer)
     let formConfig: IntakeFormConfig | null = null;
     try {
-      const rawConfig = await fetchFormConfigForLeadType(space.id, space.brokerageId, resolvedLeadType);
+      const rawConfig = await fetchFormConfigForLeadType(space.id, space.companyId, resolvedLeadType);
       if (rawConfig) {
         // Re-validate the stored config to guard against corrupt data
         formConfig = formConfigSchema.parse(rawConfig);
@@ -413,7 +413,7 @@ export async function POST(req: NextRequest) {
       // `data.budget` is the generic key emitted by the AI chat; the traditional
       // form uses `monthlyRent` (rental) or `buyerBudget` (buyer). Check all.
       contactBudget = parseBudgetToNumber(data.monthlyRent ?? data.buyerBudget ?? data.budget ?? data.monthlyGrossIncome ?? null);
-      contactPreferences = typeof data.propertyAddress === 'string' ? data.propertyAddress : null;
+      contactPreferences = typeof data.productAddress === 'string' ? data.productAddress : null;
       contactAddress = typeof data.currentAddress === 'string' ? data.currentAddress : null;
       privacyConsent = typeof data.privacyConsent === 'boolean' ? data.privacyConsent : undefined;
       slugForFingerprint = rawSlug;
@@ -445,7 +445,7 @@ export async function POST(req: NextRequest) {
           ? (payload.buyerBudget ?? payload.monthlyGrossIncome ?? null)
           : (payload.monthlyRent ?? payload.monthlyGrossIncome ?? null),
       );
-      contactPreferences = payload.propertyAddress ?? null;
+      contactPreferences = payload.productAddress ?? null;
       contactAddress = payload.currentAddress ?? null;
       privacyConsent = payload.privacyConsent;
       slugForFingerprint = payload.slug;
@@ -453,7 +453,7 @@ export async function POST(req: NextRequest) {
       // Build notes for backwards compat with existing lead cards
       const noteParts: string[] = [];
       if (payload.targetMoveInDate) noteParts.push(`Timeline: ${payload.targetMoveInDate}`);
-      if (payload.propertyAddress) noteParts.push(`Property: ${payload.propertyAddress}`);
+      if (payload.productAddress) noteParts.push(`Product: ${payload.productAddress}`);
       if (payload.employmentStatus) noteParts.push(`Employment: ${payload.employmentStatus}`);
       if (payload.monthlyGrossIncome != null) noteParts.push(`Income: $${payload.monthlyGrossIncome}/mo`);
       if (payload.additionalNotes) noteParts.push(payload.additionalNotes);
@@ -590,7 +590,7 @@ export async function POST(req: NextRequest) {
       address: contactAddress,
       notes: contactNotes,
       type: 'QUALIFICATION',
-      properties: [],
+      products: [],
       leadType: contactLeadType,
       formLeadType: contactLeadType,
       tags: [
@@ -710,10 +710,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Send realtor notification + applicant confirmation email in parallel
+    // Send seller notification + applicant confirmation email in parallel
     const businessName = spaceBusinessName || space.name;
 
-    const realtorNotification = notifyNewLead({
+    const sellerNotification = notifyNewLead({
       spaceId: space.id,
       contactId: contact.id,
       name: contactName,
@@ -725,7 +725,7 @@ export async function POST(req: NextRequest) {
       scoreSummary: scoring.scoreSummary,
       applicationData,
     }).catch((notifyErr) => {
-      logger.error('[apply] realtor notification failed', { contactId: contact.id }, notifyErr);
+      logger.error('[apply] seller notification failed', { contactId: contact.id }, notifyErr);
     });
 
     const applicantConfirmation = contactEmail
@@ -743,11 +743,11 @@ export async function POST(req: NextRequest) {
         })
       : Promise.resolve();
 
-    await Promise.all([realtorNotification, applicantConfirmation]);
+    await Promise.all([sellerNotification, applicantConfirmation]);
     logger.debug('[apply] notifications dispatched', { contactId: contact.id });
 
-    // Fire the agent trigger so Chippi reacts to the new application in real
-    // time (drafts a follow-up, scores against the realtor's criteria, etc.)
+    // Fire the agent trigger so Cola reacts to the new application in real
+    // time (drafts a follow-up, scores against the seller's criteria, etc.)
     // instead of waiting for the 4-hour cron sweep.
     try {
       await fireAgentTrigger({

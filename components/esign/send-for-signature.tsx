@@ -2,7 +2,7 @@
 
 /**
  * SendForSignature — embedded control to send one stored document out for
- * signature on the realtor's OWN connected DocuSign account (via Composio).
+ * signature on the seller's OWN connected DocuSign account (via Composio).
  *
  * Two embeds share it:
  *   - Per-document row on the deal Documents tab (`documentId` fixed).
@@ -60,9 +60,9 @@ interface DocumentChoice {
 interface SendForSignatureProps {
   /** Workspace slug — authorizes the send and the status refresh. */
   slug: string;
-  /** True when the realtor has DocuSign connected (server-resolved). */
+  /** True when the seller has DocuSign connected (server-resolved). */
   connected: boolean;
-  /** Fixed document to send (deal doc row). Omit to let the realtor pick. */
+  /** Fixed document to send (deal doc row). Omit to let the seller pick. */
   documentId?: string;
   documentLabel?: string;
   /** Documents to choose from (person record). Ignored when documentId set. */

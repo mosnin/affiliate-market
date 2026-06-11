@@ -22,7 +22,7 @@ export default function CombinedFeaturedSection() {
         <div className="relative rounded-none overflow-hidden bg-muted/40 border border-border p-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
             <MapPin className="w-4 h-4" />
-            Chippi Intake Activity
+            Cola Intake Activity
           </div>
           <h3 className="text-xl font-normal text-foreground">
             Visualize where demand is coming from.{' '}
@@ -415,7 +415,7 @@ const ChartTooltipContent = React.forwardRef<
                             'w-0 border-[1.5px] border-dashed bg-transparent': indicator === 'dashed',
                             'my-0.5': nestLabel && indicator === 'dashed'
                           })}
-                          style={{ '--color-bg': indicatorColor, '--color-border': indicatorColor } as React.CSSProperties}
+                          style={{ '--color-bg': indicatorColor, '--color-border': indicatorColor } as React.CSSProducts}
                         />
                       )
                     )}

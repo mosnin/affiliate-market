@@ -7,7 +7,7 @@ import { getSpaceForUser } from '@/lib/space';
 // Returns rich data for expandable chat cards. Auth required — user must own
 // the space. spaceId is validated against the authenticated user's space.
 
-const ALLOWED_TYPES = ['contact', 'deal', 'tour', 'property'] as const;
+const ALLOWED_TYPES = ['contact', 'deal', 'demo', 'product'] as const;
 type CardType = (typeof ALLOWED_TYPES)[number];
 
 function isCardType(v: string): v is CardType {
@@ -50,10 +50,10 @@ export async function GET(
         return handleContact(id, space.id);
       case 'deal':
         return handleDeal(id, space.id);
-      case 'tour':
-        return handleTour(id, space.id);
-      case 'property':
-        return handleProperty(id, space.id);
+      case 'demo':
+        return handleDemo(id, space.id);
+      case 'product':
+        return handleProduct(id, space.id);
     }
   } catch (err) {
     console.error(`[cards/${type}/GET] unexpected error:`, err);
@@ -139,7 +139,7 @@ async function handleDeal(id: string, spaceId: string): Promise<NextResponse> {
   const { data: row, error } = await supabase
     .from('Deal')
     .select(
-      'id, title, stageId, value, commissionRate, propertyId, nextAction, closeDate, priority',
+      'id, title, stageId, value, commissionRate, productId, nextAction, closeDate, priority',
     )
     .eq('id', id)
     .eq('spaceId', spaceId)
@@ -151,9 +151,9 @@ async function handleDeal(id: string, spaceId: string): Promise<NextResponse> {
   }
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Fetch stage name, linked property, contacts, and recent activities in
+  // Fetch stage name, linked product, contacts, and recent activities in
   // parallel to keep latency low.
-  const [stageResult, propertyResult, contactsResult, activityResult] = await Promise.all([
+  const [stageResult, productResult, contactsResult, activityResult] = await Promise.all([
     row.stageId
       ? supabase
           .from('DealStage')
@@ -162,11 +162,11 @@ async function handleDeal(id: string, spaceId: string): Promise<NextResponse> {
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
 
-    row.propertyId
+    row.productId
       ? supabase
-          .from('Property')
+          .from('Product')
           .select('id, address')
-          .eq('id', row.propertyId)
+          .eq('id', row.productId)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
 
@@ -186,8 +186,8 @@ async function handleDeal(id: string, spaceId: string): Promise<NextResponse> {
 
   const stage = stageResult.data ? (stageResult.data as { id: string; name: string }).name : 'Unknown';
 
-  const property = propertyResult.data
-    ? { id: (propertyResult.data as { id: string; address: string }).id, address: (propertyResult.data as { id: string; address: string }).address }
+  const product = productResult.data
+    ? { id: (productResult.data as { id: string; address: string }).id, address: (productResult.data as { id: string; address: string }).address }
     : null;
 
   // Supabase returns the embedded relation as an array or object depending on
@@ -222,7 +222,7 @@ async function handleDeal(id: string, spaceId: string): Promise<NextResponse> {
       stage,
       amount: row.value ?? null,
       commissionEstimate,
-      property,
+      product,
       contacts,
       notes,
       nextStep: row.nextAction ?? null,
@@ -232,21 +232,21 @@ async function handleDeal(id: string, spaceId: string): Promise<NextResponse> {
   });
 }
 
-// ── Tour ─────────────────────────────────────────────────────────────────────
+// ── Demo ─────────────────────────────────────────────────────────────────────
 
-async function handleTour(id: string, spaceId: string): Promise<NextResponse> {
+async function handleDemo(id: string, spaceId: string): Promise<NextResponse> {
   const { data: row, error } = await supabase
-    .from('Tour')
+    .from('Demo')
     .select(
-      'id, startsAt, endsAt, status, notes, contactId, propertyAddress, guestName, guestEmail, guestPhone',
+      'id, startsAt, endsAt, status, notes, contactId, productAddress, guestName, guestEmail, guestPhone',
     )
     .eq('id', id)
     .eq('spaceId', spaceId)
     .maybeSingle();
 
   if (error) {
-    console.error('[cards/tour/GET] query error:', error);
-    return NextResponse.json({ error: 'Failed to fetch tour' }, { status: 500 });
+    console.error('[cards/demo/GET] query error:', error);
+    return NextResponse.json({ error: 'Failed to fetch demo' }, { status: 500 });
   }
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
@@ -269,11 +269,11 @@ async function handleTour(id: string, spaceId: string): Promise<NextResponse> {
     }
   }
 
-  // Tour doesn't have a linked Property row; it stores propertyAddress as a
-  // string. Build a minimal property shape if the address is present.
-  const property: { id: string; address: string; price: number | null } | null =
-    row.propertyAddress
-      ? { id: '', address: row.propertyAddress, price: null }
+  // Demo doesn't have a linked Product row; it stores productAddress as a
+  // string. Build a minimal product shape if the address is present.
+  const product: { id: string; address: string; price: number | null } | null =
+    row.productAddress
+      ? { id: '', address: row.productAddress, price: null }
       : null;
 
   // Duration in minutes
@@ -288,11 +288,11 @@ async function handleTour(id: string, spaceId: string): Promise<NextResponse> {
 
   return NextResponse.json({
     data: {
-      tourId: row.id,
+      demoId: row.id,
       scheduledAt: row.startsAt,
       endsAt: row.endsAt ?? null,
       status: row.status,
-      property,
+      product,
       contact,
       notes: row.notes ?? null,
       duration,
@@ -300,11 +300,11 @@ async function handleTour(id: string, spaceId: string): Promise<NextResponse> {
   });
 }
 
-// ── Property ─────────────────────────────────────────────────────────────────
+// ── Product ─────────────────────────────────────────────────────────────────
 
-async function handleProperty(id: string, spaceId: string): Promise<NextResponse> {
+async function handleProduct(id: string, spaceId: string): Promise<NextResponse> {
   const { data: row, error } = await supabase
-    .from('Property')
+    .from('Product')
     .select(
       'id, address, listPrice, beds, baths, squareFeet, listingStatus, notes, photos, createdAt',
     )
@@ -313,8 +313,8 @@ async function handleProperty(id: string, spaceId: string): Promise<NextResponse
     .maybeSingle();
 
   if (error) {
-    console.error('[cards/property/GET] query error:', error);
-    return NextResponse.json({ error: 'Failed to fetch property' }, { status: 500 });
+    console.error('[cards/product/GET] query error:', error);
+    return NextResponse.json({ error: 'Failed to fetch product' }, { status: 500 });
   }
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
@@ -322,11 +322,11 @@ async function handleProperty(id: string, spaceId: string): Promise<NextResponse
   const { count: dealCount, error: dcError } = await supabase
     .from('Deal')
     .select('id', { count: 'exact', head: true })
-    .eq('propertyId', id)
+    .eq('productId', id)
     .eq('spaceId', spaceId);
 
   if (dcError) {
-    console.error('[cards/property/GET] deal count error:', dcError);
+    console.error('[cards/product/GET] deal count error:', dcError);
   }
 
   return NextResponse.json({
@@ -338,7 +338,7 @@ async function handleProperty(id: string, spaceId: string): Promise<NextResponse
       baths: row.baths ?? null,
       sqft: row.squareFeet ?? null,
       listingStatus: row.listingStatus,
-      daysOnMarket: null, // not stored in the Property table
+      daysOnMarket: null, // not stored in the Product table
       dealCount: dealCount ?? 0,
       description: row.notes ?? null,
       photos: Array.isArray(row.photos) ? (row.photos as string[]) : [],

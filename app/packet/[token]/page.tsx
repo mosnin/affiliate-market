@@ -1,9 +1,9 @@
 import { notFound } from 'next/navigation';
 import { Building2, Calendar, FileText, ExternalLink, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import type { Property, PropertyPacket } from '@/lib/types';
+import type { Product, ProductPacket } from '@/lib/types';
 import { formatCurrency } from '@/lib/formatting';
-import { formatPropertyAddress, formatPropertyFacts } from '@/lib/properties';
+import { formatProductAddress, formatProductFacts } from '@/lib/products';
 import { PacketDocumentLink } from '@/components/packet/packet-document-link';
 
 // This route is intentionally public (no Clerk gate). Access is gated by the
@@ -16,12 +16,12 @@ export default async function PacketPage({ params }: Props) {
   const { token } = await params;
 
   const { data: packetRow } = await supabase
-    .from('PropertyPacket')
+    .from('ProductPacket')
     .select('*')
     .eq('token', token)
     .maybeSingle();
   if (!packetRow) notFound();
-  const packet = packetRow as PropertyPacket;
+  const packet = packetRow as ProductPacket;
 
   const now = new Date();
   const revoked = !!packet.revokedAt;
@@ -41,18 +41,18 @@ export default async function PacketPage({ params }: Props) {
     );
   }
 
-  const { data: propertyRow } = await supabase
-    .from('Property')
+  const { data: productRow } = await supabase
+    .from('Product')
     .select('*')
-    .eq('id', packet.propertyId)
+    .eq('id', packet.productId)
     .maybeSingle();
-  if (!propertyRow) notFound();
-  const property = propertyRow as Property;
+  if (!productRow) notFound();
+  const product = productRow as Product;
 
   // Best-effort view tracking. Non-blocking; a failure shouldn't take the
   // page down.
   void supabase
-    .from('PropertyPacket')
+    .from('ProductPacket')
     .update({ viewCount: packet.viewCount + 1, lastViewedAt: now.toISOString() })
     .eq('id', packet.id);
 
@@ -66,9 +66,9 @@ export default async function PacketPage({ params }: Props) {
     : { data: [] };
   const docs = (docRows ?? []) as Array<{ id: string; label: string; kind: string; sizeBytes: number | null; contentType: string | null; createdAt: string }>;
 
-  const addr = formatPropertyAddress(property);
-  const facts = formatPropertyFacts(property);
-  const cover = property.photos[0];
+  const addr = formatProductAddress(product);
+  const facts = formatProductFacts(product);
+  const cover = product.photos[0];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -88,9 +88,9 @@ export default async function PacketPage({ params }: Props) {
             </div>
           )}
 
-          {property.photos.length > 1 && (
+          {product.photos.length > 1 && (
             <div className="grid grid-cols-4 gap-1 p-1">
-              {property.photos.slice(1, 5).map((src, i) => (
+              {product.photos.slice(1, 5).map((src, i) => (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img key={i} src={src} alt="" className="w-full aspect-square object-cover rounded" />
               ))}
@@ -102,25 +102,25 @@ export default async function PacketPage({ params }: Props) {
               <h2 className="text-lg font-semibold">{addr}</h2>
               {facts && <p className="text-sm text-muted-foreground mt-0.5">{facts}</p>}
             </div>
-            {property.listPrice != null && (
-              <p className="text-2xl font-semibold tabular-nums">{formatCurrency(property.listPrice)}</p>
+            {product.listPrice != null && (
+              <p className="text-2xl font-semibold tabular-nums">{formatCurrency(product.listPrice)}</p>
             )}
 
             <dl className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm pt-3 border-t border-border">
-              {property.propertyType && <Row label="Type" value={property.propertyType.replace('_', ' ')} />}
-              {property.yearBuilt != null && <Row label="Year built" value={String(property.yearBuilt)} />}
-              {property.lotSizeSqft != null && <Row label="Lot" value={`${property.lotSizeSqft.toLocaleString()} sqft`} />}
-              {property.mlsNumber && <Row label="MLS #" value={property.mlsNumber} />}
+              {product.productType && <Row label="Type" value={product.productType.replace('_', ' ')} />}
+              {product.yearBuilt != null && <Row label="Year built" value={String(product.yearBuilt)} />}
+              {product.lotSizeSqft != null && <Row label="Lot" value={`${product.lotSizeSqft.toLocaleString()} sqft`} />}
+              {product.mlsNumber && <Row label="MLS #" value={product.mlsNumber} />}
             </dl>
 
-            {property.notes && (
+            {product.notes && (
               <div className="pt-3 border-t border-border">
-                <p className="text-sm text-foreground whitespace-pre-wrap">{property.notes}</p>
+                <p className="text-sm text-foreground whitespace-pre-wrap">{product.notes}</p>
               </div>
             )}
 
-            {property.listingUrl && (
-              <a href={property.listingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline">
+            {product.listingUrl && (
+              <a href={product.listingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline">
                 View original listing <ExternalLink size={12} />
               </a>
             )}

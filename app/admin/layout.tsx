@@ -1,7 +1,7 @@
 import { requireAdmin } from '@/lib/admin';
 import { AdminShell } from './components/admin-shell';
 
-export const metadata = { title: 'Admin — Chippi' };
+export const metadata = { title: 'Admin — Cola' };
 
 export default async function AdminLayout({
   children,

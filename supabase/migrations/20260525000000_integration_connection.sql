@@ -1,15 +1,15 @@
--- Per-realtor integrations to third-party apps via Composio.
+-- Per-seller integrations to third-party apps via Composio.
 --
--- Each row represents one connected account (e.g., the realtor's Gmail
--- linked to their Chippi space). Composio holds the OAuth tokens — we
+-- Each row represents one connected account (e.g., the seller's Gmail
+-- linked to their Cola space). Composio holds the OAuth tokens — we
 -- store the pointer (composioConnectionId) so we can fetch the live
 -- token and refresh on demand.
 --
--- One realtor + one toolkit = at most one ACTIVE row. A realtor can
+-- One seller + one toolkit = at most one ACTIVE row. A seller can
 -- disconnect and reconnect; the prior row goes to status 'revoked'.
 --
 -- Why a separate table from AgentDraft / AgentPausedRun: integrations
--- are configuration of the realtor's environment, not a transient
+-- are configuration of the seller's environment, not a transient
 -- artifact of a chat turn. Different lifecycle, different shape.
 
 CREATE TABLE IF NOT EXISTS "IntegrationConnection" (

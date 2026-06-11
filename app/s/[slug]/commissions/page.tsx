@@ -6,5 +6,5 @@ export default async function CommissionsRedirect({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  redirect(`/s/${slug}/properties/commissions`);
+  redirect(`/s/${slug}/products/commissions`);
 }

@@ -130,7 +130,7 @@ function SortableKanbanColumn({
     (overId === stage.id || deals.some((d) => d.id === overId));
   const isDropTarget = isDealDrag && overMatchesStage;
 
-  const style: React.CSSProperties = {
+  const style: React.CSSProducts = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,

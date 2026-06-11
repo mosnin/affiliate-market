@@ -18,7 +18,7 @@
  *   - Top-K AgentMemory rows by cosine similarity to the user message
  *   - Any Contact whose `name` appears verbatim in the message (regex pass)
  *   - Any Deal whose `title` appears verbatim in the message (regex pass)
- *   - Any Property whose `address` appears verbatim in the message
+ *   - Any Product whose `address` appears verbatim in the message
  *
  * Skipped entirely when the user message is <10 chars — context for "ok"
  * or "thanks" is wasted tokens. The 10-char floor also dodges the worst
@@ -28,7 +28,7 @@
  * the header `## Workspace context` so it knows what it's reading.
  *
  * Caching: process-local map keyed by (spaceId, sha256(message)). TTL 5 min.
- * If the same realtor re-sends the same query in five minutes (refresh, retry
+ * If the same seller re-sends the same query in five minutes (refresh, retry
  * button, conversation restart) we don't pay the embedding cost again.
  */
 
@@ -66,7 +66,7 @@ export interface RetrieveContextResult {
   memories: ContextMemory[];
   contacts: ContextEntity[];
   deals: ContextEntity[];
-  properties: ContextEntity[];
+  products: ContextEntity[];
 }
 
 interface CacheEntry {
@@ -97,7 +97,7 @@ function vectorLiteral(vec: number[]): string {
  * Cap the result set per table so a generic query doesn't pull the whole
  * book.
  *
- * Trade-off: we accept some over-matching (e.g. "send" matching a property
+ * Trade-off: we accept some over-matching (e.g. "send" matching a product
  * named "Sender's Lane") because the context block is bounded anyway —
  * worst case the noise is trimmed by MAX_CONTEXT_CHARS.
  */
@@ -177,20 +177,20 @@ async function matchDealsByTitle(
   });
 }
 
-async function matchPropertiesByAddress(
+async function matchProductsByAddress(
   spaceId: string,
   tokens: string[],
 ): Promise<ContextEntity[]> {
   if (tokens.length === 0) return [];
   const orSpec = tokens.map((t) => `address.ilike.%${escapeIlike(t)}%`).join(',');
   const { data, error } = await supabase
-    .from('Property')
+    .from('Product')
     .select('id, address, city, "listingStatus", "listPrice"')
     .eq('spaceId', spaceId)
     .or(orSpec)
     .limit(MAX_NAME_MATCHES);
   if (error) {
-    logger.warn('[vector-context] property address match failed', { spaceId }, error);
+    logger.warn('[vector-context] product address match failed', { spaceId }, error);
     return [];
   }
   type Row = {
@@ -205,7 +205,7 @@ async function matchPropertiesByAddress(
     if (r.listingStatus) parts.push(r.listingStatus);
     if (r.listPrice != null) parts.push(`$${Math.round(r.listPrice).toLocaleString()}`);
     if (r.city) parts.push(r.city);
-    return { id: r.id, label: r.address, hint: parts.join(' · ') || 'property' };
+    return { id: r.id, label: r.address, hint: parts.join(' · ') || 'product' };
   });
 }
 
@@ -263,9 +263,9 @@ function formatBlock(result: Omit<RetrieveContextResult, 'block'>): string {
     lines.push('### Mentioned deals');
     for (const d of result.deals) lines.push(`- ${d.label} (${d.hint})`);
   }
-  if (result.properties.length > 0) {
-    lines.push('### Mentioned properties');
-    for (const p of result.properties) lines.push(`- ${p.label} (${p.hint})`);
+  if (result.products.length > 0) {
+    lines.push('### Mentioned products');
+    for (const p of result.products) lines.push(`- ${p.label} (${p.hint})`);
   }
   if (result.memories.length > 0) {
     lines.push('### Relevant prior notes');
@@ -295,7 +295,7 @@ export async function retrieveContext(
     memories: [],
     contacts: [],
     deals: [],
-    properties: [],
+    products: [],
   };
 
   const message = (input.userMessage ?? '').trim();
@@ -312,7 +312,7 @@ export async function retrieveContext(
 
   // Fan out — vector search + entity matches in parallel. Any single
   // failure is logged and swallowed; the others still contribute.
-  const [memories, contacts, deals, properties] = await Promise.all([
+  const [memories, contacts, deals, products] = await Promise.all([
     vectorMemorySearch(input.spaceId, message, k).catch((err) => {
       logger.warn('[vector-context] vector search threw', { spaceId: input.spaceId }, err);
       return [] as ContextMemory[];
@@ -325,8 +325,8 @@ export async function retrieveContext(
       logger.warn('[vector-context] deal match threw', { spaceId: input.spaceId }, err);
       return [] as ContextEntity[];
     }),
-    matchPropertiesByAddress(input.spaceId, tokens).catch((err) => {
-      logger.warn('[vector-context] property match threw', { spaceId: input.spaceId }, err);
+    matchProductsByAddress(input.spaceId, tokens).catch((err) => {
+      logger.warn('[vector-context] product match threw', { spaceId: input.spaceId }, err);
       return [] as ContextEntity[];
     }),
   ]);
@@ -335,7 +335,7 @@ export async function retrieveContext(
     memories,
     contacts,
     deals,
-    properties,
+    products,
     block: '',
   };
   result.block = formatBlock(result);

@@ -1,8 +1,8 @@
 # 02 Feature Spec
 
 ## Feature: Public Intake Form
-Purpose: Allow realtors to share a single link that captures structured renter applications.
-User action: Realtor shares their `/apply/[slug]` link. Renter fills out a 9-step application (property selection, applicant basics, current living, household, income, rental history, screening, notes, consents).
+Purpose: Allow sellers to share a single link that captures structured renter applications.
+User action: Seller shares their `/apply/[slug]` link. Renter fills out a 9-step application (product selection, applicant basics, current living, household, income, rental history, screening, notes, consents).
 System output: Application is saved as a Contact record with type=APPLICATION, applicationData JSON, and tags=['application-link', 'new-lead']. AI lead scoring is triggered asynchronously. Contact appears in leads view.
 Required in v1: Yes
 Dependencies: Space must exist with intake page settings configured.
@@ -14,7 +14,7 @@ Key states:
 
 ## Feature: AI Lead Scoring
 Purpose: Automatically score and categorize incoming leads with explainable context.
-User action: None — scoring is triggered automatically when an application is submitted. Realtor views the score in leads view.
+User action: None — scoring is triggered automatically when an application is submitted. Seller views the score in leads view.
 System output: OpenAI gpt-4o-mini analyzes application data and produces: numeric score (0-100), priority tier (hot/warm/cold/unqualified), qualification status, readiness status, confidence score, plain-language summary, explanation tags, strengths, weaknesses, risk flags, missing information, and recommended next action. Stored as scoreDetails JSON on Contact.
 Required in v1: Yes
 Dependencies: OpenAI API key configured.
@@ -26,7 +26,7 @@ Key states:
 
 ## Feature: Leads View
 Purpose: Show all intake-sourced leads with AI scores and triage tools.
-User action: Realtor views leads sorted by recency. Can see score badges, new-lead indicators, phone, budget, preferences. Clicking a lead navigates to contact detail.
+User action: Seller views leads sorted by recency. Can see score badges, new-lead indicators, phone, budget, preferences. Clicking a lead navigates to contact detail.
 System output: Filtered list of contacts with tags containing 'application-link'. New leads have 'new-lead' tag shown as badge.
 Required in v1: Yes
 Dependencies: Contacts table, lead scoring
@@ -39,7 +39,7 @@ Key states:
 ## Feature: Contact CRM
 Purpose: Full contact management with lifecycle types, activity tracking, and follow-up scheduling.
 User action: Create/edit/delete contacts. Add activity notes (note, call, email, meeting, follow_up). Set follow-up dates. View contact detail with all activities.
-System output: Contact CRUD with activity log. Contacts have lifecycle types (QUALIFICATION, TOUR, APPLICATION). Follow-up dates surface in dashboard widget.
+System output: Contact CRUD with activity log. Contacts have lifecycle types (QUALIFICATION, DEMO, APPLICATION). Follow-up dates surface in dashboard widget.
 Required in v1: Yes
 Dependencies: Space must exist
 Key states:
@@ -60,21 +60,21 @@ Key states:
 - Success: Kanban board with draggable cards, stage headers with counts and values
 - Error: Reorder conflicts handled gracefully
 
-## Feature: Tour Scheduling
-Purpose: Let realtors manage property tours with public booking pages and calendar management.
-User action: Realtor configures tour settings (duration, hours, days, buffer). Prospects book via `/book/[slug]`. Realtor views/manages tours in tours view. Can create tours manually.
-System output: Tours created with guest info, property address, time slot. Property profiles for different locations. Availability overrides and blocked dates. Waitlist for full slots. Tour confirmation/management emails via Resend. Optional Google Calendar sync.
+## Feature: Demo Scheduling
+Purpose: Let sellers manage product demos with public booking pages and calendar management.
+User action: Seller configures demo settings (duration, hours, days, buffer). Prospects book via `/book/[slug]`. Seller views/manages demos in demos view. Can create demos manually.
+System output: Demos created with guest info, product address, time slot. Product profiles for different locations. Availability overrides and blocked dates. Waitlist for full slots. Demo confirmation/management emails via Resend. Optional Google Calendar sync.
 Required in v1: Yes
-Dependencies: Space settings for tour config, optional Google Calendar token
+Dependencies: Space settings for demo config, optional Google Calendar token
 Key states:
 - Loading: Skeleton calendar/list
-- Empty: "No upcoming tours" with link to tour settings
-- Success: Tour list with status badges (scheduled, confirmed, completed, cancelled, no_show)
+- Empty: "No upcoming demos" with link to demo settings
+- Success: Demo list with status badges (scheduled, confirmed, completed, cancelled, no_show)
 - Error: Double-booking prevented, time slot conflicts shown
 
 ## Feature: AI Assistant (Chip)
-Purpose: Conversational AI assistant with RAG context over the realtor's contacts and deals.
-User action: Realtor chats with Chip at `/s/[slug]/ai`. Can ask about leads, get follow-up suggestions, analyze pipeline.
+Purpose: Conversational AI assistant with RAG context over the seller's contacts and deals.
+User action: Seller chats with Chip at `/s/[slug]/ai`. Can ask about leads, get follow-up suggestions, analyze pipeline.
 System output: AI responses using conversation history + RAG context from DocumentEmbedding table (vector similarity search). Conversations persisted with titles.
 Required in v1: Yes
 Dependencies: OpenAI API key, DocumentEmbedding records
@@ -86,7 +86,7 @@ Key states:
 
 ## Feature: Analytics Dashboard
 Purpose: Show key business metrics — lead volume, conversion rates, pipeline health.
-User action: Realtor views analytics at `/s/[slug]/analytics`. Charts and metrics auto-populated from CRM data.
+User action: Seller views analytics at `/s/[slug]/analytics`. Charts and metrics auto-populated from CRM data.
 System output: Visualizations of lead flow, deal pipeline value, conversion metrics over time.
 Required in v1: Yes
 Dependencies: Contact and Deal data
@@ -96,33 +96,33 @@ Key states:
 - Success: Charts with Recharts
 - Error: Data fetch failure with retry
 
-## Feature: Broker Portal
-Purpose: Allow brokerage owners/managers to oversee their realtors and manage the brokerage.
-User action: Broker logs in and accesses `/broker`. Views realtors, their spaces, and performance. Manages members, sends invitations, configures brokerage settings.
-System output: Brokerage dashboard with member list, invitation management, realtor detail views. Join codes for self-service joining. Broker notifications.
+## Feature: Manager Portal
+Purpose: Allow company owners/managers to oversee their sellers and manage the company.
+User action: Manager logs in and accesses `/manager`. Views sellers, their spaces, and performance. Manages members, sends invitations, configures company settings.
+System output: Company dashboard with member list, invitation management, seller detail views. Join codes for self-service joining. Manager notifications.
 Required in v1: Yes
-Dependencies: Brokerage, BrokerageMembership records
+Dependencies: Company, CompanyMembership records
 Key states:
 - Loading: Skeleton dashboard
-- Empty: "No realtors yet — send invitations"
+- Empty: "No sellers yet — send invitations"
 - Success: Member list with roles, invitation list with statuses
-- Error: Permission denied for non-brokers
+- Error: Permission denied for non-managers
 
 ## Feature: Admin Panel
-Purpose: Platform-level administration for managing users and brokerages.
-User action: Admin accesses `/admin`. Views all users, brokerages, invitations. Can view individual user and brokerage details.
-System output: User list with account types, onboarding status. Brokerage list with owners, status, member counts. Invitation management.
+Purpose: Platform-level administration for managing users and companies.
+User action: Admin accesses `/admin`. Views all users, companies, invitations. Can view individual user and company details.
+System output: User list with account types, onboarding status. Company list with owners, status, member counts. Invitation management.
 Required in v1: Yes
 Dependencies: Platform admin role
 Key states:
 - Loading: Skeleton tables
 - Empty: Not applicable (there will always be at least one user)
-- Success: Paginated user/brokerage tables
+- Success: Paginated user/company tables
 - Error: Permission denied redirects to /dashboard
 
 ## Feature: Workspace Settings & Billing
-Purpose: Configure workspace, profile, intake page, tour settings, AI personalization, and billing.
-User action: Realtor configures settings at `/s/[slug]/settings` and `/s/[slug]/configure`. Profile at `/s/[slug]/profile`. Billing at `/s/[slug]/billing`.
+Purpose: Configure workspace, profile, intake page, demo settings, AI personalization, and billing.
+User action: Seller configures settings at `/s/[slug]/settings` and `/s/[slug]/configure`. Profile at `/s/[slug]/profile`. Billing at `/s/[slug]/billing`.
 System output: Settings saved to SpaceSetting record. Profile updates to User record. Billing page shows subscription status.
 Required in v1: Yes
 Dependencies: Space and SpaceSetting records

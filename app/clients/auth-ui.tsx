@@ -132,7 +132,7 @@ export function SignupForm() {
       return;
     }
     try {
-      sessionStorage.setItem('chippi_client_email', email.trim().toLowerCase());
+      sessionStorage.setItem('cola_client_email', email.trim().toLowerCase());
     } catch {}
     router.push(`/clients/verify?email=${encodeURIComponent(email.trim().toLowerCase())}`);
   }

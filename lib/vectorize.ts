@@ -12,7 +12,7 @@ type VectorContact = {
   address: string | null;
   notes: string | null;
   preferences?: string | null;
-  properties?: string[];
+  products?: string[];
   budget?: number | null;
   type: string;
   tags: string[];
@@ -51,7 +51,7 @@ function buildContactEmbeddingText(contact: VectorContact): string {
     contact.address,
     contact.notes,
     contact.preferences,
-    (contact.properties ?? []).join(' '),
+    (contact.products ?? []).join(' '),
     contact.budget != null ? `$${contact.budget}` : null,
     contact.type,
     contact.tags.join(' '),

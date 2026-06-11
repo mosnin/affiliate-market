@@ -1,7 +1,7 @@
 """read_attachment — pull (and lazily extract) text from a chat attachment.
 
-Realtors drop files into the prompt box. /api/ai/attachments persists each
-upload as an Attachment row. /api/ai/task hydrates the rows the realtor
+Sellers drop files into the prompt box. /api/ai/attachments persists each
+upload as an Attachment row. /api/ai/task hydrates the rows the seller
 referenced in this turn and forwards them to the chat_turn endpoint, which
 appends a `[Attached <filename> — id <id>; call read_attachment ...]`
 marker to the user message so the model knows to call this tool.

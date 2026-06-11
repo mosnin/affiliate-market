@@ -16,7 +16,7 @@ export default async function LeadsPage({
   params: Promise<{ slug: string }>;
 }) {
   const { userId } = await auth();
-  if (!userId) redirect('/login/realtor');
+  if (!userId) redirect('/login/seller');
 
   const { slug } = await params;
   const space = await getSpaceFromSlug(slug);
@@ -32,7 +32,7 @@ export default async function LeadsPage({
       .from('Contact')
       .select('*')
       .eq('spaceId', space.id)
-      .is('brokerageId', null) // Exclude brokerage leads
+      .is('companyId', null) // Exclude company leads
       .contains('tags', ['application-link'])
       .order('createdAt', { ascending: false })
       .limit(500);

@@ -1,21 +1,21 @@
 /**
- * Threat-model test suite for the realtor / broker conversation isolation
+ * Threat-model test suite for the seller / manager conversation isolation
  * boundary.
  *
- * The threat: broker-Chippi and brokerage team chats share the
- * `Conversation` table with realtor conversations, keyed by `spaceId` and
- * distinguished only by a reserved title prefix. A broker_owner also owns
- * their personal realtor space, so space ownership ALONE does not isolate the
- * two surfaces. Without an explicit reserved-title guard, a realtor (or a
- * broker hitting the realtor endpoints) could read or mutate broker-side
- * conversations through the realtor routes.
+ * The threat: manager-Cola and company team chats share the
+ * `Conversation` table with seller conversations, keyed by `spaceId` and
+ * distinguished only by a reserved title prefix. A manager_owner also owns
+ * their personal seller space, so space ownership ALONE does not isolate the
+ * two surfaces. Without an explicit reserved-title guard, a seller (or a
+ * manager hitting the seller endpoints) could read or mutate manager-side
+ * conversations through the seller routes.
  *
  * Every test here CROSSES the boundary on purpose and asserts denial:
- *   - GET /api/ai/messages on a [BROKER_CHIPPI] conv  -> 404, no message rows
- *   - GET /api/ai/messages on a [BROKERAGE_CHAT] conv -> 404, no message rows
- *   - GET /api/ai/conversations (realtor list) excludes BOTH reserved prefixes
- *   - PATCH /api/ai/conversations/[id] on a [BROKER_CHIPPI] conv -> 404
- *   - DELETE /api/ai/conversations/[id] on a [BROKER_CHIPPI] conv -> 404
+ *   - GET /api/ai/messages on a [MANAGER_COLA] conv  -> 404, no message rows
+ *   - GET /api/ai/messages on a [COMPANY_CHAT] conv -> 404, no message rows
+ *   - GET /api/ai/conversations (seller list) excludes BOTH reserved prefixes
+ *   - PATCH /api/ai/conversations/[id] on a [MANAGER_COLA] conv -> 404
+ *   - DELETE /api/ai/conversations/[id] on a [MANAGER_COLA] conv -> 404
  *
  * These must FAIL if the guards are reverted and PASS on the current code.
  */
@@ -34,7 +34,7 @@ vi.mock('@/lib/rate-limit', () => ({
 }));
 
 vi.mock('@/lib/space', () => ({
-  getSpaceFromSlug: vi.fn(async () => ({ id: 's_realtor_1', slug: 'jane', ownerId: 'u_1' })),
+  getSpaceFromSlug: vi.fn(async () => ({ id: 's_seller_1', slug: 'jane', ownerId: 'u_1' })),
 }));
 
 // ── Supabase mock ───────────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ vi.mock('@/lib/space', () => ({
 // that successive queries against that table resolve to (either via
 // `.maybeSingle()` / `.single()` or by awaiting the chain directly). Tests
 // seed the queue per scenario. We also record every `.not('title','like', x)`
-// call so we can assert the realtor list applies BOTH reserved-prefix filters.
+// call so we can assert the seller list applies BOTH reserved-prefix filters.
 
 type TableResult = { data?: unknown; error?: unknown };
 
@@ -98,7 +98,7 @@ beforeEach(() => {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-// The routes read `req.nextUrl.searchParams`, a NextRequest property a plain
+// The routes read `req.nextUrl.searchParams`, a NextRequest product a plain
 // Request does not have. We hand them a minimal stand-in with `nextUrl` and a
 // `json()` body reader, which is all these handlers touch.
 function nextRequest(url: string, body?: Record<string, unknown>) {
@@ -124,31 +124,31 @@ function idRequest(body?: Record<string, unknown>) {
   return nextRequest('http://localhost/api/ai/conversations/c_1', body) as unknown as Parameters<typeof patchConversation>[0];
 }
 
-const idParams = { params: Promise.resolve({ id: 'c_broker_1' }) };
+const idParams = { params: Promise.resolve({ id: 'c_manager_1' }) };
 
 // ── GET /api/ai/messages ────────────────────────────────────────────────────
 
-describe('GET /api/ai/messages — broker/team conversations are denied', () => {
-  it('404s a [BROKER_CHIPPI] conversation and returns NO message rows', async () => {
-    // The caller legitimately owns the space (broker_owner owns their realtor
+describe('GET /api/ai/messages — manager/team conversations are denied', () => {
+  it('404s a [MANAGER_COLA] conversation and returns NO message rows', async () => {
+    // The caller legitimately owns the space (manager_owner owns their seller
     // space). Ownership passes; the reserved-title guard is what denies.
-    seed('Conversation', { data: { id: 'c_broker_1', spaceId: 's_realtor_1', title: '[BROKER_CHIPPI] private notes' } });
+    seed('Conversation', { data: { id: 'c_manager_1', spaceId: 's_seller_1', title: '[MANAGER_COLA] private notes' } });
     seed('User', { data: { id: 'u_1' } });
-    seed('Space', { data: { id: 's_realtor_1', ownerId: 'u_1' } });
+    seed('Space', { data: { id: 's_seller_1', ownerId: 'u_1' } });
     // If the guard were missing, this is the row set that would leak.
-    seed('Message', { data: [{ id: 'm_1', role: 'assistant', content: 'broker secret', blocks: null, createdAt: '2026-01-01' }] });
+    seed('Message', { data: [{ id: 'm_1', role: 'assistant', content: 'manager secret', blocks: null, createdAt: '2026-01-01' }] });
 
-    const res = await getMessages(messagesRequest('c_broker_1'));
+    const res = await getMessages(messagesRequest('c_manager_1'));
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(Array.isArray(body)).toBe(false);
-    expect(JSON.stringify(body)).not.toContain('broker secret');
+    expect(JSON.stringify(body)).not.toContain('manager secret');
   });
 
-  it('404s a [BROKERAGE_CHAT] conversation and returns NO message rows', async () => {
-    seed('Conversation', { data: { id: 'c_team_1', spaceId: 's_realtor_1', title: '[BROKERAGE_CHAT] team room' } });
+  it('404s a [COMPANY_CHAT] conversation and returns NO message rows', async () => {
+    seed('Conversation', { data: { id: 'c_team_1', spaceId: 's_seller_1', title: '[COMPANY_CHAT] team room' } });
     seed('User', { data: { id: 'u_1' } });
-    seed('Space', { data: { id: 's_realtor_1', ownerId: 'u_1' } });
+    seed('Space', { data: { id: 's_seller_1', ownerId: 'u_1' } });
     seed('Message', { data: [{ id: 'm_1', role: 'assistant', content: 'team secret', blocks: null, createdAt: '2026-01-01' }] });
 
     const res = await getMessages(messagesRequest('c_team_1'));
@@ -158,13 +158,13 @@ describe('GET /api/ai/messages — broker/team conversations are denied', () => 
     expect(JSON.stringify(body)).not.toContain('team secret');
   });
 
-  it('serves a plain realtor conversation (control: the guard is not over-broad)', async () => {
-    seed('Conversation', { data: { id: 'c_realtor_1', spaceId: 's_realtor_1', title: 'Follow up with the Garcias' } });
+  it('serves a plain seller conversation (control: the guard is not over-broad)', async () => {
+    seed('Conversation', { data: { id: 'c_seller_1', spaceId: 's_seller_1', title: 'Follow up with the Garcias' } });
     seed('User', { data: { id: 'u_1' } });
-    seed('Space', { data: { id: 's_realtor_1', ownerId: 'u_1' } });
+    seed('Space', { data: { id: 's_seller_1', ownerId: 'u_1' } });
     seed('Message', { data: [{ id: 'm_1', role: 'user', content: 'hi', blocks: null, createdAt: '2026-01-01' }] });
 
-    const res = await getMessages(messagesRequest('c_realtor_1'));
+    const res = await getMessages(messagesRequest('c_seller_1'));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body)).toBe(true);
@@ -172,7 +172,7 @@ describe('GET /api/ai/messages — broker/team conversations are denied', () => 
   });
 });
 
-// ── GET /api/ai/conversations (realtor list) ────────────────────────────────
+// ── GET /api/ai/conversations (seller list) ────────────────────────────────
 
 describe('GET /api/ai/conversations — list excludes BOTH reserved prefixes', () => {
   it('applies a .not(title,like) filter for each reserved prefix', async () => {
@@ -186,35 +186,35 @@ describe('GET /api/ai/conversations — list excludes BOTH reserved prefixes', (
     const titleLikeValues = notFilterCalls
       .filter((c) => c.table === 'Conversation' && c.column === 'title' && c.op === 'like')
       .map((c) => c.value);
-    expect(titleLikeValues).toContain('[BROKER_CHIPPI]%');
-    expect(titleLikeValues).toContain('[BROKERAGE_CHAT]%');
+    expect(titleLikeValues).toContain('[MANAGER_COLA]%');
+    expect(titleLikeValues).toContain('[COMPANY_CHAT]%');
   });
 
-  it('does not return a seeded broker row in the realtor list', async () => {
+  it('does not return a seeded manager row in the seller list', async () => {
     // The mock list query just echoes whatever we queue; if the route ever
     // stopped filtering at the DB layer, a defensive belt would still be the
     // .not filters asserted above. Here we confirm the route surfaces exactly
     // what the (filtered) query returns and nothing extra.
     seed('User', { data: { id: 'u_1' } });
-    seed('Conversation', { data: [{ id: 'c_realtor_1', spaceId: 's_realtor_1', title: 'Garcias' }] });
+    seed('Conversation', { data: [{ id: 'c_seller_1', spaceId: 's_seller_1', title: 'Garcias' }] });
     seed('Message', { data: [] }); // preview lookup
 
     const res = await getConversations(conversationsRequest());
     expect(res.status).toBe(200);
     const body = await res.json();
     const titles = (body as { title: string }[]).map((c) => c.title);
-    expect(titles).not.toContain('[BROKER_CHIPPI] private notes');
-    expect(titles).not.toContain('[BROKERAGE_CHAT] team room');
+    expect(titles).not.toContain('[MANAGER_COLA] private notes');
+    expect(titles).not.toContain('[COMPANY_CHAT] team room');
   });
 });
 
 // ── PATCH / DELETE /api/ai/conversations/[id] ───────────────────────────────
 
-describe('PATCH /api/ai/conversations/[id] — broker conversation denied', () => {
-  it('404s renaming a [BROKER_CHIPPI] conversation even when ownership matches', async () => {
+describe('PATCH /api/ai/conversations/[id] — manager conversation denied', () => {
+  it('404s renaming a [MANAGER_COLA] conversation even when ownership matches', async () => {
     // Embedded Space(ownerId) on the conversation row; owner lookup then
     // succeeds. The reserved-title guard is what denies the rename.
-    seed('Conversation', { data: { id: 'c_broker_1', spaceId: 's_realtor_1', title: '[BROKER_CHIPPI] private', Space: { ownerId: 'u_1' } } });
+    seed('Conversation', { data: { id: 'c_manager_1', spaceId: 's_seller_1', title: '[MANAGER_COLA] private', Space: { ownerId: 'u_1' } } });
     seed('User', { data: { id: 'u_1' } });
 
     const res = await patchConversation(idRequest({ title: 'hijacked' }), idParams);
@@ -222,17 +222,17 @@ describe('PATCH /api/ai/conversations/[id] — broker conversation denied', () =
   });
 });
 
-describe('DELETE /api/ai/conversations/[id] — broker conversation denied', () => {
-  it('404s deleting a [BROKER_CHIPPI] conversation even when ownership matches', async () => {
-    seed('Conversation', { data: { id: 'c_broker_1', spaceId: 's_realtor_1', title: '[BROKER_CHIPPI] private', Space: { ownerId: 'u_1' } } });
+describe('DELETE /api/ai/conversations/[id] — manager conversation denied', () => {
+  it('404s deleting a [MANAGER_COLA] conversation even when ownership matches', async () => {
+    seed('Conversation', { data: { id: 'c_manager_1', spaceId: 's_seller_1', title: '[MANAGER_COLA] private', Space: { ownerId: 'u_1' } } });
     seed('User', { data: { id: 'u_1' } });
 
     const res = await deleteConversation(idRequest(), idParams);
     expect(res.status).toBe(404);
   });
 
-  it('404s deleting a [BROKERAGE_CHAT] conversation even when ownership matches', async () => {
-    seed('Conversation', { data: { id: 'c_team_1', spaceId: 's_realtor_1', title: '[BROKERAGE_CHAT] team', Space: { ownerId: 'u_1' } } });
+  it('404s deleting a [COMPANY_CHAT] conversation even when ownership matches', async () => {
+    seed('Conversation', { data: { id: 'c_team_1', spaceId: 's_seller_1', title: '[COMPANY_CHAT] team', Space: { ownerId: 'u_1' } } });
     seed('User', { data: { id: 'u_1' } });
 
     const res = await deleteConversation(idRequest(), idParams);

@@ -1,16 +1,16 @@
 'use client';
 
 /**
- * RoutinesManager — the realtor's standing instructions for Chippi.
+ * RoutinesManager — the seller's standing instructions for Cola.
  *
  * A routine is a sentence and a time. This screen reads and writes them
  * through /api/routines; the hourly cron at /api/cron/routines is what
  * actually fires the autonomous run. Every run drafts — nothing is sent
- * without the realtor's approval.
+ * without the seller's approval.
  *
  * Times are stored as a UTC hour. The composer and the schedule labels
- * render that hour in the realtor's own browser timezone, so the cron
- * stays timezone-agnostic and the realtor never thinks about UTC.
+ * render that hour in the seller's own browser timezone, so the cron
+ * stays timezone-agnostic and the seller never thinks about UTC.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -407,7 +407,7 @@ function RoutineRow({
 
   if (editing) {
     // Editing flips this row back into a composer card — the same input
-    // chrome the realtor saw when they wrote it. The list rhythm picks
+    // chrome the seller saw when they wrote it. The list rhythm picks
     // up again above and below.
     return (
       <li className="py-3 first:pt-0">
@@ -593,7 +593,7 @@ function RoutineComposer({
   function submit() {
     const text = instruction.trim();
     if (text.length < MIN_INSTRUCTION) {
-      setError('Write a full sentence — what should Chippi do?');
+      setError('Write a full sentence — what should Cola do?');
       return;
     }
     if (cadence === 'custom' && daysOfWeek.length === 0) {
@@ -617,7 +617,7 @@ function RoutineComposer({
           htmlFor="routine-instruction"
           className="text-[12.5px] font-medium text-foreground"
         >
-          Chippi will…
+          Cola will…
         </Label>
         <Textarea
           id="routine-instruction"

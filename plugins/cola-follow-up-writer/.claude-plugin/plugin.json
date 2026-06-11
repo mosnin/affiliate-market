@@ -1,0 +1,8 @@
+{
+  "name": "cola-follow-up-writer",
+  "description": "Draft personalized follow-up messages using your Cola contact data. Email templates, text messages, and re-engagement campaigns.",
+  "version": "1.0.0",
+  "author": { "name": "Cola", "url": "https://usecola.com" },
+  "homepage": "https://usecola.com",
+  "keywords": ["crm", "follow-up", "email", "real-estate", "cola"]
+}

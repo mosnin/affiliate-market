@@ -244,7 +244,7 @@ Hero CTA buttons use `lg` size. Section CTAs use `md`. Inline CTAs use `sm`.
 
 ### Disabled State (all variants)
 
-| Property | Value |
+| Product | Value |
 |----------|-------|
 | Opacity | 0.5 |
 | Cursor | `not-allowed` |
@@ -253,7 +253,7 @@ Hero CTA buttons use `lg` size. Section CTAs use `md`. Inline CTAs use `sm`.
 
 ### Focus State (all variants)
 
-| Property | Value |
+| Product | Value |
 |----------|-------|
 | Ring | 2px solid `primary-500` |
 | Ring offset | 2px (ensures visibility on any background) |
@@ -296,7 +296,7 @@ Shadows:   shadow-subtle → shadow-sm
            shadow-overlay → shadow-2xl
 ```
 
-Use CSS custom properties for colors (enables runtime light/dark switching):
+Use CSS custom products for colors (enables runtime light/dark switching):
 ```css
 :root { --color-bg-page: #FFFFFF; --color-text-primary: #111827; ... }
 .dark { --color-bg-page: #0F1117; --color-text-primary: #F3F4F6; ... }
@@ -343,7 +343,7 @@ They share:
 
 ## Implementation Notes
 
-Map these tokens to Tailwind CSS theme extensions in `tailwind.config.ts`. Use CSS custom properties for runtime theme switching (light/dark mode). The `prefers-color-scheme` media query handles automatic theme detection; a manual toggle overrides it.
+Map these tokens to Tailwind CSS theme extensions in `tailwind.config.ts`. Use CSS custom products for runtime theme switching (light/dark mode). The `prefers-color-scheme` media query handles automatic theme detection; a manual toggle overrides it.
 
 ## Final Principle
 

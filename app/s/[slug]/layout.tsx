@@ -8,14 +8,14 @@ import { MobileNav } from '@/components/dashboard/mobile-nav';
 import { Header } from '@/components/dashboard/header';
 import { supabase } from '@/lib/supabase';
 import { ensureOnboardingBackfill } from '@/lib/onboarding';
-import { getBrokerContext } from '@/lib/permissions';
+import { getManagerContext } from '@/lib/permissions';
 import { LiveNotifications } from '@/components/dashboard/live-notifications';
 import { PlatformBanner } from '@/components/platform-banner';
 import { CommandPalette } from '@/components/command-palette/command-palette';
-import { ChippiBar } from '@/components/chippi/chippi-bar';
-import { EmbedDetector } from '@/components/chippi/embed-detector';
+import { ColaBar } from '@/components/cola/cola-bar';
+import { EmbedDetector } from '@/components/cola/embed-detector';
 import { LayoutShell } from '@/components/dashboard/layout-shell';
-import { ChippiSplash } from '@/components/dashboard/chippi-splash';
+import { ColaSplash } from '@/components/dashboard/cola-splash';
 import { pickGreeting } from '@/lib/greetings';
 import { ReferralTracker } from '@/components/affiliate/referral-tracker';
 import { FprScript } from '@/components/affiliate/fpr-script';
@@ -32,7 +32,7 @@ export default async function DashboardLayout({
   const { userId } = await auth();
 
   if (!userId) {
-    redirect('/login/realtor');
+    redirect('/login/seller');
   }
 
   // Gate: user must exist in our DB. On DB error, render error UI
@@ -185,20 +185,20 @@ export default async function DashboardLayout({
   let unreadLeadCount = 0;
   let overdueFollowUpCount = 0;
   let pendingDraftCount = 0;
-  let activePropertyCount = 0;
+  let activeProductCount = 0;
   try {
-    const [leadResult, followUpResult, draftResult, propertyResult] = await Promise.all([
+    const [leadResult, followUpResult, draftResult, productResult] = await Promise.all([
       supabase
         .from('Contact')
         .select('*', { count: 'exact', head: true })
         .eq('spaceId', space.id)
-        .is('brokerageId', null)
+        .is('companyId', null)
         .contains('tags', ['new-lead']),
       supabase
         .from('Contact')
         .select('*', { count: 'exact', head: true })
         .eq('spaceId', space.id)
-        .is('brokerageId', null)
+        .is('companyId', null)
         .not('followUpAt', 'is', null)
         .lte('followUpAt', new Date().toISOString()),
       supabase
@@ -207,7 +207,7 @@ export default async function DashboardLayout({
         .eq('spaceId', space.id)
         .eq('status', 'pending'),
       supabase
-        .from('Property')
+        .from('Product')
         .select('id', { count: 'exact', head: true })
         .eq('spaceId', space.id)
         .in('listingStatus', ['active', 'pending']),
@@ -216,46 +216,46 @@ export default async function DashboardLayout({
     unreadLeadCount = leadResult.count ?? 0;
     overdueFollowUpCount = followUpResult.count ?? 0;
     pendingDraftCount = draftResult.count ?? 0;
-    activePropertyCount = propertyResult.count ?? 0;
+    activeProductCount = productResult.count ?? 0;
   } catch {
     unreadLeadCount = 0;
     overdueFollowUpCount = 0;
     pendingDraftCount = 0;
-    activePropertyCount = 0;
+    activeProductCount = 0;
   }
 
-  // Check broker context and brokerage memberships for sidebar
-  let isBroker = false;
-  let brokerageName: string | null = null;
-  let brokerageRole: string | null = null;
-  let brokerageMemberships: { id: string; name: string; role: string }[] = [];
+  // Check manager context and company memberships for sidebar
+  let isManager = false;
+  let companyName: string | null = null;
+  let companyRole: string | null = null;
+  let companyMemberships: { id: string; name: string; role: string }[] = [];
   try {
     const { data: memberships } = await supabase
-      .from('BrokerageMembership')
-      .select('brokerageId, role, Brokerage(id, name)')
+      .from('CompanyMembership')
+      .select('companyId, role, Company(id, name)')
       .eq('userId', dbUser.id);
 
-    brokerageMemberships = (memberships ?? []).map((m: any) => ({
-      id: Array.isArray(m.Brokerage) ? m.Brokerage[0]?.id : m.Brokerage?.id,
-      name: Array.isArray(m.Brokerage) ? m.Brokerage[0]?.name : m.Brokerage?.name,
+    companyMemberships = (memberships ?? []).map((m: any) => ({
+      id: Array.isArray(m.Company) ? m.Company[0]?.id : m.Company?.id,
+      name: Array.isArray(m.Company) ? m.Company[0]?.name : m.Company?.name,
       role: m.role,
     })).filter(m => m.id && m.name);
 
-    if (brokerageMemberships.length > 0) {
-      isBroker = brokerageMemberships.some(m => m.role === 'broker_owner' || m.role === 'broker_admin');
-      brokerageName = brokerageMemberships[0].name;
-      brokerageRole = brokerageMemberships[0].role;
+    if (companyMemberships.length > 0) {
+      isManager = companyMemberships.some(m => m.role === 'manager_owner' || m.role === 'manager_admin');
+      companyName = companyMemberships[0].name;
+      companyRole = companyMemberships[0].role;
     }
   } catch {
-    isBroker = false;
+    isManager = false;
   }
 
   return (
     <div className="app-theme flex h-screen overflow-hidden bg-background text-foreground">
-      {/* First-paint splash — greets the realtor by name (varied each open),
+      {/* First-paint splash — greets the seller by name (varied each open),
           shows a snapshot of what's new, then dissolves into the dashboard.
           Plays every time the app/PWA is opened. */}
-      <ChippiSplash
+      <ColaSplash
         greeting={pickGreeting((dbUser.name ?? '').trim().split(/\s+/)[0] ?? '')}
         snapshot={{
           newLeads: unreadLeadCount,
@@ -263,24 +263,24 @@ export default async function DashboardLayout({
           draftsReady: pendingDraftCount,
         }}
       />
-      {/* Detects ?embed=1 from the Chippi RightPanel iframe and strips
+      {/* Detects ?embed=1 from the Cola RightPanel iframe and strips
           sidebar/header/chat-bar via CSS. Mount near the root so the
           flag is set before any layout reads it. */}
       <EmbedDetector />
       {/* Collapse state is shared between the sidebar and the header's panel
           toggle, so the provider wraps both. */}
       <SidebarCollapseProvider>
-        <Sidebar slug={slug} spaceName={space.name} unreadLeadCount={unreadLeadCount} pendingDraftCount={pendingDraftCount ?? 0} overdueFollowUpCount={overdueFollowUpCount} activePropertyCount={activePropertyCount} isBroker={isBroker} brokerageName={brokerageName} brokerageRole={brokerageRole} brokerageMemberships={brokerageMemberships} isPlatformAdmin={dbUser.isPlatformAdmin} />
+        <Sidebar slug={slug} spaceName={space.name} unreadLeadCount={unreadLeadCount} pendingDraftCount={pendingDraftCount ?? 0} overdueFollowUpCount={overdueFollowUpCount} activeProductCount={activeProductCount} isManager={isManager} companyName={companyName} companyRole={companyRole} companyMemberships={companyMemberships} isPlatformAdmin={dbUser.isPlatformAdmin} />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <PlatformBanner />
-          <Header slug={slug} spaceId={space.id} spaceName={space.name} title={space.name} isBroker={isBroker} brokerageName={brokerageName} isPlatformAdmin={dbUser.isPlatformAdmin} />
+          <Header slug={slug} spaceId={space.id} spaceName={space.name} title={space.name} isManager={isManager} companyName={companyName} isPlatformAdmin={dbUser.isPlatformAdmin} />
           <LayoutShell slug={slug} liveNotifications={<LiveNotifications spaceId={space.id} slug={slug} />}>
             {children}
           </LayoutShell>
         </div>
       </SidebarCollapseProvider>
-      <MobileNav slug={slug} isBroker={isBroker} />
-      <ChippiBar slug={slug} />
+      <MobileNav slug={slug} isManager={isManager} />
+      <ColaBar slug={slug} />
       <CommandPalette slug={slug} />
       {/* FirstPromoter attribution. FprScript loads fpr.js here (the dashboard
           context where ReferralTracker runs); without it, fpr('referral') would

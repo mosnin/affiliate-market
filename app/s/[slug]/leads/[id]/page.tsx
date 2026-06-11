@@ -36,7 +36,7 @@ export default async function LeadDetailPage({
   const { slug, id } = await params;
 
   const { userId } = await auth();
-  if (!userId) redirect('/login/realtor');
+  if (!userId) redirect('/login/seller');
 
   // Validate UUID format to avoid unnecessary DB round-trips
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -137,8 +137,8 @@ export default async function LeadDetailPage({
             <InfoRow icon={DollarSign} label="Budget" value={typeof app?.monthlyRent === 'number' ? `${formatMoney(app.monthlyRent)}/mo` : lead.budget ? `${formatMoney(lead.budget)}/mo` : null} />
             <InfoRow icon={Briefcase} label="Employment" value={app?.employmentStatus ?? null} />
             <InfoRow icon={Calendar} label="Move-in" value={app?.targetMoveInDate ?? null} />
-            <InfoRow icon={MapPin} label="Location" value={app?.propertyAddress ?? lead.preferences ?? null} />
-            <InfoRow icon={Home} label="Property type" value={app?.propertyType ?? null} />
+            <InfoRow icon={MapPin} label="Location" value={app?.productAddress ?? lead.preferences ?? null} />
+            <InfoRow icon={Home} label="Product type" value={app?.productType ?? null} />
           </div>
 
           {details?.recommendedNextAction && (

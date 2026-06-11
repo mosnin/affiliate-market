@@ -5,21 +5,21 @@ import { useRouter } from 'next/navigation';
 import { CalendarCheck } from 'lucide-react';
 import { Field, TextInput, SubmitButton, FormError } from '../auth-ui';
 
-export function BookTourForm({
-  realtors,
+export function BookDemoForm({
+  sellers,
   guestName,
   guestEmail,
   guestPhone,
 }: {
-  realtors: { slug: string; name: string }[];
+  sellers: { slug: string; name: string }[];
   guestName: string;
   guestEmail: string;
   guestPhone: string;
 }) {
   const router = useRouter();
-  const [slug, setSlug] = useState(realtors[0]?.slug ?? '');
+  const [slug, setSlug] = useState(sellers[0]?.slug ?? '');
   const [startsAt, setStartsAt] = useState('');
-  const [propertyAddress, setPropertyAddress] = useState('');
+  const [productAddress, setProductAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +36,7 @@ export function BookTourForm({
       body: JSON.stringify({
         slug,
         startsAt: new Date(startsAt).toISOString(),
-        propertyAddress,
+        productAddress,
         notes,
       }),
     });
@@ -56,7 +56,7 @@ export function BookTourForm({
       <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-card px-5 py-4">
         <CalendarCheck size={18} className="text-emerald-600 dark:text-emerald-400" />
         <div>
-          <p className="text-sm font-medium text-foreground">Tour requested.</p>
+          <p className="text-sm font-medium text-foreground">Demo requested.</p>
           <p className="text-xs text-muted-foreground">Your agent will confirm the time.</p>
         </div>
       </div>
@@ -65,7 +65,7 @@ export function BookTourForm({
 
   return (
     <form onSubmit={onSubmit} className="max-w-[420px] space-y-4">
-      {realtors.length > 1 && (
+      {sellers.length > 1 && (
         <Field label="Agent" htmlFor="slug">
           <select
             id="slug"
@@ -73,7 +73,7 @@ export function BookTourForm({
             onChange={(e) => setSlug(e.target.value)}
             className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-1 focus-visible:ring-offset-background"
           >
-            {realtors.map((r) => (
+            {sellers.map((r) => (
               <option key={r.slug} value={r.slug}>
                 {r.name}
               </option>
@@ -92,11 +92,11 @@ export function BookTourForm({
         />
       </Field>
 
-      <Field label="Property (optional)" htmlFor="propertyAddress">
+      <Field label="Product (optional)" htmlFor="productAddress">
         <TextInput
-          id="propertyAddress"
-          value={propertyAddress}
-          onChange={(e) => setPropertyAddress(e.target.value)}
+          id="productAddress"
+          value={productAddress}
+          onChange={(e) => setProductAddress(e.target.value)}
           placeholder="25 Park Slope Place, Brooklyn"
           maxLength={500}
         />
@@ -122,7 +122,7 @@ export function BookTourForm({
 
       <FormError error={error} />
       <SubmitButton pending={pending}>
-        {pending ? 'Booking…' : 'Request tour'}
+        {pending ? 'Booking…' : 'Request demo'}
       </SubmitButton>
     </form>
   );

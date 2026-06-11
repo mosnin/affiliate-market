@@ -134,7 +134,7 @@ describe('CURATED_TRIGGERS', () => {
       bodyPreview: 'hi', text: 'hi', message: 'hi', user: 'u', author: 'u',
       summary: 'evt', responseStatus: 'accepted', startTime: 'soon',
       attendees: [{ email: 'x@y' }],
-      properties: { firstname: 'A', lastname: 'B', email: 'a@b', phone: '1', dealname: 'D', dealstage: 'open' },
+      products: { firstname: 'A', lastname: 'B', email: 'a@b', phone: '1', dealname: 'D', dealstage: 'open' },
       name: 'N', company: 'C', leadSource: 'web', stageName: 'open', amount: '1',
       title: 'T', value: '1', personName: 'P',
       amount_total: '1', customer_email: 'a@b', failure_message: 'f', amount_paid: '1',

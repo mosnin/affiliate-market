@@ -1,5 +1,5 @@
 -- ============================================================================
--- Model-aware credit metering for every agent/chat turn (realtor + brokerage).
+-- Model-aware credit metering for every agent/chat turn (seller + company).
 --
 -- A flat "1 credit per turn" can't hold margin: models cost wildly different
 -- amounts (gpt-4o-mini ~$0.15/1M in vs Claude Opus $5/1M in, $25/1M out). This
@@ -13,9 +13,9 @@
 --   buffer for model-price-estimate / OpenRouter-markup error.
 --   credits/turn = max(1, ceil(costUsd / 0.013)).
 --
--- ONE trigger on ChatUsage covers EVERY path: realtor direct (direct-stream),
--- realtor agent in-process (sdk-chat-stream), broker direct (broker-direct), and
--- realtor+broker via Modal (agent/ledger.py) — they all INSERT one ChatUsage row
+-- ONE trigger on ChatUsage covers EVERY path: seller direct (direct-stream),
+-- seller agent in-process (sdk-chat-stream), manager direct (manager-direct), and
+-- seller+manager via Modal (agent/ledger.py) — they all INSERT one ChatUsage row
 -- per turn with costUsd. No per-surface or Python code change can bypass it.
 --
 -- Self-gating rollout: it drains only EXISTING spendable lots (never negative),
@@ -27,7 +27,7 @@
 -- ============================================================================
 
 -- Mirror of lib/billing/account.ts resolveBillingAccount: a space's spend funds
--- the brokerage pool only when the brokerage is on a team plan AND the space
+-- the company pool only when the company is on a team plan AND the space
 -- owner is a verified member; otherwise the space's own balance.
 CREATE OR REPLACE FUNCTION resolve_billing_account_for_space(p_space_id text)
 RETURNS TABLE(account_type text, account_id text)
@@ -37,16 +37,16 @@ DECLARE
   v_brk    RECORD;
   v_member text;
 BEGIN
-  SELECT id, plan, "brokerageId", "ownerId" INTO v_space FROM "Space" WHERE id = p_space_id;
+  SELECT id, plan, "companyId", "ownerId" INTO v_space FROM "Space" WHERE id = p_space_id;
   IF NOT FOUND THEN RETURN; END IF;
 
-  IF v_space."brokerageId" IS NOT NULL THEN
-    SELECT id, plan INTO v_brk FROM "Brokerage" WHERE id = v_space."brokerageId";
+  IF v_space."companyId" IS NOT NULL THEN
+    SELECT id, plan INTO v_brk FROM "Company" WHERE id = v_space."companyId";
     IF FOUND AND v_brk.plan IN ('team', 'team_plus') THEN
-      SELECT "userId" INTO v_member FROM "BrokerageMembership"
-        WHERE "brokerageId" = v_space."brokerageId" AND "userId" = v_space."ownerId" LIMIT 1;
+      SELECT "userId" INTO v_member FROM "CompanyMembership"
+        WHERE "companyId" = v_space."companyId" AND "userId" = v_space."ownerId" LIMIT 1;
       IF v_member IS NOT NULL THEN
-        account_type := 'brokerage'; account_id := v_brk.id; RETURN NEXT; RETURN;
+        account_type := 'company'; account_id := v_brk.id; RETURN NEXT; RETURN;
       END IF;
     END IF;
   END IF;
