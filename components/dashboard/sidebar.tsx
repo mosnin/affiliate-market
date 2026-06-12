@@ -960,12 +960,19 @@ function ManagerSidebarConversations() {
 //   • Settings → no header (bottom-pinned)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const WORKSPACE_HREFS = new Set<string>([
+const GENERAL_HREFS = new Set<string>([
   '/contacts',
   '/deals',
   '/calendar',
   '/communication',
+]);
+const COMMERCE_HREFS = new Set<string>([
   '/products',
+  '/demos',
+  '/orders',
+  '/affiliates',
+]);
+const WORKSPACE_HREFS = new Set<string>([
   '/studio',
   '/files',
 ]);
@@ -1097,25 +1104,25 @@ function SellerNav({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, base]);
 
-  // AI-related items always sit at the top
   const aiItems = sellerNavItems.filter((item) => item.isAI);
-  // Workspace bucket — daily work surfaces (gets the WORKSPACE small-caps
-  // header above it). Filtered through the canonical sellerNavItems order
-  // so route additions inherit the order without touching this file.
+  const generalItems = sellerNavItems.filter(
+    (item) => !item.isAI && GENERAL_HREFS.has(item.href),
+  );
+  const commerceItems = sellerNavItems.filter(
+    (item) => !item.isAI && COMMERCE_HREFS.has(item.href),
+  );
   const workspaceItems = sellerNavItems.filter(
     (item) => !item.isAI && WORKSPACE_HREFS.has(item.href),
   );
-  // Setup bucket — once-and-done surfaces (gets the SETUP small-caps header).
   const setupItems = sellerNavItems.filter(
     (item) => !item.isAI && SETUP_HREFS.has(item.href),
   );
-  // Any leaf the buckets above didn't claim — kept appended (no header) so
-  // a new route added to `lib/nav-items.ts` still renders. The set-based
-  // filter makes the bucketing additive, not exhaustive.
   const otherItems = sellerNavItems.filter(
     (item) =>
       !item.isAI &&
       item.href !== '/settings' &&
+      !GENERAL_HREFS.has(item.href) &&
+      !COMMERCE_HREFS.has(item.href) &&
       !WORKSPACE_HREFS.has(item.href) &&
       !SETUP_HREFS.has(item.href),
   );
@@ -1232,39 +1239,45 @@ function SellerNav({
             doesn't need a category to belong to. */}
         {aiItems.map(renderItem)}
 
-        {/* RECORDS — daily work surfaces (the seller's book of business:
-            People, Deals, Products, etc.). Labeled to match the
-            inspiration's "Records" group above the existing workspace nav
-            items — no restructuring of `lib/nav-items.ts`, just a calmer
-            small-caps header above the same routes. Hidden in collapsed
-            rail mode (no horizontal room). */}
+        {generalItems.length > 0 && (
+          <>
+            {!collapsed && (
+              <p className={cn(SECTION_LABEL, 'px-3 pt-4 pb-1.5 select-none')}>
+                General
+              </p>
+            )}
+            {generalItems.map(renderItem)}
+          </>
+        )}
+
+        {commerceItems.length > 0 && (
+          <>
+            {!collapsed && (
+              <p className={cn(SECTION_LABEL, 'px-3 pt-4 pb-1.5 select-none')}>
+                Commerce
+              </p>
+            )}
+            {commerceItems.map(renderItem)}
+          </>
+        )}
+
         {workspaceItems.length > 0 && (
           <>
             {!collapsed && (
               <p className={cn(SECTION_LABEL, 'px-3 pt-4 pb-1.5 select-none')}>
-                Records
+                Workspace
               </p>
             )}
             {workspaceItems.map(renderItem)}
           </>
         )}
 
-        {/* SETUP — once-and-done surfaces (Profile, Intake form). Same
-            collapse rule as WORKSPACE. */}
         {setupItems.length > 0 && (
           <>
-            {!collapsed && (
-              <p className={cn(SECTION_LABEL, 'px-3 pt-4 pb-1.5 select-none')}>
-                Setup
-              </p>
-            )}
             {setupItems.map(renderItem)}
           </>
         )}
 
-        {/* Anything the buckets above didn't claim — appended without a
-            header so a new `lib/nav-items.ts` route stays renderable
-            without forcing an edit to this file. */}
         {otherItems.map(renderItem)}
       </div>
 
@@ -1499,10 +1512,6 @@ export function Sidebar({
       <aside data-dashboard-sidebar className={cn('group/rail relative hidden md:flex flex-col bg-sidebar border border-border/70 rounded-xl shrink-0 overflow-hidden transition-[width] duration-200 ease-out m-3', managerCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_WIDTH)}>
         {/* Same brand-warm tint as the seller sidebar so managers see the
             same identity when they switch workspaces. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-32 rounded-t-xl bg-gradient-to-b from-orange-50/60 via-orange-50/20 to-transparent dark:from-orange-500/[0.04] dark:via-transparent"
-        />
         <div className="relative z-10 flex flex-col h-full">
           {/* Brand mark — in collapsed rail mode it doubles as the expand
               affordance, mirroring the seller sidebar. */}
@@ -1725,11 +1734,6 @@ function SellerSidebarShell({
     >
       {/* Brand-warm tint at top — clip width follows the rail so the orange
           wash doesn't hint at content beyond the visible edge. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-32 rounded-t-xl bg-gradient-to-b from-orange-50/60 via-orange-50/20 to-transparent dark:from-orange-500/[0.04] dark:via-transparent"
-      />
-
       <div className="relative z-10 flex flex-col h-full">
         {/* Brand mark — small, monochrome, sets identity without dominating.
             Expanded: the logo sits at the left with a panel-collapse button

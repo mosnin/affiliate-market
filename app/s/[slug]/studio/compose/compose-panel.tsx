@@ -18,7 +18,7 @@ import { CAPTION } from '@/lib/typography';
 import { COMPOSE_TEMPLATES, type ComposeColor } from '@/lib/studio/templates';
 
 const CANVAS_SIZE = 1080;
-const DEFAULT_ACCENT = '#ff964f';
+const DEFAULT_ACCENT = '#34c77f';
 
 function resolveColor(c: ComposeColor, accent: string): string {
   if (c === 'accent') return accent;

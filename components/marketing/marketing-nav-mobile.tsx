@@ -87,7 +87,7 @@ export function MarketingNavMobile() {
         {/* Brand wash — same recipe as the dashboard mobile drawer. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-32 z-0 bg-gradient-to-b from-orange-50/60 via-orange-50/20 to-transparent dark:from-orange-500/[0.04] dark:via-transparent"
+          className="pointer-events-none absolute inset-x-0 top-0 h-32 z-0 bg-gradient-to-b from-brand-subtle/60 via-brand-subtle/20 to-transparent dark:from-brand/[0.04] dark:via-transparent"
         />
         <div className="relative z-10 flex flex-col h-full">
           {/* Header row: brand mark left, close right */}

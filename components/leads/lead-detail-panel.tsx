@@ -181,7 +181,7 @@ export function LeadDetailPanel({
                 {tier.label}
               </span>
               {isNew && (
-                <span className="text-[10px] font-bold bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400 rounded-md px-1.5 py-0.5">
+                <span className="text-[10px] font-bold bg-brand-subtle text-primary dark:bg-brand/10 dark:text-primary rounded-md px-1.5 py-0.5">
                   NEW
                 </span>
               )}

@@ -63,7 +63,7 @@ async function notifySubscriptionChange(subscriptionId: string, newStatus: strin
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px 0">
   <p style="font-size:14px;color:#374151;line-height:1.6;margin:0 0 16px">Hi ${owner.name || 'there'},</p>
   <p style="font-size:14px;color:#374151;line-height:1.6;margin:0 0 20px">${msg.body}</p>
-  <a href="https://${domain}/s/${space.slug}/billing" style="display:inline-block;background:#ff964f;color:#fff;font-weight:600;font-size:14px;text-decoration:none;padding:10px 24px;border-radius:8px">View billing</a>
+  <a href="https://${domain}/s/${space.slug}/billing" style="display:inline-block;background:#34c77f;color:#fff;font-weight:600;font-size:14px;text-decoration:none;padding:10px 24px;border-radius:8px">View billing</a>
   <p style="font-size:12px;color:#9ca3af;margin-top:20px">— The Cola team</p>
 </div>`,
     });

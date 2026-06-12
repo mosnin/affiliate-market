@@ -735,7 +735,7 @@ export function LeadsView({ leads: initialLeads, slug, newLeadIds, loading = fal
                           {lead.leadType === 'buyer' ? 'Buyer' : lead.leadType === 'seller' ? 'Seller' : 'Rental'}
                         </span>
                         {isNew && (
-                          <span className="inline-flex text-[10px] font-bold bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400 rounded-md px-2 py-0.5 flex-shrink-0">
+                          <span className="inline-flex text-[10px] font-bold bg-brand-subtle text-primary dark:bg-brand/10 dark:text-primary rounded-md px-2 py-0.5 flex-shrink-0">
                             NEW
                           </span>
                         )}
@@ -1006,7 +1006,7 @@ export function LeadsView({ leads: initialLeads, slug, newLeadIds, loading = fal
                                 {lead.leadType === 'buyer' ? 'Buyer' : lead.leadType === 'seller' ? 'Seller' : 'Rental'}
                               </span>
                               {isNew && (
-                                <span className="text-[10px] font-bold bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400 rounded-md px-1.5 py-0.5">NEW</span>
+                                <span className="text-[10px] font-bold bg-brand-subtle text-primary dark:bg-brand/10 dark:text-primary rounded-md px-1.5 py-0.5">NEW</span>
                               )}
                             </div>
                           </div>

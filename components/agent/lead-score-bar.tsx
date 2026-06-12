@@ -15,14 +15,14 @@ export function LeadScoreBar({ score, showLabel = true, className }: LeadScoreBa
 
   const color =
     pct >= 70
-      ? 'bg-orange-500'
+      ? 'bg-brand'
       : pct >= 40
       ? 'bg-amber-400'
       : 'bg-muted-foreground/30';
 
   const labelColor =
     pct >= 70
-      ? 'text-orange-600 dark:text-orange-400'
+      ? 'text-primary dark:text-primary'
       : pct >= 40
       ? 'text-amber-600 dark:text-amber-400'
       : 'text-muted-foreground';

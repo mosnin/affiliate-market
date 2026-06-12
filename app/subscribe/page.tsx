@@ -97,7 +97,7 @@ function SubscribeContent() {
         aria-hidden
         className={brandOrange(
           'LOGO',
-          'pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-orange-50/70 via-background to-orange-50/50 dark:from-orange-500/[0.04] dark:via-background dark:to-orange-500/[0.03]',
+          'pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-brand-subtle/70 via-background to-brand-subtle/50 dark:from-brand/[0.04] dark:via-background dark:to-brand/[0.03]',
         )}
       />
 

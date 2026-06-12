@@ -310,7 +310,7 @@ function DraftRow({
 
         {hasPacket && (
           <span
-            className="inline-flex items-center gap-1 text-[11px] text-orange-600 dark:text-orange-400"
+            className="inline-flex items-center gap-1 text-[11px] text-primary dark:text-primary"
             title="Packet attached"
           >
             <Paperclip size={11} className="opacity-80" />

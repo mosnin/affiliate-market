@@ -2,7 +2,7 @@
  * Color constants — single source of truth for where each colour
  * EARNS its place in the product.
  *
- * Why this file exists. STYLESHEET.md says brand orange lives in
+ * Why this file exists. STYLESHEET.md says the brand accent (mint) lives in
  * exactly five places: logo, Cola avatar, agent badge, agent
  * activity bar, lead-warm tier. Reviewers can't audit a Tailwind class
  * usage by eye across 90+ call sites. This file codifies the five
@@ -28,7 +28,7 @@
 import { cn } from './utils';
 
 /**
- * The five places brand orange is allowed in product chrome.
+ * The five places the brand accent is allowed in product chrome.
  *
  * Adding a sixth requires deleting one — discipline lives in the
  * constraint, not in a paragraph of prose.
@@ -36,7 +36,7 @@ import { cn } from './utils';
 export const BRAND_ORANGE_CONTEXTS = [
   /** The literal Cola logo / wordmark in nav, header, auth. */
   'LOGO',
-  /** The orange chip widget that represents Cola in composer, header, toast. */
+  /** The mint chip widget that represents Cola in composer, header, toast. */
   'COLA_AVATAR',
   /** Authorship pill stamped on AgentDraft rows, conversation messages, activity rows. */
   'AGENT_BADGE',
@@ -55,7 +55,7 @@ export type BrandOrangeContext = (typeof BRAND_ORANGE_CONTEXTS)[number];
  * one of the five named moments."
  *
  * @example
- *   <span className={brandOrange('COLA_AVATAR', 'text-orange-500 bg-orange-50/40')} />
+ *   <span className={brandOrange('COLA_AVATAR', 'text-primary bg-brand-subtle/40')} />
  *
  * The lint rule (tests/style/no-stray-orange.test.ts) checks that
  * every `text-orange-*` / `bg-orange-*` call site either lives inside

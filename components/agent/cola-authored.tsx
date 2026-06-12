@@ -31,7 +31,7 @@ export function ColaAuthoredDot({ className }: { className?: string }) {
         'AGENT_BADGE',
         cn(
           'inline-block w-1 h-1 rounded-full',
-          'bg-orange-500 dark:bg-orange-400',
+          'bg-brand dark:bg-brand',
           className,
         ),
       )}
@@ -41,7 +41,7 @@ export function ColaAuthoredDot({ className }: { className?: string }) {
 
 /**
  * `ColaWordmarkInline` — the literal word "Cola" rendered in
- * serif Times in `text-orange-600`, sized to flow inline with body
+ * serif Times in `text-primary`, sized to flow inline with body
  * copy.
  *
  * Use it once per surface, at most. The whole point is scarcity:
@@ -65,7 +65,7 @@ export function ColaWordmarkInline({ className }: { className?: string }) {
       className={brandOrange(
         'COLA_AVATAR',
         cn(
-          'text-orange-600 dark:text-orange-400',
+          'text-primary dark:text-primary',
           className,
         ),
       )}

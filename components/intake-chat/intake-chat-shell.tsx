@@ -7,7 +7,7 @@
  *   1. (optional) a soft, dimmed cover-photo band — same image the public
  *      profile uses, just narrower and pulled back so it never competes
  *      with the question.
- *   2. The seller's face (or a brand-orange-tinted monogram fallback —
+ *   2. The seller's face (or a brand-mint-tinted monogram fallback —
  *      never a generic figure on a purple gradient).
  *   3. The business name in serif Times — the brand's focal flourish.
  *      Verified blue-check rides the baseline when isVerified is true.
@@ -194,7 +194,7 @@ function SellerIdentity({
             )}
           />
         ) : (
-          // Brand-orange-tinted monogram. Serif Times — matches the focal
+          // Brand-orange-tinted monogram. Display sans — matches the focal
           // serif moment used on the business name below. The 4px ring
           // mirrors the photo variant so layout stays steady.
           <span
@@ -202,8 +202,8 @@ function SellerIdentity({
             className={cn(
               'h-16 w-16 sm:h-[72px] sm:w-[72px] rounded-full inline-flex items-center justify-center',
               'border-4 border-background',
-              'bg-orange-50 text-orange-600',
-              'dark:bg-orange-500/15 dark:text-orange-400',
+              'bg-brand-subtle text-primary',
+              'dark:bg-brand/15 dark:text-primary',
               'text-2xl sm:text-[26px] leading-none select-none',
             )}
             style={TITLE_FONT}

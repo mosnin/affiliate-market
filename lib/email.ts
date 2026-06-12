@@ -669,7 +669,7 @@ export async function sendWelcomeEmail(params: {
       </tr>
     </table>
     <div style="text-align:center;margin:24px 0 8px">
-      <a href="${dashboardUrl}" style="display:inline-block;background:#ff964f;color:#ffffff;font-weight:600;font-size:14px;text-decoration:none;padding:10px 28px;border-radius:8px">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#34c77f;color:#ffffff;font-weight:600;font-size:14px;text-decoration:none;padding:10px 28px;border-radius:8px">
         Open your dashboard
       </a>
     </div>

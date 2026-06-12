@@ -52,7 +52,7 @@ export function IntegrationsBeam() {
     pathColor: 'var(--border)',
     pathWidth: 2,
     pathOpacity: 0.4,
-    gradientStartColor: '#ff964f',
+    gradientStartColor: '#34c77f',
     gradientStopColor: '#ffc56b',
   } as const;
 

@@ -124,7 +124,7 @@ export default async function PublicBookingPage({
   const hidePoweredBy = subStatus === 'active' || subStatus === 'trialing';
 
   const customization = {
-    accentColor: settings?.intakeAccentColor || '#ff964f',
+    accentColor: settings?.intakeAccentColor || '#34c77f',
     font: settings?.intakeFont || 'system',
     darkMode: settings?.intakeDarkMode || false,
     headerBgColor: settings?.intakeHeaderBgColor || null,

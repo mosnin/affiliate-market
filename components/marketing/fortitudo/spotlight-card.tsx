@@ -5,7 +5,7 @@
  * cursor on hover, with a gentle lift and a top hairline. Ported from
  * fortitudo and made theme-aware: it leans on the semantic card/border tokens
  * so it reads on both light and dark (fortitudo's original was dark-only).
- * Brand orange (#ff964f) is the glow, reserved as the studio signature.
+ * Brand orange (#34c77f) is the glow, reserved as the studio signature.
  */
 
 import type { ReactNode } from 'react';

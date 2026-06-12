@@ -83,7 +83,7 @@ export function ConfigureAccountForm({ initialData, slug }: ConfigureAccountForm
   const [notifications, setNotifications] = useState(initialData.notifications);
   const [logoUrl, setLogoUrl] = useState(initialData.logoUrl || '');
   const [sellerPhotoUrl, setSellerPhotoUrl] = useState(initialData.sellerPhotoUrl || '');
-  const [intakeAccentColor, setIntakeAccentColor] = useState(initialData.intakeAccentColor || '#ff964f');
+  const [intakeAccentColor, setIntakeAccentColor] = useState(initialData.intakeAccentColor || '#34c77f');
   const [intakeBorderRadius, setIntakeBorderRadius] = useState<'rounded' | 'sharp'>(initialData.intakeBorderRadius || 'rounded');
   const [intakeFont, setIntakeFont] = useState<'system' | 'serif' | 'mono'>(initialData.intakeFont || 'system');
   const [intakeFooterLinks, setIntakeFooterLinks] = useState<{ label: string; url: string }[]>(initialData.intakeFooterLinks || []);
@@ -468,7 +468,7 @@ export function ConfigureAccountForm({ initialData, slug }: ConfigureAccountForm
               <Label>Color scheme</Label>
               <div className="flex items-center gap-2">
                 {[
-                  { name: 'Orange', value: '#ff964f' },
+                  { name: 'Orange', value: '#34c77f' },
                   { name: 'Teal', value: '#14b8a6' },
                   { name: 'Blue', value: '#3b82f6' },
                   { name: 'Purple', value: '#8b5cf6' },

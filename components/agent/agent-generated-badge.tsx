@@ -50,8 +50,8 @@ export function AgentGeneratedBadge({
         cn(
           'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5',
           'text-[10px] font-medium leading-none',
-          'text-orange-600 dark:text-orange-400',
-          'bg-orange-500/[0.08] dark:bg-orange-500/[0.12]',
+          'text-primary dark:text-primary',
+          'bg-brand/[0.08] dark:bg-brand/[0.12]',
           className,
         ),
       )}
@@ -83,7 +83,7 @@ export function AgentGeneratedBorder({
       className={brandOrange(
         'AGENT_BADGE',
         cn(
-          'border-l-2 border-orange-400 dark:border-orange-500/60 pl-3',
+          'border-l-2 border-primary/40 dark:border-primary/200/60 pl-3',
           className,
         ),
       )}

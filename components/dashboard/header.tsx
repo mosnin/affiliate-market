@@ -214,7 +214,6 @@ export function Header({ slug, spaceId, spaceName, title, isManager = false, isM
                 <X className="size-5" strokeWidth={1.75} />
               </button>
             </SheetClose>
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-orange-50/60 via-orange-50/20 to-transparent dark:from-orange-500/[0.04] dark:via-transparent z-0" />
             <div className="relative z-10 flex flex-col h-full overflow-y-auto">
             <SheetHeader className="px-4 py-5 border-b border-sidebar-border">
               <SheetTitle className="flex items-center gap-2.5 text-sidebar-foreground">

@@ -86,10 +86,10 @@ export function ColaAssessmentCard({ entityType, entityId, entityName, slug }: C
 
   if (!data.isLoaded) {
     return (
-      <div className="rounded-2xl border border-orange-200/60 dark:border-orange-900/30 p-4 animate-pulse">
+      <div className="rounded-2xl border border-primary/20 dark:border-primary/40 p-4 animate-pulse">
         <div className="flex items-center gap-2 mb-3">
-          <div className="w-6 h-6 rounded-lg bg-orange-200/60 dark:bg-orange-900/40" />
-          <div className="h-4 w-32 bg-orange-100 dark:bg-orange-900/30 rounded" />
+          <div className="w-6 h-6 rounded-lg bg-brand-subtle/60 dark:bg-brand-subtle" />
+          <div className="h-4 w-32 bg-brand-subtle dark:bg-brand-subtle rounded" />
         </div>
         <div className="space-y-2">
           <div className="h-3 bg-muted rounded w-full" />
@@ -101,8 +101,8 @@ export function ColaAssessmentCard({ entityType, entityId, entityName, slug }: C
 
   if (!hasContent) {
     return (
-      <div className="rounded-2xl border border-dashed border-orange-200 dark:border-orange-900/30 p-4 flex items-center gap-3">
-        <Bot size={14} className="text-orange-400 flex-shrink-0" />
+      <div className="rounded-2xl border border-dashed border-primary/20 dark:border-primary/40 p-4 flex items-center gap-3">
+        <Bot size={14} className="text-primary flex-shrink-0" />
         <p className="text-xs text-muted-foreground">
           Cola hasn't assessed {entityName} yet. Run the agent to generate insights.
         </p>
@@ -111,26 +111,26 @@ export function ColaAssessmentCard({ entityType, entityId, entityName, slug }: C
   }
 
   const scoreColor = data.explainedScore !== null
-    ? data.explainedScore >= 70 ? 'text-orange-600 dark:text-orange-400'
+    ? data.explainedScore >= 70 ? 'text-primary dark:text-primary'
     : data.explainedScore >= 40 ? 'text-amber-600 dark:text-amber-400'
     : 'text-muted-foreground'
     : '';
 
   return (
-    <div className="rounded-2xl border border-orange-200 dark:border-orange-900/40 bg-gradient-to-br from-orange-50/80 to-white dark:from-orange-950/15 dark:to-transparent overflow-hidden">
+    <div className="rounded-2xl border border-primary/20 dark:border-primary/40 bg-gradient-to-br from-brand-subtle/80 to-white dark:from-accent/40 dark:to-transparent overflow-hidden">
       {/* Header */}
       <button
         onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-orange-50/50 dark:hover:bg-orange-950/10 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-brand-subtle/50 dark:hover:bg-accent/30 transition-colors"
       >
         <div className="flex items-center gap-2.5">
-          <div className="w-6 h-6 rounded-lg bg-orange-500 flex items-center justify-center flex-shrink-0">
+          <div className="w-6 h-6 rounded-lg bg-brand flex items-center justify-center flex-shrink-0">
             <Bot size={12} className="text-white" />
           </div>
           <div className="text-left">
-            <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">Cola's Assessment</p>
+            <p className="text-xs font-semibold text-primary dark:text-brand-subtle">Cola's Assessment</p>
             {data.briefUpdatedAt && (
-              <p className="text-[10px] text-orange-400/70">Updated {timeAgo(data.briefUpdatedAt)}</p>
+              <p className="text-[10px] text-primary/70">Updated {timeAgo(data.briefUpdatedAt)}</p>
             )}
           </div>
         </div>
@@ -153,11 +153,11 @@ export function ColaAssessmentCard({ entityType, entityId, entityName, slug }: C
 
       {/* Expanded content */}
       {expanded && (
-        <div className="border-t border-orange-100 dark:border-orange-900/30 px-4 py-3 space-y-3">
+        <div className="border-t border-primary/20 dark:border-primary/40 px-4 py-3 space-y-3">
           {/* Score explanation */}
           {data.scoreExplanation && (
             <div className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-orange-500">Score reasoning</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Score reasoning</p>
               <p className="text-xs text-muted-foreground leading-relaxed">{data.scoreExplanation}</p>
             </div>
           )}
@@ -165,12 +165,12 @@ export function ColaAssessmentCard({ entityType, entityId, entityName, slug }: C
           {/* Active goals */}
           {data.goals.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-orange-500">Active goals</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Active goals</p>
               {data.goals.map(g => (
                 <div key={g.id} className="flex items-start gap-2">
-                  <Target size={11} className="text-orange-400 mt-0.5 flex-shrink-0" />
+                  <Target size={11} className="text-primary mt-0.5 flex-shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-[11px] font-medium text-orange-700 dark:text-orange-300">
+                    <p className="text-[11px] font-medium text-primary dark:text-brand-subtle">
                       {GOAL_LABELS[g.goalType] ?? g.goalType}
                     </p>
                     <p className="text-[11px] text-muted-foreground truncate">{g.description}</p>

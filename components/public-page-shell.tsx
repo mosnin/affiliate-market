@@ -89,7 +89,7 @@ export function PublicPageShell({
   children,
 }: PublicPageShellProps) {
   const fontClass = FONT_CLASS_MAP[customization?.font || 'system'] || '';
-  const accentColor = customization?.accentColor || '#ff964f';
+  const accentColor = customization?.accentColor || '#34c77f';
   const hasSocial = customization?.socialLinks && Object.values(customization.socialLinks).some((v) => typeof v === 'string' && v.trim().length > 0);
 
   // Pull the blur source the same way the public profile does: cover photo

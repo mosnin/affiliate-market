@@ -401,16 +401,10 @@ function StageWelcome({ onContinue }: { onContinue: () => void }) {
   return (
     <div className="space-y-10 text-center">
       <div className="space-y-3">
-        <h1
-          className="text-4xl sm:text-5xl tracking-tight text-foreground"
-          style={{ fontFamily: 'var(--font-title)' }}
-        >
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Hi. I&apos;m Cola.
         </h1>
-        <p
-          className="text-2xl sm:text-3xl tracking-tight text-muted-foreground"
-          style={{ fontFamily: 'var(--font-title)' }}
-        >
+        <p className="text-xl text-muted-foreground">
           Let&apos;s set up your business in about five minutes —
           <br className="hidden sm:block" />
           and by the end, I&apos;ll already be working on it.
@@ -419,7 +413,7 @@ function StageWelcome({ onContinue }: { onContinue: () => void }) {
       <button
         type="button"
         onClick={onContinue}
-        className="inline-flex items-center justify-center gap-2 rounded-full bg-foreground text-background px-6 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand text-brand-foreground px-6 py-2.5 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98]"
       >
         Let&apos;s go
         <ArrowRight size={14} />
@@ -461,7 +455,7 @@ function StageWhoYouAre(props: {
   return (
     <div className="space-y-8">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl tracking-tight text-foreground" style={{ fontFamily: 'var(--font-title)' }}>
+        <h2 className="text-[21px] leading-snug tracking-tight font-semibold text-foreground">
           First, tell me who you are.
         </h2>
         <p className="text-sm text-muted-foreground">A few quick taps. No typing where I can avoid it.</p>
@@ -491,7 +485,7 @@ function StageWhoYouAre(props: {
             value={props.name}
             onChange={(e) => props.onChangeName(e.target.value)}
             placeholder="Sarah Chen"
-            className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </Section>
 
@@ -502,7 +496,7 @@ function StageWhoYouAre(props: {
             value={props.businessName}
             onChange={(e) => props.onChangeBusinessName(e.target.value)}
             placeholder="Coastal Realty"
-            className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </Section>
       </div>
@@ -541,7 +535,7 @@ function StageWhoYouAre(props: {
             value={props.zipCode}
             onChange={(e) => props.onChangeZip(e.target.value.replace(/\D/g, '').slice(0, 5))}
             placeholder="33139"
-            className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </Section>
 
@@ -562,7 +556,7 @@ function StageWhoYouAre(props: {
           type="button"
           disabled={!canSubmit}
           onClick={props.onContinue}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-foreground text-background px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand text-brand-foreground px-5 h-9 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {props.submitting ? <Loader2 size={14} className="animate-spin" /> : <>Continue <ArrowRight size={14} /></>}
         </button>
@@ -600,8 +594,8 @@ function StageWhoYouServe(props: {
               className={cn(
                 'rounded-xl border px-4 py-3 text-sm font-medium transition-all',
                 selected
-                  ? 'border-foreground bg-foreground text-background'
-                  : 'border-border bg-background text-foreground hover:bg-muted/30',
+                  ? 'border-primary bg-brand-subtle/50 text-primary'
+                  : 'border-border bg-card text-foreground hover:border-primary/40',
                 atCap && 'opacity-40 cursor-not-allowed',
               )}
             >
@@ -618,7 +612,7 @@ function StageWhoYouServe(props: {
           rows={3}
           maxLength={500}
           placeholder='e.g. "Never push for a demo on the first message. Always sign off as Sarah from Coastal Realty."'
-          className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </Section>
 
@@ -627,7 +621,7 @@ function StageWhoYouServe(props: {
           type="button"
           disabled={props.clientTypes.length === 0}
           onClick={props.onContinue}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-foreground text-background px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand text-brand-foreground px-5 h-9 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Continue <ArrowRight size={14} />
         </button>
@@ -695,8 +689,8 @@ function VoiceCard({
         // honours the same rule. A ring carries the "this is chosen"
         // signal without breaking the system's voice.
         selected
-          ? 'border-foreground bg-foreground/[0.04] ring-2 ring-foreground/10 ring-offset-2 ring-offset-background'
-          : 'border-border bg-background hover:bg-foreground/[0.04]',
+          ? 'border-primary bg-brand-subtle/50'
+          : 'border-border bg-card hover:border-primary/40',
       )}
     >
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">{label}</p>
@@ -736,8 +730,8 @@ function StageSources({
               className={cn(
                 'rounded-xl border px-3 py-3 text-sm font-medium transition-all flex flex-col items-center gap-2',
                 selected
-                  ? 'border-foreground bg-foreground text-background'
-                  : 'border-border bg-background text-foreground hover:bg-muted/30',
+                  ? 'border-primary bg-brand-subtle/50 text-primary'
+                  : 'border-border bg-card text-foreground hover:border-primary/40',
               )}
             >
               {opt.icon ? (
@@ -757,7 +751,7 @@ function StageSources({
         <button
           type="button"
           onClick={onContinue}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-foreground text-background px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand text-brand-foreground px-5 h-9 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98]"
         >
           {leadSources.length === 0 ? 'Skip for now' : 'Continue'}
           <ArrowRight size={14} />
@@ -833,7 +827,7 @@ function StagePlan({
           type="button"
           onClick={onFinish}
           disabled={submitting}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-foreground text-background px-6 py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand text-brand-foreground px-6 h-10 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98] disabled:opacity-40"
         >
           {submitting ? <Loader2 size={14} className="animate-spin" /> : <>Looks good, take me in <ArrowRight size={14} /></>}
         </button>
@@ -875,7 +869,7 @@ function PickerButton({ selected, onClick, children }: { selected: boolean; onCl
       onClick={onClick}
       className={cn(
         'rounded-xl border px-4 py-3 text-sm transition-all',
-        selected ? 'border-foreground bg-foreground text-background' : 'border-border bg-background text-foreground hover:bg-muted/30',
+        selected ? 'border-primary bg-brand-subtle/50 text-primary' : 'border-border bg-card text-foreground hover:border-primary/40',
       )}
     >
       {children}
@@ -890,7 +884,7 @@ function TenureButton({ selected, onClick, children }: { selected: boolean; onCl
       onClick={onClick}
       className={cn(
         'rounded-lg border px-2 py-2.5 text-sm font-medium transition-all',
-        selected ? 'border-foreground bg-foreground text-background' : 'border-border bg-background text-foreground hover:bg-muted/30',
+        selected ? 'border-primary bg-brand-subtle/50 text-primary' : 'border-border bg-card text-foreground hover:border-primary/40',
       )}
     >
       {children}

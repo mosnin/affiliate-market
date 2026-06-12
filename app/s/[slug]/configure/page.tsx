@@ -71,7 +71,7 @@ export default async function ConfigurePage({
     notifications: dbUser?.space?.settings?.notifications ?? true,
     logoUrl: (dbUser?.space?.settings as any)?.logoUrl ?? '',
     sellerPhotoUrl: (dbUser?.space?.settings as any)?.sellerPhotoUrl ?? '',
-    intakeAccentColor: dbUser?.space?.settings?.intakeAccentColor ?? '#ff964f',
+    intakeAccentColor: dbUser?.space?.settings?.intakeAccentColor ?? '#34c77f',
     intakeBorderRadius: dbUser?.space?.settings?.intakeBorderRadius ?? 'rounded',
     intakeFont: dbUser?.space?.settings?.intakeFont ?? 'system',
     intakeFooterLinks: dbUser?.space?.settings?.intakeFooterLinks ?? [],

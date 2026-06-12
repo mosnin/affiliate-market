@@ -45,7 +45,7 @@ const INPUT_CLASS = cn(FIELD_BASE, 'h-10');
 const TEXTAREA_CLASS = cn(FIELD_BASE, 'py-2 min-h-[72px]');
 const FIELD_LABEL = 'text-[12.5px] font-medium text-foreground';
 
-export function BookingForm({ slug, duration: defaultDuration, businessName, timezone, accentColor = '#ff964f', profileHref }: BookingFormProps) {
+export function BookingForm({ slug, duration: defaultDuration, businessName, timezone, accentColor = '#34c77f', profileHref }: BookingFormProps) {
   const primaryTextColor = pickContrastColor(accentColor);
   const confettiRef = useRef<ConfettiRef>(null);
   const [step, setStep] = useState<Step>('date');

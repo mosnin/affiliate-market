@@ -4,14 +4,14 @@ import Link from 'next/link';
 import { ShoppingCart, ChevronRight } from 'lucide-react';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { getOrdersForSpace } from '@/lib/marketplace/orders';
-import { H1, TITLE_FONT, BODY_MUTED, PAGE_MAX } from '@/lib/typography';
+import { H1, TITLE_FONT, BODY_MUTED, PAGE_MAX, CARD, SECTION_LABEL } from '@/lib/typography';
 import { cn } from '@/lib/utils';
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  pending:   { label: 'Pending',   color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' },
-  paid:      { label: 'Paid',      color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' },
-  refunded:  { label: 'Refunded',  color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' },
-  canceled:  { label: 'Canceled',  color: 'bg-muted text-muted-foreground' },
+const STATUS_CONFIG: Record<string, { label: string; chip: string }> = {
+  pending:   { label: 'Pending',   chip: 'inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground' },
+  paid:      { label: 'Paid',      chip: 'inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium bg-positive-subtle text-positive' },
+  refunded:  { label: 'Refunded',  chip: 'inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium bg-negative-subtle text-negative' },
+  canceled:  { label: 'Canceled',  chip: 'inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium bg-negative-subtle text-negative' },
 };
 
 function formatAmount(cents: number, currency: string): string {
@@ -88,7 +88,7 @@ export default async function OrdersPage({
       </header>
 
       {orders.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-12 text-center">
+        <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-5 py-12 text-center">
           <ShoppingCart size={28} className="mx-auto mb-3 text-muted-foreground/60" aria-hidden />
           <p className="text-sm text-foreground">No orders yet.</p>
           <p className={cn('text-xs mt-1', BODY_MUTED)}>
@@ -96,29 +96,17 @@ export default async function OrdersPage({
           </p>
         </div>
       ) : (
-        <div className="rounded-xl border border-border overflow-hidden">
+        <div className={cn(CARD, 'overflow-hidden')}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
-                  <th className="text-left px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Date
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Product
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground hidden sm:table-cell">
-                    Buyer
-                  </th>
-                  <th className="text-right px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Amount
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Status
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground hidden md:table-cell">
-                    Referral
-                  </th>
+                  <th className={cn(SECTION_LABEL, 'text-left px-4 py-3')}>Date</th>
+                  <th className={cn(SECTION_LABEL, 'text-left px-4 py-3')}>Product</th>
+                  <th className={cn(SECTION_LABEL, 'text-left px-4 py-3 hidden sm:table-cell')}>Buyer</th>
+                  <th className={cn(SECTION_LABEL, 'text-right px-4 py-3')}>Amount</th>
+                  <th className={cn(SECTION_LABEL, 'text-left px-4 py-3')}>Status</th>
+                  <th className={cn(SECTION_LABEL, 'text-left px-4 py-3 hidden md:table-cell')}>Referral</th>
                   <th className="w-8 px-4 py-3" />
                 </tr>
               </thead>
@@ -151,7 +139,7 @@ export default async function OrdersPage({
                         {formatAmount(order.amountCents, order.currency)}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={cn('text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap', statusConf.color)}>
+                        <span className={cn(statusConf.chip, 'whitespace-nowrap')}>
                           {statusConf.label}
                         </span>
                       </td>

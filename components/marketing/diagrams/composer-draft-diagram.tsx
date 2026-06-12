@@ -170,7 +170,7 @@ function ComposerDraftContent() {
             <div
               className={brandOrange(
                 'AGENT_BADGE',
-                'flex-1 min-h-0 px-3.5 py-3 border-l-2 border-orange-400 dark:border-orange-500/60 flex flex-col',
+                'flex-1 min-h-0 px-3.5 py-3 border-l-2 border-primary/40 dark:border-primary/200/60 flex flex-col',
               )}
             >
               <div className="space-y-1.5">

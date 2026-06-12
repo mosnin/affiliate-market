@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
       sellerPhotoUrl: settings?.sellerPhotoUrl ?? '',
       privacyPolicyHtml: settings?.privacyPolicyHtml ?? '',
       // Appearance settings
-      intakeAccentColor: settings?.intakeAccentColor ?? '#ff964f',
+      intakeAccentColor: settings?.intakeAccentColor ?? '#34c77f',
       intakeBorderRadius: settings?.intakeBorderRadius ?? 'rounded',
       intakeFont: settings?.intakeFont ?? 'system',
       intakeDarkMode: settings?.intakeDarkMode ?? false,

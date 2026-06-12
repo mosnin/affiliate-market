@@ -273,7 +273,7 @@ export default async function ClientDetailPage({
         <details open className="group border-t border-border/60 pt-4">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-2 text-sm font-semibold text-foreground hover:text-foreground/80 transition-colors">
             <span className="inline-flex items-center gap-2">
-              <MessageCircle size={13} className="text-orange-500 dark:text-orange-400" />
+              <MessageCircle size={13} className="text-primary dark:text-primary" />
               Lead score
             </span>
             <span className="inline-flex items-center gap-2">

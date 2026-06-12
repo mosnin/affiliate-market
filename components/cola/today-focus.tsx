@@ -101,14 +101,14 @@ export function TodayFocus({ slug }: { slug: string }) {
                 href={`/s/${slug}/contacts/${item.contactId}`}
                 className="group/row flex items-center gap-3 py-3 first:pt-4 last:pb-0 hover:bg-muted/20 -mx-3 px-3 rounded-lg transition-colors"
               >
-                <div className="w-8 h-8 rounded-full bg-orange-50 dark:bg-orange-500/10 flex items-center justify-center flex-shrink-0 text-xs font-semibold text-orange-600 dark:text-orange-400">
+                <div className="w-8 h-8 rounded-full bg-brand-subtle dark:bg-brand/10 flex items-center justify-center flex-shrink-0 text-xs font-semibold text-primary dark:text-primary">
                   {item.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-foreground truncate">{item.name}</span>
                     {item.leadScore >= HOT_LEAD_THRESHOLD && (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-orange-600 dark:text-orange-400">
+                      <span className="inline-flex items-center gap-1 text-[11px] text-primary dark:text-primary">
                         <MessageCircle size={10} />
                         hot
                       </span>

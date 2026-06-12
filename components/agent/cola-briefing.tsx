@@ -76,10 +76,10 @@ export function ColaBriefing({ slug }: { slug: string }) {
 
   if (!data.isLoaded) {
     return (
-      <div className="rounded-2xl border border-orange-200 dark:border-orange-900/40 bg-orange-50 dark:bg-orange-950/20 p-4 sm:p-5 animate-pulse">
-        <div className="h-5 bg-orange-200/60 dark:bg-orange-900/40 rounded w-40 mb-3" />
+      <div className="rounded-2xl border border-primary/20 dark:border-primary/40 bg-brand-subtle dark:bg-brand-subtle p-4 sm:p-5 animate-pulse">
+        <div className="h-5 bg-brand-subtle/60 dark:bg-brand-subtle rounded w-40 mb-3" />
         <div className="space-y-2">
-          {[1,2,3].map(i => <div key={i} className="h-10 bg-orange-100 dark:bg-orange-900/30 rounded-xl" />)}
+          {[1,2,3].map(i => <div key={i} className="h-10 bg-brand-subtle dark:bg-brand-subtle rounded-xl" />)}
         </div>
       </div>
     );
@@ -88,8 +88,8 @@ export function ColaBriefing({ slug }: { slug: string }) {
   if (!hasAnything && data.isLoaded) {
     return (
       <div className="rounded-2xl border border-border bg-muted/20 p-4 sm:p-5 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-xl bg-orange-100 dark:bg-orange-950/40 flex items-center justify-center flex-shrink-0">
-          <Bot size={15} className="text-orange-500" />
+        <div className="w-8 h-8 rounded-xl bg-brand-subtle dark:bg-brand-subtle flex items-center justify-center flex-shrink-0">
+          <Bot size={15} className="text-primary" />
         </div>
         <div className="min-w-0">
           <p className="text-sm font-medium">You&apos;re ahead of it</p>
@@ -100,17 +100,17 @@ export function ColaBriefing({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="rounded-2xl border border-orange-200 dark:border-orange-900/40 bg-gradient-to-br from-orange-50 to-amber-50/30 dark:from-orange-950/20 dark:to-amber-950/10 overflow-hidden">
+    <div className="rounded-2xl border border-primary/20 dark:border-primary/40 bg-gradient-to-br from-brand-subtle to-brand-subtle/40 dark:from-accent/40 dark:to-accent/20 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 sm:px-5 pt-4 sm:pt-5 pb-3 border-b border-orange-100 dark:border-orange-900/30">
+      <div className="flex items-center justify-between px-4 sm:px-5 pt-4 sm:pt-5 pb-3 border-b border-primary/20 dark:border-primary/40">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-orange-500 flex items-center justify-center flex-shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-brand flex items-center justify-center flex-shrink-0">
             <Bot size={14} className="text-white" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-orange-700 dark:text-orange-300">From Cola&apos;s desk</p>
+            <p className="text-sm font-semibold text-primary dark:text-brand-subtle">From Cola&apos;s desk</p>
             {data.generatedAt && (
-              <p className="text-[10px] text-orange-500/70 dark:text-orange-400/60">
+              <p className="text-[10px] text-primary/70 dark:text-primary/60">
                 Updated {timeAgo(data.generatedAt)}
               </p>
             )}
@@ -118,7 +118,7 @@ export function ColaBriefing({ slug }: { slug: string }) {
         </div>
         <Link
           href={agentHref}
-          className="text-[11px] font-medium text-orange-600 dark:text-orange-400 hover:text-orange-700 flex items-center gap-0.5 flex-shrink-0"
+          className="text-[11px] font-medium text-primary dark:text-primary hover:text-primary flex items-center gap-0.5 flex-shrink-0"
         >
           View all <ChevronRight size={11} />
         </Link>
@@ -131,7 +131,7 @@ export function ColaBriefing({ slug }: { slug: string }) {
             {data.pendingDrafts > 0 && (
               <Link
                 href={agentHref}
-                className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium px-2.5 py-1 rounded-full transition-colors"
+                className="inline-flex items-center gap-1.5 bg-brand hover:bg-brand text-white text-xs font-medium px-2.5 py-1 rounded-full transition-colors"
               >
                 <Inbox size={11} />
                 {data.pendingDrafts} draft{data.pendingDrafts !== 1 ? 's' : ''} to review
@@ -147,7 +147,7 @@ export function ColaBriefing({ slug }: { slug: string }) {
               </Link>
             )}
             {data.activeGoals > 0 && (
-              <span className="inline-flex items-center gap-1.5 bg-white dark:bg-orange-950/40 border border-orange-200 dark:border-orange-800/40 text-orange-700 dark:text-orange-300 text-xs font-medium px-2.5 py-1 rounded-full">
+              <span className="inline-flex items-center gap-1.5 bg-white dark:bg-brand-subtle border border-primary/20 dark:border-primary/40 text-primary dark:text-brand-subtle text-xs font-medium px-2.5 py-1 rounded-full">
                 <Target size={11} />
                 {data.activeGoals} active goal{data.activeGoals !== 1 ? 's' : ''}
               </span>
@@ -158,7 +158,7 @@ export function ColaBriefing({ slug }: { slug: string }) {
         {/* Priority contacts */}
         {data.priorityItems.length > 0 && (
           <div className="space-y-1.5">
-            <p className="text-[11px] font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wide">
+            <p className="text-[11px] font-semibold text-primary dark:text-primary uppercase tracking-wide">
               Today's focus
             </p>
             <div className="space-y-1">
@@ -166,10 +166,10 @@ export function ColaBriefing({ slug }: { slug: string }) {
                 <Link
                   key={item.contactId}
                   href={`/s/${slug}/contacts/${item.contactId}`}
-                  className="flex items-center gap-3 p-2.5 rounded-xl bg-white/60 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-orange-100/80 dark:border-orange-900/30 transition-colors group"
+                  className="flex items-center gap-3 p-2.5 rounded-xl bg-white/60 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 border border-primary/20 dark:border-primary/40 transition-colors group"
                 >
                   {/* Avatar */}
-                  <div className="w-7 h-7 rounded-full bg-orange-100 dark:bg-orange-950/50 flex items-center justify-center flex-shrink-0 text-[11px] font-bold text-orange-600 dark:text-orange-400">
+                  <div className="w-7 h-7 rounded-full bg-brand-subtle dark:bg-brand-subtle flex items-center justify-center flex-shrink-0 text-[11px] font-bold text-primary dark:text-primary">
                     {item.name.charAt(0).toUpperCase()}
                   </div>
 
@@ -181,7 +181,7 @@ export function ColaBriefing({ slug }: { slug: string }) {
                         <span className={cn(
                           'text-[10px] font-semibold px-1 py-0.5 rounded flex-shrink-0',
                           item.leadScore >= HOT_LEAD_THRESHOLD
-                            ? 'text-orange-600 dark:text-orange-400'
+                            ? 'text-primary dark:text-primary'
                             : 'text-muted-foreground',
                         )}>
                           {item.leadScore}

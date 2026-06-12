@@ -126,7 +126,7 @@ export function BrandPanel() {
           {kit.colors.length < 8 && (
             <button
               type="button"
-              onClick={() => edit({ colors: [...kit.colors, '#ff964f'] })}
+              onClick={() => edit({ colors: [...kit.colors, '#34c77f'] })}
               aria-label="Add color"
               className="w-10 h-10 rounded-md border border-dashed border-border/70 text-muted-foreground hover:text-foreground hover:border-border flex items-center justify-center transition-colors"
             >

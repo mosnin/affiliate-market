@@ -3,7 +3,7 @@
 /**
  * GradientCard: the premium 3D-tilt dark card with the studio's ASCII
  * signature and a Cola-orange bottom glow. Ported from fortitudo; the only
- * change is the palette (#F97316 → Cola #ff964f / pale amber). It is a
+ * change is the palette (#F97316 → Cola #34c77f / pale amber). It is a
  * deliberately DARK card, so it reads identically on both the light and dark
  * marketing canvas (same call as Cola's existing black stats card). Reserved
  * for the home "what Cola does" cards.

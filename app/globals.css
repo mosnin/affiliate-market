@@ -11,13 +11,23 @@
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-subtle: var(--brand-subtle);
+  --color-hero: var(--hero);
+  --color-hero-foreground: var(--hero-foreground);
+  --color-positive: var(--positive);
+  --color-positive-subtle: var(--positive-subtle);
+  --color-negative: var(--negative);
+  --color-negative-subtle: var(--negative-subtle);
   --color-lead-hot: var(--lead-hot);
   --color-lead-warm: var(--lead-warm);
   --color-lead-cold: var(--lead-cold);
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --font-heading: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, "Helvetica Neue", Arial, sans-serif;
-  --font-title: "Times New Roman MT", "Times New Roman", Times, serif;
+  /* Display type is SANS now (Sequence-style fintech). --font-title is kept
+     as a variable so legacy `style={{ fontFamily: 'var(--font-title)' }}`
+     call sites restyle without edits — it simply resolves to the display
+     sans. No serif anywhere in product chrome. */
+  --font-title: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, "Helvetica Neue", Arial, sans-serif;
   /* Marketing/auth-only brand display font (fortitudo "studio ASCII" look).
      Bitcount Grid Single, used via the `.font-brand` utility on the logged-out
      site and auth pages. The product (dashboard) never reaches for it. */
@@ -71,215 +81,246 @@
 }
 
 :root {
+  /* Sequence-style fintech geometry: 16px cards, 12px controls. */
   --radius: 0.75rem;
-  --card-radius: 0.75rem;
+  --card-radius: 1rem;
 
-  /* Rainbow-button color stops (marketing CTA only). */
-  --color-1: 24 100% 65%;
-  --color-2: 16 100% 60%;
-  --color-3: 38 100% 62%;
-  --color-4: 28 100% 58%;
-  --color-5: 45 100% 64%;
+  /* Rainbow-button color stops (marketing CTA only) — teal → mint sweep. */
+  --color-1: 168 65% 22%;
+  --color-2: 160 55% 35%;
+  --color-3: 152 60% 48%;
+  --color-4: 148 62% 58%;
+  --color-5: 144 70% 68%;
 
-  /* Neutral-first palette. Orange is demoted to --brand for rare moments. */
-  --background: #ffffff;
-  --surface: #fafafa;
-  --foreground: #111113;
+  /* The Sequence palette: deep-teal authority, mint money, cool off-white calm. */
+  --background: #f5f6f8;
+  --surface: #eef0f3;
+  --foreground: #14181d;
 
   --card: #ffffff;
-  --card-foreground: #111113;
+  --card-foreground: #14181d;
 
   --popover: #ffffff;
-  --popover-foreground: #111113;
+  --popover-foreground: #14181d;
 
-  /* Primary is neutral — used for default buttons and emphasis.
-     Orange is NOT primary. It lives on --brand below. */
-  --primary: #111113;
+  /* Primary = deep teal. Hero surfaces, emphasis, focused chrome. */
+  --primary: #0e4e44;
   --primary-foreground: #ffffff;
 
-  --secondary: #f4f4f5;
-  --secondary-foreground: #111113;
+  --secondary: #eef0f3;
+  --secondary-foreground: #14181d;
 
-  --muted: #f4f4f5;
-  --muted-foreground: #6b6f76;
+  --muted: #eef0f3;
+  --muted-foreground: #6c737d;
 
-  /* Accent = subtle neutral hover surface (previously an orange tint). */
-  --accent: #f4f4f5;
-  --accent-foreground: #111113;
+  --accent: #e9f6f0;
+  --accent-foreground: #0e4e44;
 
-  --destructive: #b91c1c;
+  --destructive: #de4a56;
 
-  --border: #e7e7e9;
-  --input: #e7e7e9;
-  --ring: rgba(17, 17, 19, 0.12);
+  --border: #e6e8ec;
+  --input: #e6e8ec;
+  --ring: rgba(14, 78, 68, 0.22);
 
-  /* Brand — reserved for logo, Chip widget, and the rare "new" flag.
-     Do NOT use as a default UI color. */
-  --brand: #ff964f;
-  --brand-foreground: #ffffff;
-  --brand-subtle: #fff4eb;
+  /* Brand = mint. The money color: primary CTAs, earnings, growth. */
+  --brand: #34c77f;
+  --brand-foreground: #07332c;
+  --brand-subtle: #e5f7ee;
 
-  /* Charts: orange demoted to chart-5. Default chart-1 is neutral. */
-  --chart-1: #111113;
-  --chart-2: #3b82f6;
-  --chart-3: #a16207;
-  --chart-4: #b91c1c;
-  --chart-5: #ff964f;
+  /* The dark hero panel (Total Balance banner) and anything sitting on it. */
+  --hero: #0e4e44;
+  --hero-foreground: #ffffff;
 
-  /* Lead tier — mustard instead of amber to stop collision with brand. */
-  --lead-hot: #b91c1c;
-  --lead-warm: #a16207;
-  --lead-cold: #1d4ed8;
+  /* Deltas, chips, chart semantics. */
+  --positive: #119a57;
+  --positive-subtle: #e5f7ee;
+  --negative: #de4a56;
+  --negative-subtle: #fdecee;
 
-  --sidebar: #ffffff;
-  --sidebar-foreground: #111113;
-  --sidebar-primary: #111113;
+  /* Charts: income deep teal, expense mint — the screenshot's dual bars. */
+  --chart-1: #0e4e44;
+  --chart-2: #56d69e;
+  --chart-3: #5b7c99;
+  --chart-4: #de4a56;
+  --chart-5: #d99a26;
+
+  --lead-hot: #de4a56;
+  --lead-warm: #d99a26;
+  --lead-cold: #5b7c99;
+
+  --sidebar: #fbfbfc;
+  --sidebar-foreground: #14181d;
+  --sidebar-primary: #0e4e44;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f4f4f5;
-  --sidebar-accent-foreground: #111113;
-  --sidebar-border: #e7e7e9;
-  --sidebar-ring: rgba(17, 17, 19, 0.12);
+  --sidebar-accent: #eef0f3;
+  --sidebar-accent-foreground: #14181d;
+  --sidebar-border: #e6e8ec;
+  --sidebar-ring: rgba(14, 78, 68, 0.22);
 }
 
 .dark {
-  --background: #0c0c0d;
-  --surface: #151517;
-  --foreground: #f1f3f5;
+  --background: #0c1210;
+  --surface: #111a17;
+  --foreground: #eef2f0;
 
-  --card: #151517;
-  --card-foreground: #f1f3f5;
+  --card: #121b18;
+  --card-foreground: #eef2f0;
 
-  --popover: #151517;
-  --popover-foreground: #f1f3f5;
+  --popover: #121b18;
+  --popover-foreground: #eef2f0;
 
-  /* Primary inverts — light pill on dark surface. Not orange. */
-  --primary: #f1f3f5;
-  --primary-foreground: #0c0c0d;
-
-  --secondary: #1f2023;
-  --secondary-foreground: #e5e7eb;
-
-  --muted: #1f2023;
-  --muted-foreground: #9ca3af;
-
-  --accent: #1f2023;
-  --accent-foreground: #f1f3f5;
-
-  --destructive: #ef4444;
-
-  --border: #27272a;
-  --input: #27272a;
-  --ring: rgba(241, 243, 245, 0.15);
-
-  --brand: #ff964f;
-  --brand-foreground: #ffffff;
-  --brand-subtle: #2a1f17;
-
-  --chart-1: #f1f3f5;
-  --chart-2: #94a3b8;
-  --chart-3: #c2935c;
-  --chart-4: #f87171;
-  --chart-5: #ff964f;
-
-  --lead-hot: #f87171;
-  --lead-warm: #c2935c;
-  --lead-cold: #94a3b8;
-
-  --sidebar: #151517;
-  --sidebar-foreground: #f1f3f5;
-  --sidebar-primary: #f1f3f5;
-  --sidebar-primary-foreground: #0c0c0d;
-  --sidebar-accent: #1f2023;
-  --sidebar-accent-foreground: #f1f3f5;
-  --sidebar-border: #27272a;
-  --sidebar-ring: rgba(241, 243, 245, 0.15);
-}
-
-/* ── App theme: cooler off-white canvas, white sidebar, neutral accents ── */
-.app-theme {
-  --background: #fafafa;
-  --surface: #f4f4f5;
-  --foreground: #111113;
-
-  --card: #ffffff;
-  --card-foreground: #111113;
-
-  --popover: #ffffff;
-  --popover-foreground: #111113;
-
-  --primary: #111113;
+  /* Primary stays teal-family in the dark — a lifted sea-glass tone. */
+  --primary: #2e8d7c;
   --primary-foreground: #ffffff;
 
-  --secondary: #f0f0f1;
-  --secondary-foreground: #111113;
+  --secondary: #1a2522;
+  --secondary-foreground: #e2e8e5;
 
-  --muted: #f0f0f1;
-  --muted-foreground: #6b6f76;
+  --muted: #1a2522;
+  --muted-foreground: #93a09b;
 
-  --accent: #f0f0f1;
-  --accent-foreground: #111113;
+  --accent: #15302a;
+  --accent-foreground: #7fe0b4;
 
-  --destructive: #b91c1c;
+  --destructive: #f06973;
 
-  --border: #e7e7e9;
-  --input: #e7e7e9;
-  --ring: rgba(17, 17, 19, 0.12);
+  --border: #233029;
+  --input: #233029;
+  --ring: rgba(86, 214, 158, 0.25);
 
-  --brand: #ff964f;
-  --brand-foreground: #ffffff;
-  --brand-subtle: #fff4eb;
+  --brand: #3fd08c;
+  --brand-foreground: #06231d;
+  --brand-subtle: #11352a;
 
-  --sidebar: #ffffff;
-  --sidebar-foreground: #111113;
-  --sidebar-primary: #111113;
+  --hero: #0e3a33;
+  --hero-foreground: #ffffff;
+
+  --positive: #4ade8e;
+  --positive-subtle: #11352a;
+  --negative: #f06973;
+  --negative-subtle: #3a1d20;
+
+  --chart-1: #7fe0b4;
+  --chart-2: #2e8d7c;
+  --chart-3: #7d9cb8;
+  --chart-4: #f06973;
+  --chart-5: #e3b34f;
+
+  --lead-hot: #f06973;
+  --lead-warm: #e3b34f;
+  --lead-cold: #7d9cb8;
+
+  --sidebar: #0e1614;
+  --sidebar-foreground: #eef2f0;
+  --sidebar-primary: #3fd08c;
+  --sidebar-primary-foreground: #06231d;
+  --sidebar-accent: #1a2522;
+  --sidebar-accent-foreground: #eef2f0;
+  --sidebar-border: #233029;
+  --sidebar-ring: rgba(86, 214, 158, 0.25);
+}
+
+/* ── App theme: the dashboard canvas (matches :root — one system now) ── */
+.app-theme {
+  --background: #f5f6f8;
+  --surface: #eef0f3;
+  --foreground: #14181d;
+
+  --card: #ffffff;
+  --card-foreground: #14181d;
+
+  --popover: #ffffff;
+  --popover-foreground: #14181d;
+
+  --primary: #0e4e44;
+  --primary-foreground: #ffffff;
+
+  --secondary: #eef0f3;
+  --secondary-foreground: #14181d;
+
+  --muted: #eef0f3;
+  --muted-foreground: #6c737d;
+
+  --accent: #e9f6f0;
+  --accent-foreground: #0e4e44;
+
+  --destructive: #de4a56;
+
+  --border: #e6e8ec;
+  --input: #e6e8ec;
+  --ring: rgba(14, 78, 68, 0.22);
+
+  --brand: #34c77f;
+  --brand-foreground: #07332c;
+  --brand-subtle: #e5f7ee;
+
+  --hero: #0e4e44;
+  --hero-foreground: #ffffff;
+
+  --positive: #119a57;
+  --positive-subtle: #e5f7ee;
+  --negative: #de4a56;
+  --negative-subtle: #fdecee;
+
+  --sidebar: #fbfbfc;
+  --sidebar-foreground: #14181d;
+  --sidebar-primary: #0e4e44;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f0f0f1;
-  --sidebar-accent-foreground: #111113;
-  --sidebar-border: #e7e7e9;
-  --sidebar-ring: rgba(17, 17, 19, 0.12);
+  --sidebar-accent: #eef0f3;
+  --sidebar-accent-foreground: #14181d;
+  --sidebar-border: #e6e8ec;
+  --sidebar-ring: rgba(14, 78, 68, 0.22);
 }
 .dark .app-theme,
 .app-theme.dark {
-  --background: #0c0c0d;
-  --surface: #151517;
-  --foreground: #f1f3f5;
+  --background: #0c1210;
+  --surface: #111a17;
+  --foreground: #eef2f0;
 
-  --card: #151517;
-  --card-foreground: #f1f3f5;
+  --card: #121b18;
+  --card-foreground: #eef2f0;
 
-  --popover: #151517;
-  --popover-foreground: #f1f3f5;
+  --popover: #121b18;
+  --popover-foreground: #eef2f0;
 
-  --primary: #f1f3f5;
-  --primary-foreground: #0c0c0d;
+  --primary: #2e8d7c;
+  --primary-foreground: #ffffff;
 
-  --secondary: #1f2023;
-  --secondary-foreground: #e5e7eb;
+  --secondary: #1a2522;
+  --secondary-foreground: #e2e8e5;
 
-  --muted: #1f2023;
-  --muted-foreground: #9ca3af;
+  --muted: #1a2522;
+  --muted-foreground: #93a09b;
 
-  --accent: #1f2023;
-  --accent-foreground: #f1f3f5;
+  --accent: #15302a;
+  --accent-foreground: #7fe0b4;
 
-  --destructive: #ef4444;
+  --destructive: #f06973;
 
-  --border: #27272a;
-  --input: #27272a;
-  --ring: rgba(241, 243, 245, 0.15);
+  --border: #233029;
+  --input: #233029;
+  --ring: rgba(86, 214, 158, 0.25);
 
-  --brand: #ff964f;
-  --brand-foreground: #ffffff;
-  --brand-subtle: #2a1f17;
+  --brand: #3fd08c;
+  --brand-foreground: #06231d;
+  --brand-subtle: #11352a;
 
-  --sidebar: #151517;
-  --sidebar-foreground: #f1f3f5;
-  --sidebar-primary: #f1f3f5;
-  --sidebar-primary-foreground: #0c0c0d;
-  --sidebar-accent: #1f2023;
-  --sidebar-accent-foreground: #f1f3f5;
-  --sidebar-border: #27272a;
-  --sidebar-ring: rgba(241, 243, 245, 0.15);
+  --hero: #0e3a33;
+  --hero-foreground: #ffffff;
+
+  --positive: #4ade8e;
+  --positive-subtle: #11352a;
+  --negative: #f06973;
+  --negative-subtle: #3a1d20;
+
+  --sidebar: #0e1614;
+  --sidebar-foreground: #eef2f0;
+  --sidebar-primary: #3fd08c;
+  --sidebar-primary-foreground: #06231d;
+  --sidebar-accent: #1a2522;
+  --sidebar-accent-foreground: #eef2f0;
+  --sidebar-border: #233029;
+  --sidebar-ring: rgba(86, 214, 158, 0.25);
 }
 
 @layer base {
@@ -424,8 +465,8 @@
   box-shadow: none !important;
   outline: none !important;
 }
-/* Primary button: pill, Cola brand orange (fortitudo auth treatment).
-   Auth is the first impression, where brand expression is allowed; the orange
+/* Primary button: pill, Cola brand mint (fintech auth treatment).
+   Auth is the first impression, where brand expression is allowed; the mint
    CTA matches the logged-out site's primary pills. The product chrome stays
    neutral; this is scoped to the Clerk auth form. */
 .cl-formButtonPrimary {
@@ -1000,7 +1041,7 @@
  * (dashboard, agent chat, manager app) does NOT use any of this. It stays on
  * the paper-flat neutral system above. Everything here is opt-in via a class
  * (`.font-brand`, `.text-gradient-brand`, etc.) so it can't leak into product
- * chrome. Brand orange is Cola's #ff964f (var --brand), not fortitudo's
+ * chrome. Brand color is Cola's mint #34c77f (var --brand), not fortitudo's
  * #F97316. Works in both light and dark because it leans on the semantic
  * tokens (--background / --foreground / --border) for surfaces and reserves
  * orange for the signature glyphs + headline flourish.
@@ -1013,9 +1054,9 @@
   letter-spacing: 0.01em;
 }
 
-/* Orange gradient text: the headline accent word. Tuned to Cola's #ff964f. */
+/* Mint gradient text: the headline accent word. Tuned to Cola's #34c77f. */
 .text-gradient-brand {
-  background: linear-gradient(135deg, #ff964f, #ffb27a, #ffc994);
+  background: linear-gradient(135deg, #0e4e44, #34c77f, #7fe0b4);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

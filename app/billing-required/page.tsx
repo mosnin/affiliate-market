@@ -105,7 +105,7 @@ function BillingRequiredContent() {
           another staged moment in the same flow. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-orange-50/40 via-background to-orange-50/30 dark:from-orange-500/[0.04] dark:via-background dark:to-orange-500/[0.03]"
+        className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-brand-subtle/40 via-background to-brand-subtle/30 dark:from-brand/[0.04] dark:via-background dark:to-brand/[0.03]"
       />
 
       {/* Logo, top-left */}

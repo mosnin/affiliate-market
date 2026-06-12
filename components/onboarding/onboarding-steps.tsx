@@ -89,15 +89,15 @@ export function StepScaffold({
 }
 
 // ── Shared input styling ────────────────────────────────────────────────────
-// Paper-flat, theme-aware. h-10 to honor the focal "this moment matters" feel.
+// rounded-xl per STYLESHEET §Shape (controls = rounded-xl).
 const INPUT_CLASS =
-  'w-full h-10 rounded-md border border-border/70 bg-background px-3 text-base text-foreground ' +
+  'w-full h-10 rounded-xl border border-border bg-card px-3 text-base text-foreground ' +
   'placeholder:text-muted-foreground/60 outline-none transition-colors ' +
-  'focus:border-foreground/30';
+  'focus:border-primary/40 focus:ring-2 focus:ring-ring';
 const TEXTAREA_CLASS =
-  'w-full rounded-md border border-border/70 bg-background px-3 py-2.5 text-base text-foreground ' +
+  'w-full rounded-xl border border-border bg-card px-3 py-2.5 text-base text-foreground ' +
   'placeholder:text-muted-foreground/60 outline-none transition-colors resize-none ' +
-  'focus:border-foreground/30';
+  'focus:border-primary/40 focus:ring-2 focus:ring-ring';
 const LABEL_CLASS = cn(SECTION_LABEL, 'mb-2 block');
 
 // ── Text step ──────────────────────────────────────────────────────────────
@@ -405,8 +405,8 @@ export function SlugStep({
     >
       <div className="mx-auto max-w-md text-left">
         <label className={LABEL_CLASS}>Your intake link</label>
-        <div className="flex h-10 items-stretch overflow-hidden rounded-md border border-border/70 bg-background transition-colors focus-within:border-foreground/30">
-          <span className="inline-flex items-center border-r border-border/70 bg-foreground/[0.03] px-3 text-sm text-muted-foreground">
+        <div className="flex h-10 items-stretch overflow-hidden rounded-xl border border-border bg-card transition-colors focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-ring">
+          <span className="inline-flex items-center border-r border-border bg-muted/40 px-3 text-sm text-muted-foreground">
             {urlPrefix}
           </span>
           <input
@@ -509,10 +509,10 @@ export function TilesStep<T extends string>({
               whileTap={{ scale: 0.98 }}
               transition={{ duration: 0.15 }}
               className={cn(
-                'group relative flex flex-col items-center justify-center gap-2 rounded-xl border bg-background p-5 text-center transition-colors duration-150',
+                'group relative flex flex-col items-center justify-center gap-2 rounded-xl border bg-card p-5 text-center transition-all duration-150',
                 selected
-                  ? 'border-foreground/40 bg-foreground/[0.045] ring-2 ring-foreground/10'
-                  : 'border-border/70 hover:bg-foreground/[0.04]',
+                  ? 'border-primary bg-brand-subtle/50'
+                  : 'border-border hover:border-primary/40',
               )}
             >
               {Icon && (
@@ -520,7 +520,7 @@ export function TilesStep<T extends string>({
                   size={20}
                   className={cn(
                     'transition-colors',
-                    selected ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground',
+                    selected ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground',
                   )}
                 />
               )}
@@ -604,8 +604,8 @@ export function PhotoStep({
           className={cn(
             'relative flex h-32 w-32 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-colors',
             value
-              ? 'border-foreground/30 bg-background'
-              : 'border-border/70 bg-background hover:border-foreground/30 hover:bg-foreground/[0.04]',
+              ? 'border-primary/40 bg-card'
+              : 'border-border bg-card hover:border-primary/40 hover:bg-muted/30',
           )}
         >
           {value ? (

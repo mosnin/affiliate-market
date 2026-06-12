@@ -144,15 +144,15 @@ export function DiagramColaBadge({
         cn(
           'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5',
           'text-[10px] font-medium leading-none',
-          'text-orange-600 dark:text-orange-400',
-          'bg-orange-500/[0.08] dark:bg-orange-500/[0.12]',
+          'text-primary dark:text-primary',
+          'bg-brand/[0.08] dark:bg-brand/[0.12]',
           className,
         ),
       )}
     >
       <span
         aria-hidden
-        className="inline-block w-1.5 h-1.5 rounded-full bg-orange-500 dark:bg-orange-400"
+        className="inline-block w-1.5 h-1.5 rounded-full bg-brand dark:bg-brand"
       />
       {label}
     </span>

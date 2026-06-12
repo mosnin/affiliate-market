@@ -105,14 +105,14 @@ const STATUS_CONFIG: Record<
   waitlisted: {
     label: 'Waitlisted',
     icon: Clock,
-    color: 'text-orange-500',
-    bgColor: 'bg-orange-100 dark:bg-orange-900/30',
+    color: 'text-primary',
+    bgColor: 'bg-brand-subtle dark:bg-brand-subtle',
   },
   needs_info: {
     label: 'Needs Info',
     icon: AlertCircle,
-    color: 'text-orange-500',
-    bgColor: 'bg-orange-100 dark:bg-orange-900/30',
+    color: 'text-primary',
+    bgColor: 'bg-brand-subtle dark:bg-brand-subtle',
   },
 };
 
@@ -594,8 +594,8 @@ function SimpleStatusView({
       key: 'needs_info',
       label: 'Needs Info',
       icon: AlertCircle,
-      color: 'text-orange-500',
-      bgColor: 'bg-orange-100 dark:bg-orange-900/30',
+      color: 'text-primary',
+      bgColor: 'bg-brand-subtle dark:bg-brand-subtle',
     },
     {
       key: 'declined',

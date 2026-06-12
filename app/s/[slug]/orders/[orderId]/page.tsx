@@ -4,14 +4,14 @@ import Link from 'next/link';
 import { ChevronRight, Tag, User, Package, Calendar, CreditCard, Hash } from 'lucide-react';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { getOrderById, getLicenseForOrder } from '@/lib/marketplace/orders';
-import { H1, TITLE_FONT, BODY_MUTED } from '@/lib/typography';
+import { H1, TITLE_FONT, BODY_MUTED, CARD, SECTION_LABEL } from '@/lib/typography';
 import { cn } from '@/lib/utils';
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; description: string }> = {
-  pending:  { label: 'Pending',  color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300', description: 'Payment is being processed.' },
-  paid:     { label: 'Paid',     color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300', description: 'Payment confirmed.' },
-  refunded: { label: 'Refunded', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', description: 'Amount has been refunded to the buyer.' },
-  canceled: { label: 'Canceled', color: 'bg-muted text-muted-foreground', description: 'Order was canceled.' },
+const STATUS_CONFIG: Record<string, { label: string; chip: string; description: string }> = {
+  pending:  { label: 'Pending',  chip: 'inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground', description: 'Payment is being processed.' },
+  paid:     { label: 'Paid',     chip: 'inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium bg-positive-subtle text-positive', description: 'Payment confirmed.' },
+  refunded: { label: 'Refunded', chip: 'inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium bg-negative-subtle text-negative', description: 'Amount has been refunded to the buyer.' },
+  canceled: { label: 'Canceled', chip: 'inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium bg-negative-subtle text-negative', description: 'Order was canceled.' },
 };
 
 function formatAmount(cents: number, currency: string): string {
@@ -102,7 +102,7 @@ export default async function OrderDetailPage({
           <h1 className={cn(H1)} style={TITLE_FONT}>
             {order.productName}
           </h1>
-          <span className={cn('text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap', statusConf.color)}>
+          <span className={cn(statusConf.chip, 'whitespace-nowrap')}>
             {statusConf.label}
           </span>
         </div>
@@ -110,7 +110,7 @@ export default async function OrderDetailPage({
       </header>
 
       {/* Details grid */}
-      <div className="rounded-xl border border-border/70 bg-card overflow-hidden">
+      <div className={cn(CARD, 'overflow-hidden')}>
         <div className="divide-y divide-border/60">
           <DetailRow icon={User} label="Buyer" value={order.buyerEmail} />
           <DetailRow icon={Package} label="Product" value={order.productName} />
@@ -155,9 +155,7 @@ export default async function OrderDetailPage({
 
       {/* Status timeline */}
       <section className="space-y-3">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          Status timeline
-        </p>
+        <p className={SECTION_LABEL}>Status timeline</p>
         <ol className="space-y-3">
           {timeline.map((event, i) => (
             <li key={i} className="flex items-start gap-3">
@@ -182,10 +180,8 @@ export default async function OrderDetailPage({
 
       {/* License info */}
       {license && (
-        <section className="rounded-xl border border-border/70 bg-card px-5 py-4 space-y-2">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            License agreement
-          </p>
+        <section className={cn(CARD, 'px-5 py-4 space-y-2')}>
+          <p className={SECTION_LABEL}>License agreement</p>
           <p className="text-sm text-foreground">
             License issued for this order.
           </p>
@@ -199,10 +195,8 @@ export default async function OrderDetailPage({
 
       {/* Referral attribution */}
       {order.referralCode && (
-        <section className="rounded-xl border border-border/70 bg-muted/20 px-5 py-4 space-y-1">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Referral attribution
-          </p>
+        <section className={cn(CARD, 'bg-muted/20 px-5 py-4 space-y-1')}>
+          <p className={SECTION_LABEL}>Referral attribution</p>
           <p className="text-sm text-foreground">
             This order was referred via code{' '}
             <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-xs">

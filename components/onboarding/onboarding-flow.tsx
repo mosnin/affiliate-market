@@ -663,10 +663,10 @@ function RoleAndTimezoneStep({
                   whileTap={{ scale: 0.98 }}
                   transition={{ duration: 0.15 }}
                   className={cn(
-                    'group flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-left transition-colors duration-150',
+                    'group flex items-start gap-3 rounded-xl border bg-card px-4 py-3 text-left transition-all duration-150',
                     selected
-                      ? 'border-foreground/40 bg-foreground/[0.045] ring-2 ring-foreground/10'
-                      : 'border-border/70 hover:bg-foreground/[0.04]',
+                      ? 'border-primary bg-brand-subtle/50'
+                      : 'border-border hover:border-primary/40',
                   )}
                 >
                   {Icon && (
@@ -674,7 +674,7 @@ function RoleAndTimezoneStep({
                       size={18}
                       className={cn(
                         'mt-0.5 shrink-0 transition-colors',
-                        selected ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground',
+                        selected ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground',
                       )}
                     />
                   )}
@@ -705,10 +705,10 @@ function RoleAndTimezoneStep({
                   whileTap={{ scale: 0.98 }}
                   transition={{ duration: 0.15 }}
                   className={cn(
-                    'flex items-center justify-between gap-3 rounded-xl border bg-background px-4 py-3 text-left transition-colors duration-150',
+                    'flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-left transition-all duration-150',
                     selected
-                      ? 'border-foreground/40 bg-foreground/[0.045] ring-2 ring-foreground/10'
-                      : 'border-border/70 hover:bg-foreground/[0.04]',
+                      ? 'border-primary bg-brand-subtle/50'
+                      : 'border-border hover:border-primary/40',
                   )}
                 >
                   <span className="flex flex-col">

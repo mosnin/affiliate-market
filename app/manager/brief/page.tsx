@@ -10,10 +10,14 @@ import {
   ArrowRight,
   ArrowUpRight,
   Mail,
+  TrendingUp,
+  Users,
+  DollarSign,
+  BarChart3,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatCompact, formatCurrency } from '@/lib/formatting';
-import { SECTION_LABEL, TITLE_FONT, COLA_PILL, CAPTION, META, STAT_NUMBER_COMPACT } from '@/lib/typography';
+import { SECTION_LABEL, TITLE_FONT, COLA_PILL, CAPTION, META, STAT_NUMBER_COMPACT, CARD, STAT_CARD, CHIP_POSITIVE, CHIP_NEUTRAL, CHIP_NEGATIVE, ICON_SQUARE } from '@/lib/typography';
 import { cn } from '@/lib/utils';
 import { dealHealth } from '@/lib/deals/health';
 import { TeamActivityFeed } from '@/components/manager/team-activity-feed';
@@ -462,7 +466,7 @@ export default async function ManagerBriefPage() {
           invitation is the loud note. */}
       <Link
         href="/manager"
-        className="group/cola block rounded-xl border border-border/70 bg-card px-5 py-5 hover:bg-muted/30 transition-colors"
+        className={cn(CARD, 'group/cola block px-5 py-5 hover:bg-muted/30 transition-colors')}
       >
         <div className="flex items-center gap-4">
           <div className="flex-1 min-w-0 space-y-1">
@@ -487,7 +491,7 @@ export default async function ManagerBriefPage() {
           Neutral icon: this is a settings affordance, not Cola speaking,
           so orange would be unearned. */}
       {!hasSettings && (
-        <section className="rounded-xl border border-border/70 bg-muted/30 px-4 py-3 flex items-start gap-3">
+        <section className={cn(CARD, 'bg-muted/30 px-4 py-3 flex items-start gap-3')}>
           <Building2 size={14} className="text-muted-foreground flex-shrink-0 mt-0.5" />
           <div className="flex-1 space-y-0.5">
             <p className="text-sm font-medium">Finish setting up your team</p>
@@ -509,38 +513,24 @@ export default async function ManagerBriefPage() {
           Uses TITLE_FONT + SECTION_LABEL so the snapshot vocabulary
           matches the Commission grid below; one numeric vocabulary
           on the whole page. */}
-      <section className="grid grid-cols-3 gap-px rounded-xl overflow-hidden border border-border/60 bg-border/60">
-        <div className="bg-background p-4">
+      <section className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className={cn(STAT_CARD)}>
+          <div className={ICON_SQUARE}><BarChart3 size={16} /></div>
           <p className={SECTION_LABEL}>Pipeline</p>
-          <p
-            className="text-2xl tracking-tight tabular-nums mt-1.5 text-foreground"
-            style={TITLE_FONT}
-          >
-            ${formatCompact(totalPipeline)}
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-1">
-            {totalDeals} active deal{totalDeals === 1 ? '' : 's'}
-          </p>
+          <p className={cn(STAT_NUMBER_COMPACT)}>${formatCompact(totalPipeline)}</p>
+          <p className={CAPTION}>{totalDeals} active deal{totalDeals === 1 ? '' : 's'}</p>
         </div>
-        <div className="bg-background p-4">
+        <div className={cn(STAT_CARD)}>
+          <div className={ICON_SQUARE}><TrendingUp size={16} /></div>
           <p className={SECTION_LABEL}>Won</p>
-          <p
-            className="text-2xl tracking-tight tabular-nums mt-1.5 text-foreground"
-            style={TITLE_FONT}
-          >
-            ${formatCompact(totalWonValue)}
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-1">closed this period</p>
+          <p className={cn(STAT_NUMBER_COMPACT)}>${formatCompact(totalWonValue)}</p>
+          <p className={CAPTION}>closed this period</p>
         </div>
-        <div className="bg-background p-4">
+        <div className={cn(STAT_CARD)}>
+          <div className={ICON_SQUARE}><Users size={16} /></div>
           <p className={SECTION_LABEL}>Funnel</p>
-          <p
-            className="text-2xl tracking-tight tabular-nums mt-1.5 text-foreground"
-            style={TITLE_FONT}
-          >
-            {totalLeads}&nbsp;→&nbsp;{totalApplications}
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-1">leads → quote requests</p>
+          <p className={cn(STAT_NUMBER_COMPACT)}>{totalLeads}&nbsp;→&nbsp;{totalApplications}</p>
+          <p className={CAPTION}>leads → quote requests</p>
         </div>
       </section>
 
@@ -558,47 +548,31 @@ export default async function ManagerBriefPage() {
             className="text-muted-foreground/40 group-hover/commission:text-muted-foreground transition-colors"
           />
         </Link>
-        <div className="grid grid-cols-4 gap-px bg-border/70 rounded-xl overflow-hidden border border-border/70 mt-4">
-          <div className="bg-background p-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+          <div className={cn(STAT_CARD)}>
+            <div className={ICON_SQUARE}><DollarSign size={16} /></div>
             <p className={SECTION_LABEL}>MTD commission</p>
-            <p
-              className="text-2xl tracking-tight tabular-nums mt-1.5 text-foreground"
-              style={TITLE_FONT}
-            >
-              {formatCompact(mtdCommission)}
-            </p>
+            <p className={cn(STAT_NUMBER_COMPACT)}>{formatCompact(mtdCommission)}</p>
           </div>
-          <div className="bg-background p-4">
+          <div className={cn(STAT_CARD)}>
+            <div className={ICON_SQUARE}><TrendingUp size={16} /></div>
             <p className={SECTION_LABEL}>YTD commission</p>
-            <p
-              className="text-2xl tracking-tight tabular-nums mt-1.5 text-foreground"
-              style={TITLE_FONT}
-            >
-              {formatCompact(ytdCommission)}
-            </p>
+            <p className={cn(STAT_NUMBER_COMPACT)}>{formatCompact(ytdCommission)}</p>
           </div>
-          <div className="bg-background p-4">
+          <div className={cn(STAT_CARD)}>
+            <div className={ICON_SQUARE}><Users size={16} /></div>
             <p className={SECTION_LABEL}>Top seller (MTD)</p>
-            <p
-              className="text-2xl tracking-tight mt-1.5 text-foreground truncate"
-              style={TITLE_FONT}
-            >
+            <p className={cn(STAT_NUMBER_COMPACT, 'truncate')}>
               {topSellerMtd ? topSellerMtd.name : <span className="text-muted-foreground">—</span>}
             </p>
             {topSellerMtd && (
-              <p className="text-[11px] text-muted-foreground tabular-nums mt-1">
-                {formatCompact(topSellerMtd.amount)}
-              </p>
+              <p className={CAPTION}>{formatCompact(topSellerMtd.amount)}</p>
             )}
           </div>
-          <div className="bg-background p-4">
+          <div className={cn(STAT_CARD)}>
+            <div className={ICON_SQUARE}><BarChart3 size={16} /></div>
             <p className={SECTION_LABEL}>Deals closed MTD</p>
-            <p
-              className="text-2xl tracking-tight tabular-nums mt-1.5 text-foreground"
-              style={TITLE_FONT}
-            >
-              {mtdDealsClosed}
-            </p>
+            <p className={cn(STAT_NUMBER_COMPACT)}>{mtdDealsClosed}</p>
           </div>
         </div>
         {mtdCommission === 0 && (
@@ -645,22 +619,16 @@ export default async function ManagerBriefPage() {
             </div>
 
             {/* Stat strip: won + in flight */}
-            <div className="grid grid-cols-2 gap-px rounded-xl overflow-hidden border border-border/60 bg-border/60">
-              <div className="bg-background px-4 py-3">
+            <div className="grid grid-cols-2 gap-4">
+              <div className={cn(CARD, 'px-4 py-3')}>
                 <p className={SECTION_LABEL}>Won so far</p>
-                <p
-                  className="text-[17px] leading-snug tracking-tight tabular-nums text-foreground mt-1"
-                  style={TITLE_FONT}
-                >
+                <p className="text-[17px] leading-snug tracking-tight tabular-nums text-foreground font-semibold mt-1">
                   {formatCompact(revWonGci)}
                 </p>
               </div>
-              <div className="bg-background px-4 py-3">
+              <div className={cn(CARD, 'px-4 py-3')}>
                 <p className={SECTION_LABEL}>In flight (weighted)</p>
-                <p
-                  className="text-[17px] leading-snug tracking-tight tabular-nums text-foreground mt-1"
-                  style={TITLE_FONT}
-                >
+                <p className="text-[17px] leading-snug tracking-tight tabular-nums text-foreground font-semibold mt-1">
                   {formatCompact(revInFlightGci)}
                 </p>
               </div>
@@ -812,7 +780,7 @@ export default async function ManagerBriefPage() {
                         <span className="font-medium text-foreground truncate">{name}</span>
                         <span className="text-[11px] text-muted-foreground whitespace-nowrap">{role}</span>
                         {!onboard && (
-                          <span className="text-[11px] text-amber-600 dark:text-amber-400 whitespace-nowrap">
+                          <span className={cn(CHIP_NEUTRAL, 'whitespace-nowrap')}>
                             invited — not joined
                           </span>
                         )}
@@ -835,7 +803,7 @@ export default async function ManagerBriefPage() {
                           </span>
                         )}
                         {drafts > 0 && (
-                          <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-400 tabular-nums font-medium whitespace-nowrap">
+                          <span className={cn(CHIP_NEUTRAL, 'gap-1 tabular-nums whitespace-nowrap')}>
                             <Inbox size={10} />
                             {drafts} draft{drafts === 1 ? '' : 's'} pending
                           </span>

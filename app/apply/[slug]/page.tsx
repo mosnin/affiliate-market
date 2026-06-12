@@ -252,7 +252,7 @@ export default async function PublicApplyPage({
   // formConfigSource === 'legacy' → all resolved configs stay null → legacy form
 
   const customization = {
-    accentColor: settings?.intakeAccentColor || '#ff964f',
+    accentColor: settings?.intakeAccentColor || '#34c77f',
     borderRadius: settings?.intakeBorderRadius || 'rounded',
     font: settings?.intakeFont || 'system',
     darkMode: settings?.intakeDarkMode || false,
