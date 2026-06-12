@@ -39,6 +39,10 @@
     {
       "path": "/api/cron/daily-briefing",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-settlement",
+      "schedule": "0 6 1 * *"
     }
   ],
   "headers": [

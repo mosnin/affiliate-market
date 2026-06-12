@@ -18,7 +18,9 @@ import {
 import { formatCurrency } from '@/lib/formatting';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { listPayouts } from '@/lib/affiliates/payouts';
+import { getBridgeOwedCents } from '@/lib/affiliates/settlement';
 import { RunPayoutButton } from '@/components/affiliate/run-payout-button';
+import { SettleBridgeButton } from '@/components/affiliate/settle-bridge-button';
 
 const AFFILIATE_TABS = [
   { label: 'Overview', href: '' },
@@ -43,7 +45,10 @@ export default async function AffiliatePayoutsAdminPage({
   const userSpace = await getSpaceForUser(userId);
   if (!userSpace || userSpace.id !== space.id) notFound();
 
-  const payouts = await listPayouts(space.id);
+  const [payouts, bridgeOwedCents] = await Promise.all([
+    listPayouts(space.id),
+    getBridgeOwedCents(space.id),
+  ]);
 
   return (
     <div className={cn(PAGE_RHYTHM)}>
@@ -78,6 +83,22 @@ export default async function AffiliatePayoutsAdminPage({
           );
         })}
       </nav>
+
+      {/* Off-platform commissions owed (bridge sales) */}
+      {bridgeOwedCents > 0 && (
+        <section className="rounded-2xl border border-border bg-card px-5 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-0.5 min-w-0">
+            <p className={cn(SECTION_LABEL)}>off-platform commissions owed</p>
+            <p className="text-sm text-foreground">
+              Sales in your own app earned creators{' '}
+              <span className="font-semibold tabular-nums">{formatCurrency(bridgeOwedCents / 100)}</span>{' '}
+              in commissions. Settle to your saved payment method to fund their payouts —
+              also runs automatically on the 1st of each month.
+            </p>
+          </div>
+          <SettleBridgeButton />
+        </section>
+      )}
 
       {/* Payout history */}
       <section className={cn(SECTION_RHYTHM)}>

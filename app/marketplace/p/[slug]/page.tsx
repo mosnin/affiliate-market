@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { ArrowLeft, Check, ExternalLink } from 'lucide-react';
 import { getProductBySlug } from '@/lib/marketplace/products';
 import { BuyButton } from '@/components/marketplace/buy-button';
+import { OutboundLink } from '@/components/marketplace/outbound-link';
 import { formatPriceCents } from '@/components/marketplace/price-format';
 import { getInitials } from '@/lib/formatting';
 import { TITLE_FONT } from '@/lib/typography';
@@ -85,15 +86,13 @@ export default async function ProductDetailPage({
                   </span>
                 )}
                 {product.websiteUrl && (
-                  <a
+                  <OutboundLink
                     href={product.websiteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <ExternalLink size={11} aria-hidden="true" />
                     Website
-                  </a>
+                  </OutboundLink>
                 )}
               </div>
             </div>

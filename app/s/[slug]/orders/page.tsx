@@ -3,6 +3,8 @@ import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { ShoppingCart, ChevronRight, ArrowUpRight } from 'lucide-react';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
+import { getSellerConnectAccountId } from '@/lib/marketplace/sellers';
+import { ConnectPayoutsButton } from '@/components/marketplace/connect-payouts-button';
 import { getOrdersForSpace } from '@/lib/marketplace/orders';
 import { H1, TITLE_FONT, BODY_MUTED, PAGE_MAX, CARD, SECTION_LABEL, HERO_PANEL, PRIMARY_PILL, HERO_GHOST_PILL } from '@/lib/typography';
 import { cn } from '@/lib/utils';
@@ -70,6 +72,7 @@ export default async function OrdersPage({
     .reduce((sum, o) => sum + o.amountCents, 0);
 
   const paidCurrency = orders.find(o => o.status === 'paid')?.currency ?? 'usd';
+  const payoutsConnected = Boolean(await getSellerConnectAccountId(space.id));
 
   return (
     <div className={cn('space-y-8 mx-auto pb-12', PAGE_MAX)}>
@@ -96,6 +99,20 @@ export default async function OrdersPage({
           </Link>
         </div>
       </div>
+
+      {/* Marketplace proceeds → seller's own Stripe */}
+      {!payoutsConnected && (
+        <div className={cn(CARD, 'px-5 py-4 flex flex-wrap items-center justify-between gap-4')}>
+          <div className="space-y-0.5 min-w-0">
+            <p className={cn(SECTION_LABEL)}>get paid for marketplace sales</p>
+            <p className="text-sm text-foreground">
+              Connect your Stripe and each sale&apos;s proceeds — minus creator commissions —
+              transfer to you automatically the moment it&apos;s paid.
+            </p>
+          </div>
+          <ConnectPayoutsButton />
+        </div>
+      )}
 
       {orders.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-5 py-12 text-center">

@@ -8,9 +8,9 @@
 ## At a glance
 
 - **Page routes:** 200
-- **API endpoints:** 334
-- **Cron jobs:** 10
-- **DB tables:** 111  ·  **RPCs:** 23  ·  **migrations:** 166
+- **API endpoints:** 337
+- **Cron jobs:** 11
+- **DB tables:** 111  ·  **RPCs:** 23  ·  **migrations:** 167
 - **Agent tools — TS (lib/ai-tools):** 56 declared, 55 wired into `ALL_TOOLS`
 - **Agent tools — Python (agent/):** 53 declared
 
@@ -346,7 +346,7 @@
 - `/api/admin/triggers/backfill`
 - `/api/admin/triggers/test-fire`
 
-**/api/affiliates** (16)
+**/api/affiliates** (17)
 
 - `/api/affiliates/bridge`
 - `/api/affiliates/commissions`
@@ -363,6 +363,7 @@
 - `/api/affiliates/payouts`
 - `/api/affiliates/payouts/run`
 - `/api/affiliates/program`
+- `/api/affiliates/settlement`
 - `/api/affiliates/stats`
 
 **/api/agent** (52)
@@ -530,8 +531,9 @@
 - `/api/contacts/import`
 - `/api/contacts/parse`
 
-**/api/cron** (10)
+**/api/cron** (11)
 
+- `/api/cron/affiliate-settlement`
 - `/api/cron/agent-sweep`
 - `/api/cron/cleanup`
 - `/api/cron/daily-briefing`
@@ -700,6 +702,10 @@
 - `/api/manager/templates/[id]/publish`
 - `/api/manager/unassign-lead`
 
+**/api/marketplace** (1)
+
+- `/api/marketplace/connect`
+
 **/api/mcp** (3)
 
 - `/api/mcp`
@@ -850,6 +856,7 @@
 
 | Path | Schedule |
 |------|----------|
+| `/api/cron/affiliate-settlement` | `0 6 1 * *` |
 | `/api/cron/agent-sweep` | `0 */4 * * *` |
 | `/api/cron/cleanup` | `0 3 * * *` |
 | `/api/cron/daily-briefing` | `0 * * * *` |
@@ -887,7 +894,7 @@ the runtimes diverge — this table makes the drift visible.
 
 **RPCs (23):** `book_demo_atomic`, `charge_credits_for_chat_usage`, `cleanup_agent_data`, `create_company_with_owner`, `create_space_with_defaults`, `current_user_internal_id`, `ensure_agent_settings_for_space`, `grant_credits`, `match_agent_memory`, `match_documents`, `match_documents_hybrid`, `offboard_company_member`, `purge_credit_rows_for_account`, `refund_credit_txn`, `reorder_deal`, `resolve_billing_account_for_space`, `routine_next_run_at`, `routine_set_next_run`, `search_knowledge_docs`, `spend_credits`, `stamp_brief_enabled_at`, `sync_commission_ledger`, `update_updated_at_column`
 
-**Migrations:** 166 (latest: `20260702000000_enable_rls_on_unprotected_tables.sql`)
+**Migrations:** 167 (latest: `20260702000000_enable_rls_on_unprotected_tables.sql`)
 
 ## External services
 

@@ -50,7 +50,13 @@ export async function sendClientCode(params: {
 }): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    logger.warn('[client-email] RESEND_API_KEY unset — code email skipped', { purpose: params.purpose });
+    // No email service → surface the code in server logs so local/dev and
+    // demo deployments aren't a dead end. Production should set RESEND_API_KEY;
+    // this line is the only way in without it.
+    logger.warn('[client-email] RESEND_API_KEY unset — code email skipped', {
+      purpose: params.purpose,
+      devCode: params.code,
+    });
     return;
   }
   const copy = PURPOSE_COPY[params.purpose];

@@ -9,6 +9,10 @@ export const VISITOR_COOKIE = 'cola_vid';
 /** Query params we accept referral codes from: ?via=CODE (FirstPromoter convention) or ?ref=CODE. */
 export const REF_QUERY_PARAMS = ['via', 'ref'] as const;
 
+// Client-safe (no server deps) — lives in its own module so browser
+// components can import it without dragging in supabase/crypto.
+export { appendRefToUrl } from '@/lib/affiliates/ref-url';
+
 export interface RecordClickInput {
   code: string;
   landingUrl: string;

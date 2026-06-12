@@ -30,7 +30,9 @@ const requiredSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
 
   // OpenAI (powers every interactive chat turn + embeddings)
-  OPENAI_API_KEY: z.string().min(1),
+  // Optional: the app boots and sells without AI. Cola's copilot, lead
+  // scoring, and embeddings activate when a key is present.
+  OPENAI_API_KEY: z.string().optional(),
 
   // Clerk (seller authentication — no request is served without it)
   CLERK_SECRET_KEY: z.string().min(1),
