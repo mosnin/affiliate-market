@@ -69,23 +69,33 @@ export default async function OrdersPage({
     .filter((o) => o.status === 'paid')
     .reduce((sum, o) => sum + o.amountCents, 0);
 
+  const paidCurrency = orders.find(o => o.status === 'paid')?.currency ?? 'usd';
+
   return (
-    <div className={cn('space-y-6 mx-auto pb-12', PAGE_MAX)}>
-      <header className="space-y-1.5">
-        <p className={cn(BODY_MUTED)}>Orders.</p>
-        <h1 className={cn(H1)} style={TITLE_FONT}>
-          All orders
-        </h1>
-        <p className={cn(BODY_MUTED)}>
-          {orders.length === 0
-            ? 'No orders yet.'
-            : `${orders.length} ${orders.length === 1 ? 'order' : 'orders'}${
-                totalRevenue > 0
-                  ? ` · ${formatAmount(totalRevenue, orders.find(o => o.status === 'paid')?.currency ?? 'usd')} paid`
-                  : ''
-              }`}
-        </p>
-      </header>
+    <div className={cn('space-y-8 mx-auto pb-12', PAGE_MAX)}>
+      {/* Hero panel — revenue is the focal number for this page */}
+      <div className={cn(HERO_PANEL, 'flex flex-col sm:flex-row sm:items-center gap-6')}>
+        <div className="flex-1 min-w-0 space-y-1">
+          <p className="text-white/70 text-sm">Total revenue</p>
+          <p className="text-[30px] leading-tight font-semibold text-white tabular-nums">
+            {totalRevenue > 0 ? formatAmount(totalRevenue, paidCurrency) : '$0'}
+          </p>
+          {orders.length > 0 && (
+            <p className="text-white/60 text-xs tabular-nums">
+              {orders.length} {orders.length === 1 ? 'order' : 'orders'} · {orders.filter(o => o.status === 'paid').length} paid
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Link href={`/s/${slug}/affiliates`} className={cn(PRIMARY_PILL)}>
+            Affiliates
+            <ArrowUpRight size={14} />
+          </Link>
+          <Link href={`/s/${slug}/products`} className={cn(HERO_GHOST_PILL)}>
+            Products
+          </Link>
+        </div>
+      </div>
 
       {orders.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-5 py-12 text-center">

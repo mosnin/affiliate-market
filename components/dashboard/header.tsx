@@ -20,7 +20,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { BrandLogo } from '@/components/brand-logo';
 import { secondaryNavItems, sellerNavItems } from '@/lib/nav-items';
 import type { NavChild, NavItem } from '@/lib/nav-items';
-import { SECTION_LABEL } from '@/lib/typography';
+import { SECTION_LABEL, GHOST_PILL } from '@/lib/typography';
 import { SidebarConversations } from '@/components/dashboard/sidebar-conversations';
 import { SidebarNavItem } from '@/components/dashboard/sidebar-nav-item';
 import {
@@ -103,7 +103,7 @@ function SidebarCollapseToggle() {
       onClick={toggle}
       aria-label={label}
       title={label}
-      className="hidden md:inline-flex items-center justify-center w-8 h-8 rounded-full border border-border/70 bg-background text-muted-foreground/70 hover:text-foreground hover:bg-foreground/[0.04] transition-colors duration-150 active:scale-[0.96]"
+      className={cn('hidden md:inline-flex w-9 px-0', GHOST_PILL)}
     >
       <Icon size={17} strokeWidth={1.75} />
     </button>
@@ -523,7 +523,7 @@ export function Header({ slug, spaceId, spaceName, title, isManager = false, isM
           onClick={toggleTheme}
           aria-label="Toggle theme"
           title="Toggle theme"
-          className="h-8 w-8 flex items-center justify-center rounded-full border border-border/70 bg-background text-muted-foreground/70 hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+          className={cn(GHOST_PILL, 'w-9 px-0')}
         >
           {theme === 'dark' ? <Sun size={14} strokeWidth={1.75} /> : <Moon size={14} strokeWidth={1.75} />}
         </button>

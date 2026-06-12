@@ -31,7 +31,6 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { Loader2, ArrowRight, Check } from 'lucide-react';
 import { cn, rootDomain } from '@/lib/utils';
-import { brandOrange } from '@/lib/colors';
 import { normalizeSlug, isValidSlug } from '@/lib/intake';
 import { COLA_PILL } from '@/lib/typography';
 import { BrandLogo } from '@/components/brand-logo';
