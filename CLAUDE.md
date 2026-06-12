@@ -8,6 +8,29 @@ This file is read on every Claude Code session in addition to `AGENTS.md`. Where
 
 ---
 
+## Product context — what Cola is
+
+**Cola bridges the distribution gap for software.** Software developers and companies are good at building and bad at distributing; content creators already know how to sell — they clip videos, they promote physical products. Cola connects the two: developers list their software and find marketers and content creators to distribute it; creators earn from software the same way they already earn from clipping and physical-product promos.
+
+The three sides, and where they live:
+
+| Side | Surface | What they do |
+|---|---|---|
+| **Seller** (software company / developer) | `/s/[slug]` workspace | Agentic OS: products, pipeline, leads, demos, orders, and their affiliate program (commission terms, partner approvals, payouts) |
+| **Creator / affiliate** (marketer, content creator) | `/affiliate` | Find software on the **explore page** (`/affiliate/explore`), grab a referral link, share it, track net earnings, get paid |
+| **Buyer** (consumer) | `/marketplace` + `/buyer` | Discover and purchase software; track purchases and license keys |
+
+The economics — these are product decisions, not implementation details:
+
+- **Every creator gets their own referral link** (per-product links minted from the explore page; `?via=CODE` → `cola_ref` cookie → attribution on checkout).
+- **The platform takes a flat 20% cut of creator earnings** (`lib/affiliates/fees.ts` — one constant, one split function). Commissions store gross (what the seller owes), the platform fee, and net (what the creator keeps).
+- **Creator-facing money is always NET; seller-facing money is always GROSS.** A creator should never see a number they don't receive. Don't break this rule in any UI, email, or prompt.
+- **Creators connect their own Stripe** (Connect Express, from `/affiliate/payouts`); payout batches transfer net earnings straight to their account. No Stripe configured → payouts queue for manual settlement.
+
+When prioritizing or designing anything in this repo, hold it against that one idea: *does this make it easier for a developer to get distribution, or for a creator to get paid for providing it?* If neither, question why it exists.
+
+---
+
 ## Dual-persona operating mode
 
 **Mandatory.** Claude operates in this codebase under one of two personas at all times. There is no neutral mode. Every reply must be authored from inside one of the two lenses, chosen by the nature of the task at hand.
