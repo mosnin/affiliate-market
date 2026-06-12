@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { GHOST_PILL } from '@/lib/typography';
+import { GHOST_PILL, PRIMARY_PILL } from '@/lib/typography';
 
 interface CommissionActionsProps {
   commissionId: string;
@@ -39,18 +39,14 @@ export function CommissionActions({ commissionId }: CommissionActionsProps) {
       <button
         onClick={() => act('approve')}
         disabled={loading !== null}
-        className={cn(GHOST_PILL, 'h-7 px-2.5 text-xs disabled:opacity-50')}
+        className={cn(PRIMARY_PILL, 'h-8 px-3 text-xs disabled:opacity-50')}
       >
         {loading === 'approve' ? 'approving…' : 'approve'}
       </button>
       <button
         onClick={() => act('reject')}
         disabled={loading !== null}
-        className={cn(
-          'inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-medium',
-          'text-muted-foreground hover:text-red-600 hover:bg-red-50',
-          'transition-colors duration-150 disabled:opacity-50',
-        )}
+        className={cn(GHOST_PILL, 'h-8 px-3 text-xs disabled:opacity-50')}
       >
         {loading === 'reject' ? 'rejecting…' : 'reject'}
       </button>

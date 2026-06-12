@@ -348,15 +348,7 @@ export function OnboardingSellerV2({ defaultName }: Props) {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       >
-        {/* Brand-warm wash - same as the onboarding shell, one of the five
-            sanctioned orange contexts. */}
-        <div
-          aria-hidden
-          className={brandOrange(
-            'LOGO',
-            'pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-brand-subtle/70 via-background to-brand-subtle/50 dark:from-brand/[0.04] dark:via-background dark:to-brand/[0.03]',
-          )}
-        />
+        {/* Clean off-white canvas — no decorative wash. */}
 
         {/* Fixed brand mark - the chat's quiet header. */}
         <div className="pointer-events-none fixed inset-x-0 top-0 z-10 flex justify-center bg-gradient-to-b from-background to-transparent pt-6 pb-8">
@@ -525,7 +517,7 @@ function ErrorLine({ message }: { message: string }) {
 }
 
 const INPUT_CLS =
-  'w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring';
+  'w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring';
 
 function SubmitPill({
   onClick, disabled, children = 'Continue',
@@ -540,7 +532,7 @@ function SubmitPill({
         type="button"
         disabled={disabled}
         onClick={onClick}
-        className="inline-flex items-center justify-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand text-brand-foreground px-5 h-9 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
       >
         {children} <ArrowRight size={14} />
       </button>
@@ -694,8 +686,8 @@ function ServeAffordance({
               className={cn(
                 'rounded-xl border px-4 py-3 text-sm font-medium transition-all',
                 selected
-                  ? 'border-foreground bg-foreground text-background'
-                  : 'border-border bg-background text-foreground hover:bg-foreground/[0.04]',
+                  ? 'border-primary bg-brand-subtle/50 text-primary'
+                  : 'border-border bg-card text-foreground hover:border-primary/40',
                 atCap && 'cursor-not-allowed opacity-40',
               )}
             >
@@ -755,8 +747,8 @@ function VoiceCard({
       className={cn(
         'rounded-xl border p-5 text-left transition-all',
         selected
-          ? 'border-foreground bg-foreground/[0.04] ring-2 ring-foreground/10 ring-offset-2 ring-offset-background'
-          : 'border-border bg-background hover:bg-foreground/[0.04]',
+          ? 'border-primary bg-brand-subtle/50'
+          : 'border-border bg-card hover:border-primary/40',
       )}
     >
       <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
@@ -785,8 +777,8 @@ function SourcesAffordance({
               className={cn(
                 'flex flex-col items-center gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition-all',
                 selected
-                  ? 'border-foreground bg-foreground text-background'
-                  : 'border-border bg-background text-foreground hover:bg-foreground/[0.04]',
+                  ? 'border-primary bg-brand-subtle/50 text-primary'
+                  : 'border-border bg-card text-foreground hover:border-primary/40',
               )}
             >
               {opt.icon ? (
