@@ -855,7 +855,7 @@ function ChoiceCards({
             style={
               isPending
                 ? { backgroundColor: accentColor }
-                : ({ ['--tw-ring-color' as never]: accentColor } as React.CSSProducts)
+                : ({ ['--tw-ring-color' as never]: accentColor } as React.CSSProperties)
             }
             aria-pressed={isPending}
           >
@@ -952,7 +952,7 @@ function YesNoChoice({ onCommit, accentColor }: InputProps) {
             'transition-all duration-150 active:scale-[0.98]',
             'focus-visible:outline-none focus-visible:ring-2',
           )}
-          style={{ ['--tw-ring-color' as never]: accentColor } as React.CSSProducts}
+          style={{ ['--tw-ring-color' as never]: accentColor } as React.CSSProperties}
         >
           {option.label}
         </button>

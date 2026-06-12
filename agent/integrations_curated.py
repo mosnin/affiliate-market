@@ -69,7 +69,7 @@ CURATED_ACTIONS: dict[str, list[str]] = {
         "GOOGLECALENDAR_QUICK_ADD",
     ],
     # ── Messaging (team) ─────────────────────────────────────────────────
-    # Slack is internal team comms — manager pings, deal updates, listing
+    # Slack is internal team comms — manager pings, deal updates, product
     # alerts. `LIST_ALL_CHANNELS` and `LIST_ALL_USERS` are the canonical
     # slugs (not `LIST_CHANNELS`/`LIST_USERS` — verified). Thread reply
     # uses the FETCH_MESSAGE_THREAD action; Slack's outbound-thread-reply
@@ -96,8 +96,8 @@ CURATED_ACTIONS: dict[str, list[str]] = {
         "HUBSPOT_LIST_EMAILS",
     ],
     # ── Social ───────────────────────────────────────────────────────────
-    # LinkedIn for sellers is mostly: read my profile, post a listing
-    # update, comment on a referral source's post. CREATE_LINKED_IN_POST
+    # LinkedIn for sellers is mostly: read my profile, post a product
+    # update, comment on a partner's post. CREATE_LINKED_IN_POST
     # is the verified slug (the "LINKED_IN" with underscore is Composio's
     # canonicalization — yes, even though it reads weird; don't normalize
     # this without checking the catalog).
@@ -108,8 +108,8 @@ CURATED_ACTIONS: dict[str, list[str]] = {
         "LINKEDIN_CREATE_COMMENT_ON_POST",
         "LINKEDIN_CREATE_ARTICLE_OR_URL_SHARE",
     ],
-    # Instagram lead-gen for sellers: DMs from listing-post engagement,
-    # comments on open-house teasers. INSTAGRAM_* are Business Account
+    # Instagram lead-gen for sellers: DMs from product-post engagement,
+    # comments on launch teasers. INSTAGRAM_* are Business Account
     # actions — the user must have an IG Business connected, not a
     # personal account. Composio surfaces both paths under the same slug;
     # the personal-account caller just gets an empty result.

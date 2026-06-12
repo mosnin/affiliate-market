@@ -189,9 +189,9 @@ export default async function OrderDetailPage({
           <p className="text-sm text-foreground">
             License issued for this order.
           </p>
-          {(license as Record<string, unknown>).licenseKey && (
+          {license.licenseKey && (
             <p className="font-mono text-xs bg-muted px-2 py-1 rounded text-muted-foreground">
-              {String((license as Record<string, unknown>).licenseKey)}
+              {license.licenseKey}
             </p>
           )}
         </section>

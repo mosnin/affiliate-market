@@ -107,7 +107,7 @@ export function PublicPageShell({
     >
     <div
       className="text-foreground"
-      style={{ '--intake-accent': accentColor } as React.CSSProducts}
+      style={{ '--intake-accent': accentColor } as React.CSSProperties}
     >
       {/* ── Sticky hairline header ───────────────────────────────────────── */}
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-sm border-b border-border/70">

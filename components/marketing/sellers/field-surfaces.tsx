@@ -19,7 +19,7 @@ const SURFACES = [
   {
     icon: Smartphone,
     title: 'on your phone.',
-    body: 'talk to Cola between showings. read the thread, approve the draft, book the demo without sitting down.',
+    body: 'talk to Cola between calls. read the thread, approve the draft, book the demo without sitting down.',
   },
   {
     icon: Globe,

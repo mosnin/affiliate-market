@@ -51,7 +51,7 @@ interface ComposioRawTool {
   description?: string;
   inputParameters?: {
     type: 'object';
-    products?: Record<string, unknown>;
+    properties?: Record<string, unknown>;
     required?: string[];
   };
 }
@@ -196,17 +196,17 @@ function buildOneTool(raw: ComposioRawTool, toolkitSlug: string, userId: string)
 
   // Composio's inputParameters is a JSON Schema object. Pass it through
   // as a non-strict schema: `strict: false` means the SDK does not
-  // demand every product be `required`, which matches how Composio
+  // demand every property be `required`, which matches how Composio
   // actions actually work (most params are optional). Composio
   // re-validates the arguments server-side on `tools.execute`, so a
   // loose client-side schema is safe.
-  const products = raw.inputParameters?.products ?? {};
+  const properties = raw.inputParameters?.properties ?? {};
   const required = raw.inputParameters?.required ?? [];
   const parameters = {
     type: 'object' as const,
-    products: products as Record<string, Record<string, unknown>>,
+    properties: properties as Record<string, Record<string, unknown>>,
     required,
-    additionalProducts: true as const,
+    additionalProperties: true as const,
   };
 
   const fullDescription =

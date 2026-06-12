@@ -107,7 +107,7 @@
     },
     {
       "id": "create-deal-native",
-      "prompt": "Create a new deal for the Patel listing",
+      "prompt": "Create a new deal for the Patel account — they want to buy our Enterprise plan",
       "context": {"connected_toolkits": []},
       "expected": {
         "tool_calls_must_include": ["create_deal"],
@@ -118,7 +118,7 @@
     },
     {
       "id": "create-contact-native",
-      "prompt": "Add a new buyer lead: Marcus Chen, marcus@chen.io, looking in Brooklyn 1.2M budget",
+      "prompt": "Add a new inbound lead: Marcus Chen, marcus@chen.io, evaluating our Pro plan, $50k budget",
       "context": {"connected_toolkits": ["hubspot"]},
       "expected": {
         "tool_calls_must_include": ["create_contact"],
@@ -134,7 +134,7 @@
     },
     {
       "id": "sweep-followup",
-      "prompt": "Follow up with the buyers who demoed this weekend",
+      "prompt": "Follow up with the prospects who attended a demo this weekend",
       "context": {"connected_toolkits": []},
       "expected": {
         "tool_calls_must_include": ["find_contacts"],
@@ -178,7 +178,7 @@
     },
     {
       "id": "linkedin-post",
-      "prompt": "Post on LinkedIn that 412 Elm just went under contract",
+      "prompt": "Post on LinkedIn that we just launched our new API service plan",
       "context": {"connected_toolkits": ["linkedin"]},
       "expected": {
         "tool_calls_must_include_any_of": [["linkedin_create_linked_in_post", "find_integration_tool"]],
@@ -200,7 +200,7 @@
     },
     {
       "id": "calendar-schedule",
-      "prompt": "Schedule a demo for Jane at 412 Elm Friday at 2pm",
+      "prompt": "Schedule a product demo for Jane on Friday at 2pm",
       "context": {"connected_toolkits": []},
       "expected": {
         "tool_calls_must_include": ["book_demo"],
@@ -211,7 +211,7 @@
     },
     {
       "id": "advance-deal-stage",
-      "prompt": "Move the Chen deal to Under Contract",
+      "prompt": "Move the Chen deal to Contract Review",
       "context": {"connected_toolkits": []},
       "expected": {
         "tool_calls_must_include": ["advance_deal_stage"],
@@ -222,7 +222,7 @@
     },
     {
       "id": "memory-recall",
-      "prompt": "What did Jane say about her budget last time we talked?",
+      "prompt": "What did Jane say about her team size and deployment requirements last time we talked?",
       "context": {"connected_toolkits": []},
       "expected": {
         "tool_calls_must_include": ["recall_memory"],
@@ -233,7 +233,7 @@
     },
     {
       "id": "intake-form-read",
-      "prompt": "Show me my buyer intake form",
+      "prompt": "Show me my lead qualification intake form",
       "context": {"connected_toolkits": []},
       "expected": {
         "tool_calls_must_include": ["get_intake_form"],
@@ -255,7 +255,7 @@
     },
     {
       "id": "studio-image",
-      "prompt": "Make me a listing graphic for 412 Elm — modern, sage green",
+      "prompt": "Make me a product launch graphic for our new API service — modern, dark theme",
       "context": {"connected_toolkits": []},
       "expected": {
         "tool_calls_must_include": ["generate_studio_image"],
@@ -266,7 +266,7 @@
     },
     {
       "id": "outreach-known-contact-by-name",
-      "prompt": "Email Jane Chen — ask if she's still interested in 412 Elm",
+      "prompt": "Email Jane Chen — ask if she's still evaluating our Pro plan",
       "context": {"connected_toolkits": ["gmail"]},
       "expected": {
         "tool_calls_must_include": ["draft_message"],
@@ -328,7 +328,7 @@
     },
     {
       "id": "send-product-packet",
-      "prompt": "Send the 412 Elm packet to Marcus Chen",
+      "prompt": "Send the Pro plan packet to Marcus Chen",
       "context": {"connected_toolkits": ["gmail"]},
       "expected": {
         "tool_calls_must_include": ["send_product_packet"],
@@ -339,7 +339,7 @@
     },
     {
       "id": "store-fact",
-      "prompt": "Remember that the Lopez family needs to close before August 15 for the school deadline",
+      "prompt": "Remember that Acme Corp needs the enterprise plan activated before their Q3 kickoff on August 15",
       "context": {"connected_toolkits": []},
       "expected": {
         "tool_calls_must_include": ["store_memory"],

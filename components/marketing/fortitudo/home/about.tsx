@@ -34,11 +34,11 @@ export function About() {
           <div>
             <p className="font-brand text-xs uppercase tracking-[0.25em] text-brand">Why Cola</p>
             <h2 className="font-brand mt-3 text-3xl text-foreground sm:text-4xl lg:text-5xl">
-              Real estate, working the way the rest of the world{' '}
+              Software sales, working the way the rest of the world{' '}
               <span className="text-gradient-brand">already does.</span>
             </h2>
             <p className="mt-5 text-lg text-foreground/65">
-              The tools agents and companies live in were drawn for a slower era. The work
+              The tools sellers and companies live in were drawn for a slower era. The work
               should not be the chrome. The work should be the deals.
             </p>
             <p className="mt-4 text-foreground/55">

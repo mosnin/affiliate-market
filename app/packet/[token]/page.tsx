@@ -107,9 +107,9 @@ export default async function PacketPage({ params }: Props) {
             )}
 
             <dl className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm pt-3 border-t border-border">
-              {product.productType && <Row label="Category" value={product.productType.replace('_', ' ')} />}
-              {(product as Record<string, unknown>).websiteUrl && <Row label="Website" value={String((product as Record<string, unknown>).websiteUrl)} />}
-              {(product as Record<string, unknown>).marketplaceSlug && <Row label="Catalog ID" value={String((product as Record<string, unknown>).marketplaceSlug)} />}
+              {product.category && <Row label="Category" value={product.category.replace('_', ' ')} />}
+              {product.websiteUrl && <Row label="Website" value={product.websiteUrl} />}
+              {product.marketplaceSlug && <Row label="Catalog ID" value={product.marketplaceSlug} />}
             </dl>
 
             {product.notes && (
@@ -118,8 +118,8 @@ export default async function PacketPage({ params }: Props) {
               </div>
             )}
 
-            {product.listingUrl && (
-              <a href={product.listingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline">
+            {product.websiteUrl && (
+              <a href={product.websiteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline">
                 View product website <ExternalLink size={12} />
               </a>
             )}

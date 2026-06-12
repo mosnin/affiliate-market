@@ -220,7 +220,7 @@ const EMPTY_FORM: FormValues = {
   mlsNumber: '',
   listingUrl: '',
   productType: '',
-  listingStatus: 'active',
+  listingStatus: 'draft',
   beds: '',
   baths: '',
   squareFeet: '',
@@ -698,12 +698,10 @@ export function ManagerProductsClient() {
              - AssignControl (rightmost column, hidden on mobile) */
         <StaggerList stagger={0.03} className="divide-y divide-border/60">
           {products.map((product) => {
-            const productName =
-              (product as Record<string, unknown>).name as string | null
-              ?? formatProductAddress(product);
+            const productName = product.name || formatProductAddress(product);
             const facts = formatProductFacts(product);
             const cover = product.photos?.[0];
-            const logoUrl = (product as Record<string, unknown>).logoUrl as string | null | undefined;
+            const logoUrl = product.logoUrl;
             const assignedMember = members.find(
               (m) => m.id === product.assignedSpaceId,
             );
@@ -748,9 +746,9 @@ export function ManagerProductsClient() {
                     )}
                     <div className="flex items-center gap-2 pt-0.5 flex-wrap">
                       <ProductStatusBadge status={product.listingStatus} />
-                      {product.productType && (
+                      {product.category && (
                         <span className="text-xs text-muted-foreground">
-                          · {product.productType.replace('_', ' ')}
+                          · {product.category.replace('_', ' ')}
                         </span>
                       )}
                       {/* Ownership — always present. "Available" signals an

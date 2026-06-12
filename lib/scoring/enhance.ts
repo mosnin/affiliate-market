@@ -112,8 +112,8 @@ export async function enhanceWithAI(
           strict: true,
           schema: {
             type: 'object',
-            additionalProducts: false,
-            products: {
+            additionalProperties: false,
+            properties: {
               summary: { type: 'string' },
               explanationTags: { type: 'array', items: { type: 'string' } },
               recommendedNextAction: { type: 'string' },

@@ -325,7 +325,7 @@ describe('toSdkTool — strict-mode schema rewriting', () => {
     // field. Inspect it directly: every key in `products` must also
     // appear in `required`, and the OPTIONAL fields must allow null.
     const schema = (sdk as { parameters: Record<string, unknown> }).parameters;
-    const props = schema.products as Record<string, unknown>;
+    const props = schema.properties as Record<string, unknown>;
     const required = schema.required as string[];
 
     expect(Object.keys(props).sort()).toEqual(['limit', 'query']);

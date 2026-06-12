@@ -520,7 +520,7 @@ async def test_reassign_lead_writes_audit(fake_db: _FakeSupabase) -> None:
                 "tags": ["company-lead", "new-lead"],
                 "phone": None,
                 "email": None,
-                "leadType": "buyer",
+                "leadType": "inbound",
                 "leadScore": 70,
             }
         ),
@@ -533,7 +533,7 @@ async def test_reassign_lead_writes_audit(fake_db: _FakeSupabase) -> None:
                 "companyId": "bk_a",
                 "tags": ["company-lead", "new-lead"],
                 "type": "QUALIFICATION",
-                "leadType": "buyer",
+                "leadType": "inbound",
                 "products": [],
                 "leadScore": 70,
             }
@@ -590,7 +590,7 @@ async def test_flag_deal_writes_audit(fake_db: _FakeSupabase) -> None:
     fake_db.set_for(
         "Deal",
         "select",
-        _FakeResult(data={"id": "d1", "title": "Sarah Chen — 123 Main", "spaceId": "s_seller", "status": "active"}),
+        _FakeResult(data={"id": "d1", "title": "Sarah Chen — Acme SaaS deal", "spaceId": "s_seller", "status": "active"}),
     )
     fake_db.set_for(
         "Space",

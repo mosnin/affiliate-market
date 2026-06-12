@@ -80,13 +80,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   // Detect which fields were provided. `undefined` means "not provided";
   // `null` is a legitimate clear for payoutAt / referralUserId / notes.
-  const hasStatus = Object.prototype.hasOwnProduct.call(body, 'status');
-  const hasPayoutAt = Object.prototype.hasOwnProduct.call(body, 'payoutAt');
-  const hasAgentRate = Object.prototype.hasOwnProduct.call(body, 'agentRate');
-  const hasManagerRate = Object.prototype.hasOwnProduct.call(body, 'managerRate');
-  const hasReferralRate = Object.prototype.hasOwnProduct.call(body, 'referralRate');
-  const hasReferralUserId = Object.prototype.hasOwnProduct.call(body, 'referralUserId');
-  const hasNotes = Object.prototype.hasOwnProduct.call(body, 'notes');
+  const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status');
+  const hasPayoutAt = Object.prototype.hasOwnProperty.call(body, 'payoutAt');
+  const hasAgentRate = Object.prototype.hasOwnProperty.call(body, 'agentRate');
+  const hasManagerRate = Object.prototype.hasOwnProperty.call(body, 'managerRate');
+  const hasReferralRate = Object.prototype.hasOwnProperty.call(body, 'referralRate');
+  const hasReferralUserId = Object.prototype.hasOwnProperty.call(body, 'referralUserId');
+  const hasNotes = Object.prototype.hasOwnProperty.call(body, 'notes');
 
   const hasAnyField =
     hasStatus ||

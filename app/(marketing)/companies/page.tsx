@@ -1,14 +1,10 @@
 /**
- * `/companies` — how Cola empowers a real estate company and its floor.
+ * `/companies` — how Cola empowers a software company and its sales team.
  *
- * Replaces the old `/teams/*` tree and absorbs its content into one rich,
- * scrolling page that belongs to the rebuilt homepage family (home-kit:
- * Reveal / Stagger / Parallax / Eyebrow, AsciiBlob hero, serif section
- * headlines, light canvas, dark accent bands).
- *
- * The one idea: give every agent on your floor an extra teammate, and give
+ * The one idea: give every seller on your team an extra AI teammate, and give
  * yourself a view of the whole room — leads routed, deals tracked,
- * bottlenecks surfaced, everything in one place instead of six tools.
+ * bottlenecks surfaced, affiliates managed, everything in one place instead
+ * of six tools.
  *
  * Every capability shown is grounded in real code:
  *   - lead routing / reassignment  → lib/ai-tools/tools/assign-lead-to-seller.ts

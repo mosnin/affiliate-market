@@ -1,7 +1,7 @@
 /**
  * `/company` — Cola's founding story. Replaces the old `/about`.
  *
- * One idea: the world moved to AI; real estate didn't — so two people who'd
+ * One idea: the world moved to AI; software sales didn't — so two people who'd
  * lived the gap built Cola to close it. The page leads with the mission,
  * makes the problem feel inevitable, lets the founders stand as proof it's
  * built by people who know the work, folds the brand beliefs in as conviction,
@@ -54,12 +54,12 @@ export default async function CompanyPage() {
           </Reveal>
           <Reveal delay={0.06}>
             <h1 className="font-brand mx-auto mt-7 max-w-4xl text-[clamp(2.25rem,6vw,4.5rem)] leading-[1.05] tracking-tight text-foreground">
-              Real estate deserves to work the way the rest of the world already does.
+              Software companies deserve to sell the way the rest of the world already operates.
             </h1>
           </Reveal>
           <Reveal delay={0.12}>
             <p className="mx-auto mt-7 max-w-2xl text-lg leading-relaxed text-foreground/60 md:text-xl">
-              We built Cola because the tools agents and companies live in
+              We built Cola because the tools sellers and companies live in
               were drawn for a slower era. The work shouldn’t be the chrome.
               The work should be the deals.
             </p>
@@ -79,15 +79,15 @@ export default async function CompanyPage() {
           </h2>
           <div className="mt-6 space-y-5 text-lg leading-relaxed text-foreground/55">
             <p>
-              An agent’s day is mostly attention management. Email, calendar,
+              A seller’s day is mostly attention management. Email, calendar,
               replies, follow-ups, pipeline updates. The actual selling,
               the listening and judging and knowing, happens in maybe ten
               percent of it.
             </p>
             <p>
               Everywhere else, that other ninety percent has started to run
-              itself. In real estate it still doesn’t. The tools are stuck a
-              generation behind what’s now possible. Agents and companies are
+              itself. In software sales it still doesn’t. The tools are stuck a
+              generation behind what’s now possible. Sellers and companies are
               nowhere near the productivity the moment allows. That distance,
               between what could happen and what actually does, is the whole
               reason Cola exists.
@@ -108,7 +108,7 @@ export default async function CompanyPage() {
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-foreground/55">
             Orlando and Preston teamed up to solve the problem from both ends:
-            the agent’s day and the company’s floor.
+            the seller’s pipeline and the company’s operations.
           </p>
         </Reveal>
         <div className="mt-16">

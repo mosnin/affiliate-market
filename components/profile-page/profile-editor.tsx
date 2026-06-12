@@ -1115,7 +1115,7 @@ function SortableLinkRow(props: {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.link.id });
 
-  const style: React.CSSProducts = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
@@ -1275,7 +1275,7 @@ function SortableVideoRow(props: {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.video.id });
 
-  const style: React.CSSProducts = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
@@ -1374,7 +1374,7 @@ function SortableProductRow(props: {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.product.id });
 
-  const style: React.CSSProducts = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,

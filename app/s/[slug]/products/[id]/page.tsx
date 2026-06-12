@@ -41,11 +41,7 @@ export default async function ProductDetailPage({
       .limit(20),
   ]);
 
-  // Prefer the software product name (stored as `name` or falling back to `address`).
-  const productName =
-    (product as Record<string, unknown>).name as string | null
-    ?? (product as Product).address
-    ?? 'Product';
+  const productName = product.name || 'Product';
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">

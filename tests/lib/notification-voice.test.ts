@@ -22,16 +22,16 @@ import {
 
 describe('notification-voice — new lead', () => {
   it('names the applicant first and frames as a welcome', () => {
-    expect(notificationForNewLead('Jane Chen')).toBe('Jane Chen just applied. Worth a welcome.');
+    expect(notificationForNewLead('Jane Chen')).toBe('Jane Chen just submitted a quote request. Worth a welcome.');
   });
 
   it('aggregates the bell-feed count to a calm fact', () => {
     expect(notificationForNewLeadsCount(1)).toEqual({
-      title: '1 new applicant',
+      title: '1 new lead submission',
       description: 'Worth a welcome.',
     });
     expect(notificationForNewLeadsCount(4)).toEqual({
-      title: '4 new applicants',
+      title: '4 new lead submissions',
       description: 'Worth a welcome.',
     });
   });
@@ -40,7 +40,7 @@ describe('notification-voice — new lead', () => {
     expect(
       notificationForNewCompanyLead('Maya Rivera', { phone: '555-0100', email: null }),
     ).toEqual({
-      title: 'Maya Rivera just applied through company intake.',
+      title: 'Maya Rivera just submitted through company intake.',
       description: '555-0100',
     });
   });
@@ -64,7 +64,7 @@ describe('notification-voice — lead scoring', () => {
 describe('notification-voice — demos', () => {
   it('puts a new demo on the calendar with the product', () => {
     expect(notificationForNewDemo('Sam Chen', '412 Elm')).toBe(
-      'On the calendar — demo with Sam Chen at 412 Elm.',
+      'On the calendar — demo with Sam Chen for 412 Elm.',
     );
   });
 
@@ -164,7 +164,7 @@ describe('notification-voice — waitlist + deals', () => {
   it('frames a new deal as pipeline movement', () => {
     expect(notificationForNewDeal('41 Sunset', null)).toBe('Pipeline added: 41 Sunset.');
     expect(notificationForNewDeal('Smith Deal', '412 Elm')).toBe(
-      'Pipeline added: Smith Deal at 412 Elm.',
+      'Pipeline added: Smith Deal (412 Elm).',
     );
   });
 

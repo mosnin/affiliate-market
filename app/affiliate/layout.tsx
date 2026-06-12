@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import { AffiliateAuthCorner } from '@/components/affiliate/auth-corner';
 
 export default function AffiliateLayout({
   children,
@@ -38,16 +38,7 @@ export default function AffiliateLayout({
 
           {/* Auth */}
           <div className="flex items-center gap-2">
-            <SignedOut>
-              <SignInButton mode="modal">
-                <button className="px-3 h-8 inline-flex items-center rounded-md text-sm font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors">
-                  Sign in
-                </button>
-              </SignInButton>
-            </SignedOut>
-            <SignedIn>
-              <UserButton />
-            </SignedIn>
+            <AffiliateAuthCorner />
           </div>
         </div>
       </header>

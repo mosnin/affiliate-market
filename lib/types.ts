@@ -408,6 +408,11 @@ export interface Product {
   currency: string | null;
   billingPeriod: 'monthly' | 'yearly' | null;
   websiteUrl: string | null;
+  logoUrl: string | null;
+  /** Marketplace feature bullets. */
+  features: string[];
+  /** Visible on the public marketplace. */
+  published: boolean;
   marketplaceSlug: string | null;
   listPrice: number | null; // kept for backward compat / CMA calcs
   listingStatus: ProductListingStatus;

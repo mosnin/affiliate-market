@@ -92,13 +92,13 @@ function buildAIInput(formConfig: IntakeFormConfig) {
 
 /**
  * OpenAI strict json_schema mode requires:
- * - additionalProducts: false on ALL objects
+ * - additionalProperties: false on ALL objects
  * - No array types like ['object', 'null'] — use anyOf instead
  * - All products listed in required
  * - No dynamic/unknown keys in objects — use arrays of {key, value} instead
  *
  * We use arrays instead of Record<string, ...> for weights and optionScores
- * because strict mode forbids additionalProducts with a schema value.
+ * because strict mode forbids additionalProperties with a schema value.
  * The response is converted back to Record form in parseAIWeightsResponse().
  */
 const SCORING_MODEL_JSON_SCHEMA = {
@@ -106,16 +106,16 @@ const SCORING_MODEL_JSON_SCHEMA = {
   strict: true,
   schema: {
     type: 'object' as const,
-    additionalProducts: false,
-    products: {
+    additionalProperties: false,
+    properties: {
       weights: {
         type: 'array' as const,
         description:
           'Array of per-question scoring entries. Only include questions that should be scored.',
         items: {
           type: 'object' as const,
-          additionalProducts: false,
-          products: {
+          additionalProperties: false,
+          properties: {
             questionId: {
               type: 'string' as const,
               description: 'The question ID from the form config.',
@@ -132,8 +132,8 @@ const SCORING_MODEL_JSON_SCHEMA = {
                     'For radio/select: array of option value to 0-100 score mappings.',
                   items: {
                     type: 'object' as const,
-                    additionalProducts: false,
-                    products: {
+                    additionalProperties: false,
+                    properties: {
                       option: {
                         type: 'string' as const,
                         description:
@@ -160,8 +160,8 @@ const SCORING_MODEL_JSON_SCHEMA = {
                     'For number fields (budget, income, price): 3-5 range buckets.',
                   items: {
                     type: 'object' as const,
-                    additionalProducts: false,
-                    products: {
+                    additionalProperties: false,
+                    properties: {
                       min: { type: 'number' as const },
                       max: {
                         anyOf: [

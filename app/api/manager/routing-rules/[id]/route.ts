@@ -53,10 +53,10 @@ const patchSchema = z
     }
 
     const hasUserId =
-      Object.prototype.hasOwnProduct.call(data, 'destinationUserId') &&
+      Object.prototype.hasOwnProperty.call(data, 'destinationUserId') &&
       data.destinationUserId !== undefined;
     const hasPool =
-      Object.prototype.hasOwnProduct.call(data, 'destinationPoolMethod') &&
+      Object.prototype.hasOwnProperty.call(data, 'destinationPoolMethod') &&
       data.destinationPoolMethod !== undefined;
 
     // When either destination field is mentioned, both must be — callers

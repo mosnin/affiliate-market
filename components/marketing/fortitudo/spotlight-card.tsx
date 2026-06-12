@@ -25,8 +25,8 @@ export function SpotlightCard({
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    el.style.setProduct('--x', `${e.clientX - rect.left}px`);
-    el.style.setProduct('--y', `${e.clientY - rect.top}px`);
+    el.style.setProperty('--x', `${e.clientX - rect.left}px`);
+    el.style.setProperty('--y', `${e.clientY - rect.top}px`);
   };
 
   return (

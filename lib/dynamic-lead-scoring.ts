@@ -98,15 +98,15 @@ async function getAIScore(input: {
           strict: true,
           schema: {
             type: 'object',
-            additionalProducts: false,
-            products: {
+            additionalProperties: false,
+            properties: {
               leadScore: { type: 'number' },
               scoreLabel: { type: 'string', enum: ['hot', 'warm', 'cold'] },
               scoreSummary: { type: 'string' },
               scoreDetails: {
                 type: 'object',
-                additionalProducts: false,
-                products: {
+                additionalProperties: false,
+                properties: {
                   tags: { type: 'array', items: { type: 'string' } },
                   strengths: { type: 'array', items: { type: 'string' } },
                   weaknesses: { type: 'array', items: { type: 'string' } },

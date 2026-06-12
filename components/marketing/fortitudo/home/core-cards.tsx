@@ -3,7 +3,7 @@
 /**
  * Core cards: fortitudo's services grid rebuilt as the five things Cola does,
  * each a premium GradientCard (3D tilt, ASCII signature, Cola-orange glow).
- * Copy is Cola's real-estate-CRM substance, lifted from the existing home.
+ * Copy is Cola's software-sales substance, lifted from the existing home.
  */
 
 import { motion } from 'motion/react';

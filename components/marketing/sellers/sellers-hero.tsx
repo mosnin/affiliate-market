@@ -78,10 +78,10 @@ export function SellersHero() {
             transition={{ duration: 0.9, ease: EASE }}
             className="mx-auto mt-7 max-w-2xl text-lg leading-relaxed text-foreground/60 md:text-xl"
           >
-            you&rsquo;re out getting deals done: at the showing, in the car, between
-            doors. Cola reads the inbox, drafts the reply, books the demo, and
-            keeps every deal current while you work. nothing leaves without your
-            tap.
+            you&rsquo;re out getting deals done: between demos, on a call, moving
+            between accounts. Cola reads the inbox, drafts the reply, books the
+            demo, and keeps every deal current while you work. nothing leaves
+            without your tap.
           </motion.p>
 
           <motion.div

@@ -217,9 +217,9 @@ def _sanitize_enums_for_xai(node: Any) -> Any:
     if isinstance(node, dict):
         out: dict[str, Any] = {}
         for k, v in node.items():
-            if k in ("products", "patternProducts", "$defs", "definitions") and isinstance(v, dict):
+            if k in ("properties", "patternProperties", "$defs", "definitions") and isinstance(v, dict):
                 out[k] = {sub_k: _sanitize_enums_for_xai(sub_v) for sub_k, sub_v in v.items()}
-            elif k in ("items", "additionalProducts", "not", "if", "then", "else"):
+            elif k in ("items", "additionalProperties", "not", "if", "then", "else"):
                 out[k] = _sanitize_enums_for_xai(v)
             elif k in ("anyOf", "oneOf", "allOf") and isinstance(v, list):
                 out[k] = [_sanitize_enums_for_xai(item) for item in v]
@@ -313,22 +313,22 @@ def _build_curated_tool(
         # the model uses to self-correct. 2xx already carries {ok,data,error}.
         return body_text or json.dumps({"ok": True, "data": None})
 
-    # `additionalProducts: True` matches the TS side (lib/integrations/
+    # `additionalProperties: True` matches the TS side (lib/integrations/
     # agent-tools.ts) — Composio re-validates server-side anyway, so loose
     # client schemas are safe and avoid spurious validation errors when
     # the model wants to pass a parameter the schema doesn't enumerate.
-    # Run xAI-enum sanitization on the products before assembling, so any
+    # Run xAI-enum sanitization on the properties before assembling, so any
     # HubSpot-style `Performance / Contract` enums get demoted to
     # description hints and don't crash the chat turn at the provider.
-    raw_products = (parameters or {}).get("products", {}) or {}
-    sanitized_products = {
-        k: _sanitize_enums_for_xai(v) for k, v in raw_products.items()
+    raw_properties = (parameters or {}).get("properties", {}) or {}
+    sanitized_properties = {
+        k: _sanitize_enums_for_xai(v) for k, v in raw_properties.items()
     }
     safe_parameters: dict[str, Any] = {
         "type": "object",
-        "products": sanitized_products,
+        "properties": sanitized_properties,
         "required": (parameters or {}).get("required", []) or [],
-        "additionalProducts": True,
+        "additionalProperties": True,
     }
 
     return FunctionTool(
@@ -463,7 +463,7 @@ async def load_integration_tools(
         if not slug:
             continue
         description = spec.get("description") or slug
-        parameters = spec.get("parameters") or {"type": "object", "products": {}}
+        parameters = spec.get("parameters") or {"type": "object", "properties": {}}
         name = _safe_tool_name(slug, toolkit)
         # If two slugs canonicalize to the same name (rare, but a future
         # rename could create one), keep the first; skip the second

@@ -386,7 +386,7 @@ async def create_deal(
         valid_rows = contacts_res.data or []
         valid_set = {r["id"] for r in valid_rows}
         valid_contact_ids = [cid for cid in contact_ids if cid in valid_set]
-        buyer_among_contacts = any(r.get("leadType") == "buyer" for r in valid_rows)
+        buyer_among_contacts = any(r.get("leadType") == "inbound" for r in valid_rows)
 
     # Stage resolution
     stage: dict[str, Any] | None = None
@@ -402,7 +402,7 @@ async def create_deal(
         stage = stage_res.data
 
     if not stage:
-        preferred = "buyer" if buyer_among_contacts else "seller"
+        preferred = "inbound" if buyer_among_contacts else "outbound"
         fallback_res = await (
             db.table("DealStage")
             .select("id,name,pipelineType")
@@ -429,20 +429,20 @@ async def create_deal(
     if not stage:
         return {"error": "No pipeline stages configured in this workspace — set one up before creating deals."}
 
-    # Auto-route buyer deals to buyer pipeline
+    # Auto-route inbound leads to inbound pipeline
     final_stage = stage
-    if buyer_among_contacts and stage.get("pipelineType") != "buyer":
-        buyer_res = await (
+    if buyer_among_contacts and stage.get("pipelineType") != "inbound":
+        inbound_res = await (
             db.table("DealStage")
             .select("id,name,pipelineType")
             .eq("spaceId", space_id)
-            .eq("pipelineType", "buyer")
+            .eq("pipelineType", "inbound")
             .order("position")
             .limit(1)
             .execute()
         )
-        if buyer_res.data:
-            final_stage = buyer_res.data[0]
+        if inbound_res.data:
+            final_stage = inbound_res.data[0]
 
     final_stage_id = final_stage["id"]
 

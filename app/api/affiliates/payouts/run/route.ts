@@ -14,7 +14,7 @@ export async function POST() {
     await audit({
       spaceId: result.space.id,
       actorClerkId: result.userId,
-      action: 'affiliate_payout_batch',
+      action: 'PAYOUT',
       resource: 'affiliate_payout',
       metadata: { payouts: payouts.length, totalCents },
     });

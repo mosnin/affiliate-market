@@ -88,7 +88,7 @@ export function HomeHero() {
       >
         <motion.div variants={container} initial="hidden" animate="show" className="flex flex-col items-center gap-7">
           <motion.p variants={item} className="font-brand text-xs uppercase tracking-[0.3em] text-brand">
-            Cola // the agentic OS for real estate
+            Cola // the agentic OS for software companies
           </motion.p>
 
           <motion.h1

@@ -33,7 +33,9 @@ export type AuditAction =
   // Company-specific lifecycle actions — kept in the union so callers
   // don't have to cast. OFFBOARD covers the agent-offboarding transfer
   // (Phase BP1); future company phases can add more verbs here.
-  | 'OFFBOARD';
+  | 'OFFBOARD'
+  // Affiliate engine: payout batches move money — always audited.
+  | 'PAYOUT';
 
 export interface AuditParams {
   /** Clerk userId of the person performing the action */

@@ -1,19 +1,19 @@
 /**
  * Shared listing-status pill for a Product.
  *
- * Listing status (active / pending / sold / off_market / owned) is metadata,
- * not signal. The stylesheet's tone palette (amber/emerald/rose) is reserved
- * for "you owe action" cues — review states, follow-up timing, agent output.
- * A product being "Active" doesn't ask the seller to do anything; it's just
- * a fact. So this badge is intentionally muted: a single neutral pill with
- * a small icon, the same vocabulary on every surface it appears.
+ * Listing status (draft / published / archived) is metadata, not signal.
+ * The stylesheet's tone palette (amber/emerald/rose) is reserved for
+ * "you owe action" cues — review states, follow-up timing, agent output.
+ * A product being "Published" doesn't ask the seller to do anything; it's
+ * just a fact. So this badge is intentionally muted: a single neutral pill
+ * with a small icon, the same vocabulary on every surface it appears.
  *
  * Used by:
  *   - app/s/[slug]/products/page.tsx           (the product list)
  *   - components/products/product-detail-client.tsx  (detail page header)
  *   - components/deals/deal-product-picker.tsx  (linked-product row)
  */
-import { CircleDot, Clock, Check, Archive, EyeOff } from 'lucide-react';
+import { CircleDot, PencilLine, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PRODUCT_LISTING_STATUS_OPTIONS } from '@/lib/products';
 import type { ProductListingStatus } from '@/lib/types';
@@ -25,12 +25,10 @@ interface Props {
 
 function iconFor(status: ProductListingStatus) {
   switch (status) {
-    case 'active':     return CircleDot;
-    case 'pending':    return Clock;
-    case 'sold':       return Check;
-    case 'owned':      return Archive;
-    case 'off_market': return EyeOff;
-    default:           return CircleDot;
+    case 'draft':     return PencilLine;
+    case 'published': return CircleDot;
+    case 'archived':  return Archive;
+    default:          return CircleDot;
   }
 }
 

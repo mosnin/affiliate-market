@@ -33,11 +33,20 @@ function sanitiseBody(body: Record<string, unknown>, mode: 'create' | 'update') 
     out[key] = String(raw).trim().slice(0, maxLen);
   }
 
-  // Required on create, optional on update.
-  if ('address' in body || mode === 'create') {
-    const addr = typeof body.address === 'string' ? body.address.trim().slice(0, 500) : '';
-    if (!addr) errors.push('address is required');
-    else out.address = addr;
+  // A display name is required on create — accept `name` (software products)
+  // or the legacy `address` field, and keep both columns in sync so older
+  // rows/queries that still read `address` render something sensible.
+  const name =
+    typeof body.name === 'string' && body.name.trim()
+      ? body.name.trim().slice(0, 200)
+      : typeof body.address === 'string' && body.address.trim()
+        ? body.address.trim().slice(0, 200)
+        : '';
+  if (name) {
+    out.name = name;
+    out.address = name;
+  } else if (mode === 'create') {
+    errors.push('name is required');
   }
 
   stringField('unitNumber', 50);
@@ -76,6 +85,75 @@ function sanitiseBody(body: Record<string, unknown>, mode: 'create' | 'update') 
         .slice(0, 20);
       out.photos = arr;
     }
+  }
+
+  // ── Software product fields (marketplace listing) ──────────────────────────
+  stringField('tagline', 200);
+  stringField('longDescription', 20_000);
+  stringField('logoUrl', 1000);
+  stringField('websiteUrl', 1000);
+
+  if ('category' in body) {
+    if (body.category === null || body.category === '') out.category = null;
+    else if (isValidProductType(body.category)) out.category = body.category;
+    else errors.push('Invalid category');
+  }
+
+  if ('pricingModel' in body) {
+    if (body.pricingModel === 'one_time' || body.pricingModel === 'subscription') {
+      out.pricingModel = body.pricingModel;
+    } else errors.push('Invalid pricingModel');
+  }
+
+  if ('billingPeriod' in body) {
+    if (body.billingPeriod === null || body.billingPeriod === '') out.billingPeriod = null;
+    else if (body.billingPeriod === 'monthly' || body.billingPeriod === 'yearly') {
+      out.billingPeriod = body.billingPeriod;
+    } else errors.push('Invalid billingPeriod');
+  }
+
+  numberField('priceCents', { min: 0, max: 100_000_000_00, integer: true });
+
+  if ('features' in body) {
+    if (!Array.isArray(body.features)) errors.push('features must be an array');
+    else {
+      out.features = (body.features as unknown[])
+        .filter((x): x is string => typeof x === 'string')
+        .map((x) => x.trim())
+        .filter((x) => x.length > 0 && x.length <= 300)
+        .slice(0, 30);
+    }
+  }
+
+  if ('published' in body) {
+    if (typeof body.published === 'boolean') out.published = body.published;
+    else errors.push('published must be a boolean');
+  }
+
+  if ('marketplaceSlug' in body) {
+    if (body.marketplaceSlug === null || body.marketplaceSlug === '') {
+      out.marketplaceSlug = null;
+    } else {
+      const slug = String(body.marketplaceSlug)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 120);
+      if (slug) out.marketplaceSlug = slug;
+      else errors.push('Invalid marketplaceSlug');
+    }
+  }
+
+  // Publishing requires a marketplace identity — generate one from the name
+  // rather than failing the common "publish" toggle path.
+  if (out.published === true && !out.marketplaceSlug && mode === 'create') {
+    const base = String(out.name ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 100);
+    if (base) out.marketplaceSlug = `${base}-${crypto.randomUUID().slice(0, 6)}`;
   }
 
   return { out, errors };

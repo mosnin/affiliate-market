@@ -125,39 +125,52 @@ export function ProductDetailClient({ slug, initial, linkedDeals, linkedDemos }:
         </h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <ProductStatusBadge status={product.listingStatus} />
-          {product.productType && (
-            <span>· {product.productType.replace('_', ' ')}</span>
+          {product.category && (
+            <span>· {product.category.replace('_', ' ')}</span>
           )}
           {facts && <span>· {facts}</span>}
         </div>
-        {product.listPrice != null && (
+        {(product.priceCents != null || product.listPrice != null) && (
           <p
             className="text-3xl tracking-tight text-foreground tabular-nums pt-2"
             style={{ fontFamily: 'var(--font-title)' }}
           >
-            {formatCurrency(product.listPrice)}
+            {product.priceCents != null
+              ? `${formatCurrency(product.priceCents / 100)}${
+                  product.pricingModel === 'subscription'
+                    ? product.billingPeriod === 'yearly' ? '/yr' : '/mo'
+                    : ''
+                }`
+              : formatCurrency(product.listPrice as number)}
           </p>
         )}
       </header>
 
-      {/* ── Facts grid + listing/notes ───────────────────────────────── */}
+      {/* ── Facts grid + website/notes ───────────────────────────────── */}
       <section className="space-y-4 border-t border-border/60 pt-6">
-        {(product.yearBuilt != null || product.lotSizeSqft != null || product.mlsNumber) && (
+        {(product.pricingModel || product.marketplaceSlug || product.features.length > 0) && (
           <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3">
-            {product.yearBuilt != null && <Fact label="Year built" value={String(product.yearBuilt)} />}
-            {product.lotSizeSqft != null && <Fact label="Lot" value={`${product.lotSizeSqft.toLocaleString()} sqft`} />}
-            {product.mlsNumber && <Fact label="MLS" value={product.mlsNumber} />}
+            {product.pricingModel && (
+              <Fact
+                label="Pricing"
+                value={product.pricingModel === 'subscription' ? 'Subscription' : 'One-time'}
+              />
+            )}
+            {product.marketplaceSlug && <Fact label="Catalog ID" value={product.marketplaceSlug} />}
+            {product.features.length > 0 && (
+              <Fact label="Features" value={`${product.features.length} listed`} />
+            )}
           </dl>
         )}
 
-        {product.listingUrl && (
+        {product.websiteUrl && (
           <a
-            href={product.listingUrl}
+            href={product.websiteUrl}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline"
           >
-            View listing <ExternalLink size={12} />
+            View website <ExternalLink size={12} />
           </a>
         )}
 

@@ -38,7 +38,7 @@ export function PreviewBridge() {
 
       // Accent color → CSS var.
       if (typeof c.accentColor === 'string' && c.accentColor) {
-        root.style.setProduct('--intake-accent', c.accentColor);
+        root.style.setProperty('--intake-accent', c.accentColor);
       }
 
       // Dark mode → .dark class on <html>.

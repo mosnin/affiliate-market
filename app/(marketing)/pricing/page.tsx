@@ -104,7 +104,7 @@ function PlanCard({ card }: { card: Card }) {
       </p>
       {p.addUser && (
         <p className="mt-1 text-xs text-muted-foreground">
-          +${p.addUser.priceMonthly}/user · +{p.addUser.credits.toLocaleString()} credits
+          +${p.addUser.priceMonthly}/seller · +{p.addUser.credits.toLocaleString()} credits
         </p>
       )}
       <Link href={card.cta.href} className={`${PRIMARY_PILL} mt-8 w-full justify-center`}>

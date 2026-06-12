@@ -373,14 +373,14 @@ export async function generateAISuggestions(
           strict: true,
           schema: {
             type: 'object',
-            additionalProducts: false,
-            products: {
+            additionalProperties: false,
+            properties: {
               suggestions: {
                 type: 'array',
                 items: {
                   type: 'object',
-                  additionalProducts: false,
-                  products: {
+                  additionalProperties: false,
+                  properties: {
                     type: { type: 'string', enum: ['reorder', 'remove', 'modify', 'add', 'scoring'] },
                     target: { type: 'string' },
                     title: { type: 'string' },

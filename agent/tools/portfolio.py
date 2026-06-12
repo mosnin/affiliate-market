@@ -77,13 +77,13 @@ async def analyze_portfolio(
 
     overdue_followup_count = sum(1 for c in contacts if _is_overdue(c))
 
-    # Contacts are stored lowercase ("rental" / "buyer") per the LeadType
+    # Contacts are stored lowercase ("inbound" / "outbound" / "referral") per the LeadType
     # Literal in schemas.py and the TS contract — uppercase comparison
     # silently zeroed both counts on every run.
-    rental_count = sum(1 for c in contacts if (c.get("leadType") or "").lower() == "rental")
-    buyer_count = sum(1 for c in contacts if (c.get("leadType") or "").lower() == "buyer")
-    rental_pct = round(rental_count / contact_count * 100, 1) if contact_count else 0.0
-    buyer_pct = round(buyer_count / contact_count * 100, 1) if contact_count else 0.0
+    inbound_count = sum(1 for c in contacts if (c.get("leadType") or "").lower() == "inbound")
+    outbound_count = sum(1 for c in contacts if (c.get("leadType") or "").lower() == "outbound")
+    inbound_pct = round(inbound_count / contact_count * 100, 1) if contact_count else 0.0
+    outbound_pct = round(outbound_count / contact_count * 100, 1) if contact_count else 0.0
 
     scores = [c.get("leadScore") or 0 for c in contacts]
     avg_lead_score = round(sum(scores) / len(scores), 1) if scores else 0.0
@@ -180,8 +180,8 @@ async def analyze_portfolio(
         "contact_count": contact_count,
         "high_score_count": high_score_count,
         "overdue_followup_count": overdue_followup_count,
-        "rental_pct": rental_pct,
-        "buyer_pct": buyer_pct,
+        "inbound_pct": inbound_pct,
+        "outbound_pct": outbound_pct,
         "pipeline_value": pipeline_value,
         "deals_closing_14d": deals_closing_14d,
         "avg_lead_score": avg_lead_score,

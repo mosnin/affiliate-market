@@ -69,11 +69,11 @@ export function toSdkTool<TArgs, TData>(def: ToolDefinition<TArgs, TData>, ctx: 
     name: def.name,
     description: def.description,
     // Transform our zod schema so OpenAI's strict-mode JSON-schema
-    // accepts it. Strict mode requires every key in `products` to
+    // accepts it. Strict mode requires every key in `properties` to
     // also appear in `required`; zod `.optional()` produces a schema
     // missing the field from `required` and OpenAI rejects with
     // "Invalid schema for function ...: 'required' is required to be
-    // supplied and to be an array including every key in products."
+    // supplied and to be an array including every key in properties."
     //
     // We apply `strictifySchema` (below) which rewrites every
     // `.optional()` and `.default()` into `.nullable()`. The field

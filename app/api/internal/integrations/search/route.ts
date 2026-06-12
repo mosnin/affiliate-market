@@ -167,7 +167,7 @@ export async function POST(req: NextRequest) {
         slug: tool.slug,
         name: (tool.name || tool.slug).slice(0, 64),
         description: (tool.description || tool.slug).slice(0, 1024),
-        parameters: tool.inputParameters || { type: 'object', products: {} },
+        parameters: tool.inputParameters || { type: 'object', properties: {} },
         toolkit,
       }));
     return NextResponse.json({ tools: ordered });
@@ -213,7 +213,7 @@ export async function POST(req: NextRequest) {
     slug: tool.slug,
     name: (tool.name || tool.slug).slice(0, 64),
     description: (tool.description || tool.slug).slice(0, 1024),
-    parameters: tool.inputParameters || { type: 'object', products: {} },
+    parameters: tool.inputParameters || { type: 'object', properties: {} },
     toolkit,
   }));
 

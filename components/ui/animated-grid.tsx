@@ -66,7 +66,7 @@ export function AnimatedGrid({
                   backgroundColor: cellBackgroundColor,
                   animation: `gridAnimation ${animationDuration} ease-in ${delay}s infinite alternate`,
                   "--animation-color": animationColor1,
-                } as React.CSSProducts
+                } as React.CSSProperties
               }
             />
           )

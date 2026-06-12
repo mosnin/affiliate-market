@@ -190,9 +190,9 @@ def _build_synthetic_curated_tools(connected_toolkits: list[str]) -> list:
 
     permissive_schema: dict[str, Any] = {
         "type": "object",
-        "products": {},
+        "properties": {},
         "required": [],
-        "additionalProducts": True,
+        "additionalProperties": True,
     }
     tools: list = []
     seen_names: set[str] = set()
