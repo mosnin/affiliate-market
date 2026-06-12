@@ -7,7 +7,7 @@
 
 ## At a glance
 
-- **Page routes:** 198
+- **Page routes:** 199
 - **API endpoints:** 330
 - **Cron jobs:** 10
 - **DB tables:** 110  ·  **RPCs:** 23  ·  **migrations:** 164
@@ -93,9 +93,10 @@
 
 - `/companies`
 
-**company** (1)
+**company** (2)
 
 - `/company`
+- `/company/setup`
 
 **demo** (2)
 
