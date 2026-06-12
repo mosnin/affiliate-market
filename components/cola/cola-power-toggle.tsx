@@ -95,7 +95,7 @@ export function ColaPowerToggle() {
           'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full border border-border/70 text-xs font-medium transition-colors disabled:opacity-50',
           enabled
             ? 'text-muted-foreground/70 hover:text-foreground hover:bg-foreground/[0.025]'
-            : 'bg-amber-50 text-amber-800 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25',
+            : 'bg-muted text-muted-foreground hover:bg-muted dark:bg-muted0/15 dark:text-muted-foreground dark:hover:bg-muted0/25',
         )}
       >
         {saving ? (
@@ -105,7 +105,7 @@ export function ColaPowerToggle() {
             aria-hidden
             className={cn(
               'w-1.5 h-1.5 rounded-full flex-shrink-0',
-              enabled ? 'bg-emerald-500' : 'bg-amber-500',
+              enabled ? 'bg-positive-subtle0' : 'bg-muted0',
             )}
           />
         )}

@@ -176,7 +176,7 @@ const MODE_META: Record<Exclude<Mode, null>, {
     label: 'Draft',
     Icon: FileText,
     activeClasses:
-      'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400',
+      'bg-muted0/10 border-border text-muted-foreground dark:text-muted-foreground',
     placeholder: 'Draft a longer message…',
     prefix: 'Draft',
   },
@@ -954,7 +954,7 @@ export const ColaPromptBox = React.forwardRef<HTMLTextAreaElement, ColaPromptBox
                         className={cn(
                           'relative w-16 h-16 rounded-lg overflow-hidden border bg-foreground/[0.03]',
                           'transition-colors duration-150',
-                          errorTone ? 'border-rose-400/70' : 'border-border/60',
+                          errorTone ? 'border-negative/20' : 'border-border/60',
                         )}
                       >
                         {showSrc ? (
@@ -995,7 +995,7 @@ export const ColaPromptBox = React.forwardRef<HTMLTextAreaElement, ColaPromptBox
                       className={cn(
                         'relative inline-flex items-center gap-2 h-12 pl-2 pr-7 rounded-lg border',
                         'bg-foreground/[0.04] transition-colors duration-150',
-                        errorTone ? 'border-rose-400/70' : 'border-border/60',
+                        errorTone ? 'border-negative/20' : 'border-border/60',
                       )}
                       title={a.error || a.filename}
                     >
@@ -1009,7 +1009,7 @@ export const ColaPromptBox = React.forwardRef<HTMLTextAreaElement, ColaPromptBox
                         <span
                           className={cn(
                             'truncate max-w-[180px] text-[10.5px] leading-tight',
-                            errorTone ? 'text-rose-500' : 'text-muted-foreground',
+                            errorTone ? 'text-negative' : 'text-muted-foreground',
                           )}
                         >
                           {errorTone
@@ -1047,7 +1047,7 @@ export const ColaPromptBox = React.forwardRef<HTMLTextAreaElement, ColaPromptBox
 
             {/* Attachment-level error notice (validation, not per-chip) */}
             {attachError && (
-              <div className="px-3 pt-2 text-[11px] text-rose-500">
+              <div className="px-3 pt-2 text-[11px] text-negative">
                 {attachError}
               </div>
             )}
@@ -1084,8 +1084,8 @@ export const ColaPromptBox = React.forwardRef<HTMLTextAreaElement, ColaPromptBox
               <div className="px-4 pt-4 pb-2">
                 <div className="flex items-center gap-3">
                   <span className="relative inline-flex w-2 h-2">
-                    <span className="absolute inset-0 rounded-full bg-rose-500 animate-ping opacity-75" />
-                    <span className="relative inline-flex w-2 h-2 rounded-full bg-rose-500" />
+                    <span className="absolute inset-0 rounded-full bg-negative-subtle0 animate-ping opacity-75" />
+                    <span className="relative inline-flex w-2 h-2 rounded-full bg-negative-subtle0" />
                   </span>
                   <span className="text-[12px] tabular-nums text-muted-foreground">
                     {formatTime(recordSeconds)}
@@ -1287,7 +1287,7 @@ export const ColaPromptBox = React.forwardRef<HTMLTextAreaElement, ColaPromptBox
                         className={cn(
                           'inline-flex items-center justify-center w-7 h-7 rounded-md',
                           mode === 'draft'
-                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                            ? 'bg-muted0/15 text-muted-foreground dark:text-muted-foreground'
                             : 'bg-foreground/[0.05] text-muted-foreground',
                         )}
                       >

@@ -107,7 +107,7 @@ export function HomeFooter() {
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-6 py-8 text-[13px] text-foreground/45 md:flex-row md:px-8">
         <span>© {new Date().getFullYear()} Cola. All rights reserved.</span>
         <span className="inline-flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          <span className="h-1.5 w-1.5 rounded-full bg-positive-subtle0" />
           All systems operational
         </span>
       </div>

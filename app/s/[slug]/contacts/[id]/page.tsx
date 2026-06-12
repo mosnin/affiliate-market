@@ -40,8 +40,8 @@ import {
 } from '@/lib/people-detail-actions';
 
 function tierBadgeClasses(label: string) {
-  if (label === 'hot') return 'text-red-700 dark:text-red-400';
-  if (label === 'warm') return 'text-amber-700 dark:text-amber-400';
+  if (label === 'hot') return 'text-negative dark:text-red-400';
+  if (label === 'warm') return 'text-muted-foreground dark:text-muted-foreground';
   return 'text-muted-foreground';
 }
 

@@ -46,7 +46,7 @@ export function PostDemoFeedback({ token, guestName, businessName }: PostDemoFee
   if (submitted) {
     return (
       <div className="rounded-lg border border-border bg-card p-6 text-center space-y-3">
-        <CheckCircle2 size={32} className="mx-auto text-emerald-500" />
+        <CheckCircle2 size={32} className="mx-auto text-positive" />
         <h3 className="text-lg font-semibold">Thank you, {guestName}!</h3>
         <p className="text-sm text-muted-foreground">Your feedback helps {businessName} improve.</p>
       </div>
@@ -75,7 +75,7 @@ export function PostDemoFeedback({ token, guestName, businessName }: PostDemoFee
               className={cn(
                 'transition-colors',
                 n <= (hoveredRating || rating)
-                  ? 'text-amber-400 fill-amber-400'
+                  ? 'text-lead-warm fill-lead-warm'
                   : 'text-muted-foreground/20'
               )}
             />

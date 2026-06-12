@@ -57,12 +57,12 @@ interface Call {
 
 // Status pill tones — the canonical status palette from STYLESHEET.md.
 const STATUS_STYLES: Record<CallStatus, string> = {
-  initiated: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  ringing: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  answered: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  completed: 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
+  initiated: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  ringing: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  answered: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  completed: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
   no_answer: 'text-muted-foreground bg-muted',
-  failed: 'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15',
+  failed: 'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15',
 };
 
 const STATUS_LABELS: Record<CallStatus, string> = {

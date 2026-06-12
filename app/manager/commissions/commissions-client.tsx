@@ -771,8 +771,8 @@ export function CommissionsClient({ ledger: initialLedger, defaultAgentRate, def
 
 function StatusPill({ status }: { status: LedgerStatus }) {
   const styles: Record<LedgerStatus, string> = {
-    pending: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-    paid: 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
+    pending: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+    paid: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
     void: 'text-muted-foreground bg-muted',
   };
   const label: Record<LedgerStatus, string> = {

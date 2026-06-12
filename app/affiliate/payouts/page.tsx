@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { SignInButton } from '@clerk/nextjs';
+import { Banknote, TrendingUp, List } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   H1,
@@ -14,7 +15,12 @@ import {
   SECTION_RHYTHM,
   META,
   CAPTION,
-  TITLE_FONT,
+  CARD,
+  STAT_CARD,
+  ICON_SQUARE,
+  CHIP_POSITIVE,
+  CHIP_NEUTRAL,
+  CHIP_NEGATIVE,
 } from '@/lib/typography';
 import { formatCurrency } from '@/lib/formatting';
 import { getPartnersByUser } from '@/lib/affiliates/partners';
@@ -26,20 +32,13 @@ import { stripeConnectConfigured } from '@/lib/affiliates/stripe-connect';
 import { PLATFORM_FEE_PERCENT } from '@/lib/affiliates/fees';
 import { ConnectStripeButton } from '@/components/affiliate/connect-stripe-button';
 
-const PAYOUT_STATUS_BADGE: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700 border-amber-200/70',
-  processing: 'bg-blue-50 text-blue-700 border-blue-200/70',
-  completed: 'bg-emerald-50 text-emerald-700 border-emerald-200/70',
-  failed: 'bg-red-50 text-red-700 border-red-200/70',
-};
-
 export default async function AffiliatePayoutsPage() {
   const { userId } = await auth();
 
   if (!userId) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20 text-center space-y-4">
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className={cn(H1)}>
           Payouts.
         </h1>
         <p className={cn(BODY_MUTED)}>Sign in to view your payouts.</p>
@@ -59,7 +58,7 @@ export default async function AffiliatePayoutsPage() {
   if (!partner) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20 text-center space-y-4">
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className={cn(H1)}>
           No affiliate account.
         </h1>
         <p className={cn(BODY_MUTED)}>You need to join an affiliate program first.</p>
@@ -73,7 +72,7 @@ export default async function AffiliatePayoutsPage() {
   if (partner.status !== 'approved') {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20 text-center space-y-4">
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className={cn(H1)}>
           Not yet approved.
         </h1>
         <p className={cn(BODY_MUTED)}>
@@ -95,7 +94,7 @@ export default async function AffiliatePayoutsPage() {
       {/* Header */}
       <header className="space-y-1">
         <p className={cn(SECTION_LABEL)}>Affiliate payouts</p>
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className={cn(H1)}>
           Payouts
         </h1>
         <p className={cn(BODY_MUTED)}>
@@ -104,21 +103,28 @@ export default async function AffiliatePayoutsPage() {
       </header>
 
       {/* Stripe Connect */}
-      <section
-        className={cn(
-          'rounded-xl border px-5 py-4 flex flex-wrap items-center justify-between gap-4',
-          stripeConnected ? 'border-emerald-200/70 bg-emerald-50/40' : 'border-border/60 bg-muted/20',
-        )}
-      >
-        <div className="space-y-0.5 min-w-0">
-          <p className={cn(SECTION_LABEL)}>
-            {stripeConnected ? 'stripe connected' : 'get paid automatically'}
-          </p>
-          <p className="text-sm text-foreground">
-            {stripeConnected
-              ? 'Payouts are transferred straight to your Stripe account.'
-              : 'Connect your Stripe account and payouts land there automatically — no invoices, no waiting.'}
-          </p>
+      <section className={cn(CARD, 'px-5 py-5 flex flex-wrap items-center justify-between gap-4')}>
+        <div className="flex items-center gap-3 min-w-0">
+          {stripeConnected && (
+            <div className={cn(ICON_SQUARE)}>
+              <Banknote size={16} />
+            </div>
+          )}
+          <div className="space-y-0.5 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className={cn(SECTION_LABEL)}>
+                {stripeConnected ? 'stripe connected' : 'get paid automatically'}
+              </p>
+              {stripeConnected && (
+                <span className={cn(CHIP_POSITIVE)}>connected</span>
+              )}
+            </div>
+            <p className="text-sm text-foreground">
+              {stripeConnected
+                ? 'Payouts are transferred straight to your Stripe account.'
+                : 'Connect your Stripe account and payouts land there automatically — no invoices, no waiting.'}
+            </p>
+          </div>
         </div>
         {!stripeConnected &&
           (stripeConnectConfigured() ? (
@@ -130,19 +136,30 @@ export default async function AffiliatePayoutsPage() {
           ))}
       </section>
 
-      {/* Payable balance stat */}
+      {/* Stat grid */}
       <section>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-px rounded-xl overflow-hidden border border-border/60 bg-border/60">
-          {[
-            { label: 'Available balance', value: formatCurrency(payableCents / 100) },
-            { label: 'Total paid out', value: formatCurrency(payouts.reduce((s, p) => s + (p.status === 'completed' ? p.amountCents : 0), 0) / 100) },
-            { label: 'Payouts', value: payouts.length.toLocaleString() },
-          ].map(({ label, value }) => (
-            <div key={label} className="bg-background px-4 py-4 space-y-1.5">
-              <p className={cn(SECTION_LABEL)}>{label}</p>
-              <p className={cn(STAT_NUMBER_COMPACT)}>{value}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <div className={cn(STAT_CARD)}>
+            <div className={cn(ICON_SQUARE)}>
+              <Banknote size={16} />
             </div>
-          ))}
+            <p className={cn(SECTION_LABEL)}>Available balance</p>
+            <p className={cn(STAT_NUMBER_COMPACT)}>{formatCurrency(payableCents / 100)}</p>
+          </div>
+          <div className={cn(STAT_CARD)}>
+            <div className={cn(ICON_SQUARE)}>
+              <TrendingUp size={16} />
+            </div>
+            <p className={cn(SECTION_LABEL)}>Total paid out</p>
+            <p className={cn(STAT_NUMBER_COMPACT)}>{formatCurrency(payouts.reduce((s, p) => s + (p.status === 'completed' ? p.amountCents : 0), 0) / 100)}</p>
+          </div>
+          <div className={cn(STAT_CARD)}>
+            <div className={cn(ICON_SQUARE)}>
+              <List size={16} />
+            </div>
+            <p className={cn(SECTION_LABEL)}>Payouts</p>
+            <p className={cn(STAT_NUMBER_COMPACT)}>{payouts.length.toLocaleString()}</p>
+          </div>
         </div>
       </section>
 
@@ -151,25 +168,25 @@ export default async function AffiliatePayoutsPage() {
         <h2 className={cn(H2)}>Payout history</h2>
 
         {payouts.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-10 text-center">
+          <div className={cn(CARD, 'px-5 py-10 text-center')}>
             <p className={cn(BODY_MUTED)}>
               No payouts yet. Once your commissions are approved, payouts will appear here.
             </p>
           </div>
         ) : (
-          <div className="rounded-xl border border-border/60 overflow-hidden">
+          <div className={cn(CARD, 'overflow-hidden')}>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border/60 bg-muted/30">
+                <tr className="border-b border-border/60 bg-muted/40">
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Date</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-right font-medium')}>Amount</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Method</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/40">
+              <tbody className="divide-y divide-border/60">
                 {payouts.map((p) => (
-                  <tr key={p.id} className="hover:bg-muted/10 transition-colors">
+                  <tr key={p.id} className="hover:bg-muted/30 transition-colors">
                     <td className={cn(META, 'px-4 py-3 align-middle')}>
                       {new Date(p.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </td>
@@ -180,12 +197,18 @@ export default async function AffiliatePayoutsPage() {
                       {p.method ?? '—'}
                     </td>
                     <td className="px-4 py-3 align-middle">
-                      <span className={cn(
-                        'inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border',
-                        PAYOUT_STATUS_BADGE[p.status] ?? 'bg-muted text-muted-foreground border-border/60',
-                      )}>
-                        {p.status}
-                      </span>
+                      {p.status === 'completed' && (
+                        <span className={cn(CHIP_POSITIVE)}>{p.status}</span>
+                      )}
+                      {(p.status === 'pending' || p.status === 'processing') && (
+                        <span className={cn(CHIP_NEUTRAL)}>{p.status}</span>
+                      )}
+                      {p.status === 'failed' && (
+                        <span className={cn(CHIP_NEGATIVE)}>{p.status}</span>
+                      )}
+                      {p.status !== 'completed' && p.status !== 'pending' && p.status !== 'processing' && p.status !== 'failed' && (
+                        <span className={cn(CHIP_NEUTRAL)}>{p.status}</span>
+                      )}
                     </td>
                   </tr>
                 ))}

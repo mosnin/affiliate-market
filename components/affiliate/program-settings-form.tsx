@@ -112,7 +112,7 @@ export function ProgramSettingsForm({ slug, initial }: ProgramSettingsFormProps)
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Acme Affiliate Program"
-          className="max-w-sm"
+          className="max-w-sm rounded-xl"
         />
       </div>
 
@@ -126,10 +126,10 @@ export function ProgramSettingsForm({ slug, initial }: ProgramSettingsFormProps)
               type="button"
               onClick={() => setCommissionType(t)}
               className={cn(
-                'px-3.5 h-9 rounded-lg text-sm font-medium border transition-colors',
+                'px-3.5 h-9 text-sm font-medium border transition-colors',
                 commissionType === t
-                  ? 'bg-foreground text-background border-foreground'
-                  : 'bg-background text-muted-foreground border-border/60 hover:text-foreground',
+                  ? 'bg-primary text-primary-foreground border-primary rounded-xl'
+                  : 'bg-card text-muted-foreground border-border hover:text-foreground rounded-xl',
               )}
             >
               {t === 'percent' ? 'Percentage (%)' : 'Flat amount ($)'}
@@ -152,6 +152,7 @@ export function ProgramSettingsForm({ slug, initial }: ProgramSettingsFormProps)
             max={commissionType === 'percent' ? '100' : undefined}
             value={commissionValue}
             onChange={(e) => setCommissionValue(e.target.value)}
+            className="rounded-xl"
           />
           <span className={cn(BODY_MUTED, 'shrink-0')}>
             {commissionType === 'percent' ? '%' : 'USD'}
@@ -183,6 +184,7 @@ export function ProgramSettingsForm({ slug, initial }: ProgramSettingsFormProps)
             step="1"
             value={cookieWindowDays}
             onChange={(e) => setCookieWindowDays(e.target.value)}
+            className="rounded-xl"
           />
           <span className={cn(BODY_MUTED, 'shrink-0')}>days</span>
         </div>
@@ -217,6 +219,7 @@ export function ProgramSettingsForm({ slug, initial }: ProgramSettingsFormProps)
                 value={recurringMonths}
                 onChange={(e) => setRecurringMonths(e.target.value)}
                 placeholder="forever"
+                className="rounded-xl"
               />
               <span className={cn(BODY_MUTED, 'shrink-0')}>months</span>
             </div>

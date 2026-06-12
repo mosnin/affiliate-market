@@ -122,8 +122,8 @@ export default async function SellerDrilldownPage({ params }: Params) {
   const initials = (user.name ?? user.email ?? '?').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
 
   const scoreBadge = (label: string | null) => {
-    if (label === 'hot') return 'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15';
-    if (label === 'warm') return 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15';
+    if (label === 'hot') return 'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15';
+    if (label === 'warm') return 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15';
     return 'text-muted-foreground bg-muted';
   };
 
@@ -157,11 +157,11 @@ export default async function SellerDrilldownPage({ params }: Params) {
               {user.name ?? 'No name'}
             </h1>
             {user.onboard ? (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2.5 py-0.5 text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15">
+              <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2.5 py-0.5 text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15">
                 <CheckCircle2 size={11} /> Active
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2.5 py-0.5 text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15">
+              <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2.5 py-0.5 text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15">
                 <AlertCircle size={11} /> Pending
               </span>
             )}
@@ -232,7 +232,7 @@ export default async function SellerDrilldownPage({ params }: Params) {
                             </p>
                           )}
                           {c.followUpAt && (
-                            <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                            <p className="text-xs text-muted-foreground dark:text-muted-foreground flex items-center gap-1.5">
                               <Calendar size={11} className="shrink-0" />
                               Follow up {new Date(c.followUpAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                             </p>
@@ -278,11 +278,11 @@ export default async function SellerDrilldownPage({ params }: Params) {
                     const stage = stageMap[d.stageId];
                     const statusColor =
                       d.status === 'won'
-                        ? 'text-emerald-700 dark:text-emerald-400'
+                        ? 'text-positive dark:text-positive'
                         : d.status === 'lost'
                           ? 'text-destructive'
                           : d.status === 'on_hold'
-                            ? 'text-amber-700 dark:text-amber-400'
+                            ? 'text-muted-foreground dark:text-muted-foreground'
                             : 'text-muted-foreground';
                     return (
                       <li key={d.id} className="flex items-start gap-3 py-3">

@@ -111,7 +111,7 @@ const CHANNEL_LABEL: Record<TemplateChannel, string> = {
 };
 
 const CHANNEL_CHIP_CLASS: Record<TemplateChannel, string> = {
-  sms: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400',
+  sms: 'bg-brand-subtle text-primary dark:bg-brand-subtle0/20 dark:text-blue-400',
   email: 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-400',
   note: 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300',
 };
@@ -161,9 +161,9 @@ function publishStatus(t: CompanyTemplate): PublishStatus {
 function statusMeta(status: PublishStatus): { dot: string; label: string } {
   switch (status) {
     case 'up-to-date':
-      return { dot: 'bg-emerald-500', label: 'Up to date with agents' };
+      return { dot: 'bg-positive-subtle0', label: 'Up to date with agents' };
     case 'edited':
-      return { dot: 'bg-amber-500', label: 'Edited since last publish' };
+      return { dot: 'bg-muted0', label: 'Edited since last publish' };
     case 'never':
       return { dot: 'bg-muted-foreground/40', label: 'Never published' };
   }

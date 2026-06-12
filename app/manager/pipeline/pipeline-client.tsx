@@ -80,15 +80,15 @@ function formatDate(dateStr: string | null): string {
 }
 
 const priorityTone: Record<string, string> = {
-  HIGH: 'text-rose-700 dark:text-rose-400',
-  MEDIUM: 'text-amber-700 dark:text-amber-400',
+  HIGH: 'text-negative dark:text-negative',
+  MEDIUM: 'text-muted-foreground dark:text-muted-foreground',
   LOW: 'text-muted-foreground',
 };
 
 const statusTone: Record<string, string> = {
   active: 'text-foreground',
-  won: 'text-emerald-700 dark:text-emerald-400',
-  lost: 'text-rose-700 dark:text-rose-400',
+  won: 'text-positive dark:text-positive',
+  lost: 'text-negative dark:text-negative',
   on_hold: 'text-muted-foreground',
 };
 
@@ -215,7 +215,7 @@ export function PipelineClient({ deals, stages, sellers, summary }: Props) {
       {/* the rose / amber dots — no heavy card chrome. */}
       {summary.atRiskCount === 0 && summary.stuckCount === 0 && summary.activeDeals > 0 && (
         <section className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 flex items-start gap-3">
-          <span className="mt-1.5 inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" aria-hidden />
+          <span className="mt-1.5 inline-block w-1.5 h-1.5 rounded-full bg-positive-subtle0 flex-shrink-0" aria-hidden />
           <div className="min-w-0">
             <p className="text-sm font-medium">Everything&apos;s healthy.</p>
             <p className="text-[13px] text-muted-foreground mt-0.5">
@@ -233,14 +233,14 @@ export function PipelineClient({ deals, stages, sellers, summary }: Props) {
               <p className="text-[13px] text-muted-foreground mt-0.5">
                 {summary.stuckCount > 0 && (
                   <>
-                    <span className="font-medium text-rose-700 dark:text-rose-400 tabular-nums">{summary.stuckCount}</span>{' '}
+                    <span className="font-medium text-negative dark:text-negative tabular-nums">{summary.stuckCount}</span>{' '}
                     stuck
                   </>
                 )}
                 {summary.stuckCount > 0 && summary.atRiskCount > 0 && <span> · </span>}
                 {summary.atRiskCount > 0 && (
                   <>
-                    <span className="font-medium text-amber-700 dark:text-amber-400 tabular-nums">{summary.atRiskCount}</span>{' '}
+                    <span className="font-medium text-muted-foreground dark:text-muted-foreground tabular-nums">{summary.atRiskCount}</span>{' '}
                     at risk
                   </>
                 )}
@@ -257,14 +257,14 @@ export function PipelineClient({ deals, stages, sellers, summary }: Props) {
                   <span className="truncate min-w-0">{row.agentName}</span>
                   <span className="flex items-center gap-3 flex-shrink-0 text-[13px] tabular-nums">
                     {row.stuck > 0 && (
-                      <span className="inline-flex items-center gap-1.5 text-rose-700 dark:text-rose-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                      <span className="inline-flex items-center gap-1.5 text-negative dark:text-negative">
+                        <span className="w-1.5 h-1.5 rounded-full bg-negative-subtle0" />
                         {row.stuck} stuck
                       </span>
                     )}
                     {row.atRisk > 0 && (
-                      <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      <span className="inline-flex items-center gap-1.5 text-muted-foreground dark:text-muted-foreground">
+                        <span className="w-1.5 h-1.5 rounded-full bg-muted0" />
                         {row.atRisk} at risk
                       </span>
                     )}
@@ -403,7 +403,7 @@ export function PipelineClient({ deals, stages, sellers, summary }: Props) {
                     <div className="hidden sm:flex items-center gap-4 text-[13px] text-muted-foreground flex-shrink-0 tabular-nums">
                       <span>{agent.deals.length} {agent.deals.length === 1 ? 'deal' : 'deals'}</span>
                       <span>{agentActive} active</span>
-                      <span className="text-emerald-700 dark:text-emerald-400">{agentWon} won</span>
+                      <span className="text-positive dark:text-positive">{agentWon} won</span>
                       {agentValue > 0 && (
                         <span className="font-semibold text-foreground">
                           {formatCompact(agentValue)}
@@ -576,8 +576,8 @@ function HealthDot({ health, reason }: { health: PipelineDeal['health']; reason:
   if (health === 'on-track') return null;
   const isStuck = health === 'stuck';
   const colorClass = isStuck
-    ? 'bg-rose-500 ring-2 ring-rose-300 dark:ring-rose-900'
-    : 'bg-amber-500';
+    ? 'bg-negative-subtle0 ring-2 ring-negative/40 dark:ring-negative/40'
+    : 'bg-muted0';
   const label = isStuck ? 'Stuck' : 'At risk';
   return (
     <span

@@ -48,7 +48,7 @@ export default async function CheckoutSuccessPage({
     <main className="mx-auto max-w-lg px-4 py-16 pb-20 sm:px-6">
       {/* Confirmation header */}
       <div className="mb-8 flex flex-col items-center gap-3 text-center">
-        <CheckCircle size={40} className="text-emerald-500" aria-hidden="true" />
+        <CheckCircle size={40} className="text-positive" aria-hidden="true" />
         <h1 className="text-3xl tracking-tight text-foreground" style={TITLE_FONT}>
           Purchase confirmed.
         </h1>
@@ -74,7 +74,7 @@ export default async function CheckoutSuccessPage({
               className={[
                 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
                 order.status === 'paid'
-                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+                  ? 'bg-positive-subtle text-positive dark:bg-positive-subtle0/15 dark:text-positive'
                   : 'bg-muted text-muted-foreground',
               ].join(' ')}
             >
@@ -104,7 +104,7 @@ export default async function CheckoutSuccessPage({
               Status:{' '}
               <span
                 className={
-                  license.status === 'active' ? 'text-emerald-600 dark:text-emerald-400' : ''
+                  license.status === 'active' ? 'text-positive dark:text-positive' : ''
                 }
               >
                 {license.status}

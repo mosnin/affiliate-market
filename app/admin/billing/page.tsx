@@ -29,10 +29,10 @@ const stripeSubscriptionUrl = (id: string) => `https://dashboard.stripe.com/subs
 
 
 const statusBarColors: Record<SubscriptionStatus, string> = {
-  active: 'bg-emerald-500',
-  trialing: 'bg-blue-500',
-  past_due: 'bg-amber-500',
-  canceled: 'bg-red-500',
+  active: 'bg-positive-subtle0',
+  trialing: 'bg-brand-subtle0',
+  past_due: 'bg-muted0',
+  canceled: 'bg-negative-subtle0',
   unpaid: 'bg-red-400',
   inactive: 'bg-muted-foreground/40',
 };
@@ -237,7 +237,7 @@ export default async function AdminBillingPage() {
             </p>
             <p
               className={`text-[25px] leading-tight tracking-tight tabular-nums ${
-                alert ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'
+                alert ? 'text-muted-foreground dark:text-muted-foreground' : 'text-foreground'
               }`}
             >
               {value}
@@ -301,10 +301,10 @@ export default async function AdminBillingPage() {
 
       {/* ── Trial Expiring Soon ─────────────────────────────────── */}
       {trialExpiringSoon.length > 0 && (
-        <Card className="border-amber-300/50 bg-amber-50/30 dark:border-amber-500/20 dark:bg-amber-500/5">
+        <Card className="border-border bg-muted/30 dark:border-border dark:bg-muted0/5">
           <CardContent className="px-5 py-4">
             <div className="flex items-center gap-2 mb-3">
-              <Clock size={15} className="text-amber-500" />
+              <Clock size={15} className="text-muted-foreground" />
               <p className="text-sm font-semibold">Trial expiring soon</p>
               <span className="text-[11px] text-muted-foreground">({trialExpiringSoon.length} within 7 days)</span>
             </div>
@@ -320,8 +320,8 @@ export default async function AdminBillingPage() {
                       <div className="flex-shrink-0 text-right">
                         <span className={`inline-flex text-[11px] font-semibold rounded-full px-2 py-0.5 ${
                           space.daysLeft <= 2
-                            ? 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15'
-                            : 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15'
+                            ? 'text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15'
+                            : 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15'
                         }`}>
                           {space.daysLeft === 0 ? 'Expires today' : `${space.daysLeft}d left`}
                         </span>

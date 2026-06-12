@@ -296,7 +296,7 @@ export default function ManagerFormBuilderPage() {
             <Home size={15} />
             Rental form
             {rentalHasChanges && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+              <span className="w-1.5 h-1.5 rounded-full bg-muted0 flex-shrink-0" />
             )}
           </button>
           <button
@@ -312,7 +312,7 @@ export default function ManagerFormBuilderPage() {
             <Key size={15} />
             Buyer form
             {buyerHasChanges && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+              <span className="w-1.5 h-1.5 rounded-full bg-muted0 flex-shrink-0" />
             )}
           </button>
         </div>

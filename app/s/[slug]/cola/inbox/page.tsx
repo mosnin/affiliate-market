@@ -139,7 +139,7 @@ export default async function ColaInboxPage({
                         <span
                           className={cn(
                             'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                            'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+                            'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
                           )}
                         >
                           Waiting · {waitingTime}

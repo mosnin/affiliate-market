@@ -13,9 +13,9 @@ interface ActivityItem {
 }
 
 const DOT_COLORS: Record<ActivityItem['type'], string> = {
-  lead: 'bg-emerald-500',
+  lead: 'bg-positive-subtle0',
   deal: 'bg-blue-500',
-  demo: 'bg-amber-500',
+  demo: 'bg-muted0',
 };
 
 export function TeamActivityFeed() {

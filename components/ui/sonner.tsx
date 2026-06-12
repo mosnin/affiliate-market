@@ -32,7 +32,7 @@ export function Toaster() {
             "rounded-md bg-muted px-2.5 py-1 text-[13px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted/80",
           closeButton:
             "rounded-md border border-border/70 bg-background text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground",
-          success: "border-l-2 border-l-emerald-500/70",
+          success: "border-l-2 border-l-positive/70",
           error: "border-l-2 border-l-red-500/70",
           warning: "border-l-2 border-l-lead-warm",
           info: "border-l-2 border-l-sky-500/70",

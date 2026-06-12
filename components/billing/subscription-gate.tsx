@@ -87,7 +87,7 @@ export function SubscriptionGate({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
             {features.map((f) => (
               <div key={f} className="flex items-center gap-2 text-sm">
-                <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
+                <CheckCircle2 size={14} className="text-positive flex-shrink-0" />
                 <span>{f}</span>
               </div>
             ))}

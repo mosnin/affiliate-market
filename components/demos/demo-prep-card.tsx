@@ -109,8 +109,8 @@ export function DemoPrepCard({ demoId }: DemoPrepCardProps) {
                   <span className="text-lg font-bold tabular-nums">{Math.round(prep.scoreInfo.score)}</span>
                   <span className={cn(
                     'text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full',
-                    prep.scoreInfo.label === 'hot' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                    prep.scoreInfo.label === 'warm' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                    prep.scoreInfo.label === 'hot' ? 'bg-negative-subtle text-negative dark:bg-red-900/30 dark:text-red-400' :
+                    prep.scoreInfo.label === 'warm' ? 'bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground' :
                     'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
                   )}>
                     {prep.scoreInfo.label}
@@ -152,7 +152,7 @@ export function DemoPrepCard({ demoId }: DemoPrepCardProps) {
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-red-500/60">Risk Flags</p>
                 <div className="space-y-0.5">
                   {prep.warnings.map((w, i) => (
-                    <p key={i} className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5">
+                    <p key={i} className="text-xs text-negative dark:text-red-400 flex items-center gap-1.5">
                       <AlertTriangle size={10} /> {w}
                     </p>
                   ))}

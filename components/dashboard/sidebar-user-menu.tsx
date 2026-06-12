@@ -142,7 +142,7 @@ export function SidebarUserMenu({
       )}
       <span
         aria-hidden
-        className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-background"
+        className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-positive ring-2 ring-background"
       />
     </div>
   );
@@ -287,7 +287,7 @@ function renderRow(row: MenuRow): React.ReactNode {
   const classes = cn(
     'flex items-center gap-2 h-8 px-2 rounded-md text-[12px] transition-colors duration-150',
     row.destructive
-      ? 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+      ? 'text-negative dark:text-negative hover:bg-negative-subtle0/10'
       : 'text-foreground/85 hover:bg-foreground/[0.05] hover:text-foreground',
   );
 

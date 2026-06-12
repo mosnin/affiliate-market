@@ -116,8 +116,8 @@ export function WhatsComing({ slug }: { slug: string }) {
                 href={`/s/${slug}/calendar`}
                 className="group/row flex items-center gap-3 py-3 first:pt-4 -mx-3 px-3 rounded-lg hover:bg-muted/20 transition-colors"
               >
-                <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                  <Calendar size={14} className="text-blue-600 dark:text-blue-400" />
+                <div className="w-9 h-9 rounded-lg bg-brand-subtle dark:bg-brand-subtle0/10 flex items-center justify-center flex-shrink-0">
+                  <Calendar size={14} className="text-primary dark:text-blue-400" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 text-sm">
@@ -156,7 +156,7 @@ export function WhatsComing({ slug }: { slug: string }) {
                     className={cn(
                       'w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0',
                       isOverdue
-                        ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                        ? 'bg-muted dark:bg-muted0/10 text-muted-foreground dark:text-muted-foreground'
                         : 'bg-muted text-muted-foreground',
                     )}
                   >
@@ -168,7 +168,7 @@ export function WhatsComing({ slug }: { slug: string }) {
                       <span
                         className={cn(
                           'text-xs',
-                          isOverdue ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                          isOverdue ? 'text-muted-foreground dark:text-muted-foreground' : 'text-muted-foreground',
                         )}
                       >
                         {isOverdue

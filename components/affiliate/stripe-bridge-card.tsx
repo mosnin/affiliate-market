@@ -71,7 +71,7 @@ export function StripeBridgeCard({ initial }: { initial: BridgeState | null }) {
   }
 
   return (
-    <div className="rounded-xl border border-border/60 bg-background px-5 py-5 space-y-4 max-w-2xl">
+    <div className="rounded-2xl border border-border bg-card px-5 py-5 space-y-4 max-w-2xl">
       <div className="space-y-1">
         <p className={cn(SECTION_LABEL)}>
           {bridge?.hasSecret ? 'stripe bridge — connected' : 'bridge your app’s stripe'}
@@ -97,7 +97,7 @@ export function StripeBridgeCard({ initial }: { initial: BridgeState | null }) {
               </p>
               <button
                 onClick={copyUrl}
-                className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                className="h-8 w-8 inline-flex items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-foreground transition-colors shrink-0"
                 aria-label="Copy webhook URL"
               >
                 {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -120,6 +120,7 @@ export function StripeBridgeCard({ initial }: { initial: BridgeState | null }) {
                 onChange={(e) => setSecret(e.target.value)}
                 placeholder="whsec_…"
                 autoComplete="off"
+                className="rounded-xl"
               />
               <button
                 type="submit"

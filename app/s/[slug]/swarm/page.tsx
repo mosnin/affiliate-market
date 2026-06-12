@@ -29,23 +29,23 @@ function statusConfig(status: SwarmStatus): StatusConfig {
   switch (status) {
     case 'completed':
       return {
-        dot: 'bg-emerald-500',
+        dot: 'bg-positive-subtle0',
         label: 'Completed',
-        badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
+        badge: 'bg-positive-subtle text-positive dark:bg-positive-subtle0/15 dark:text-positive',
       };
     case 'failed':
       return {
-        dot: 'bg-rose-500',
+        dot: 'bg-negative-subtle0',
         label: 'Failed',
-        badge: 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400',
+        badge: 'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-negative',
       };
     case 'running':
     case 'planning':
     case 'auditing':
       return {
-        dot: 'bg-blue-500',
+        dot: 'bg-brand-subtle0',
         label: status.charAt(0).toUpperCase() + status.slice(1),
-        badge: 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400',
+        badge: 'bg-brand-subtle text-primary dark:bg-brand-subtle0/15 dark:text-blue-400',
       };
     case 'cancelled':
       return {

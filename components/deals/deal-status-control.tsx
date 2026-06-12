@@ -21,33 +21,33 @@ const STATUS_META: Record<Status, StatusMeta> = {
     label: 'Active',
     Icon: Activity,
     badgeClass:
-      'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400',
+      'bg-brand-subtle text-primary dark:bg-brand-subtle0/15 dark:text-blue-400',
     buttonClass:
-      'hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-500/15 dark:hover:text-blue-400',
+      'hover:bg-brand-subtle hover:text-primary dark:hover:bg-brand-subtle0/15 dark:hover:text-blue-400',
   },
   won: {
     label: 'Won',
     Icon: Trophy,
     badgeClass:
-      'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
+      'bg-positive-subtle text-positive dark:bg-positive-subtle0/15 dark:text-positive',
     buttonClass:
-      'hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-500/15 dark:hover:text-emerald-400',
+      'hover:bg-positive-subtle hover:text-positive dark:hover:bg-positive-subtle0/15 dark:hover:text-positive',
   },
   lost: {
     label: 'Lost',
     Icon: XCircle,
     badgeClass:
-      'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400',
+      'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400',
     buttonClass:
-      'hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-500/15 dark:hover:text-red-400',
+      'hover:bg-negative-subtle hover:text-negative dark:hover:bg-negative-subtle0/15 dark:hover:text-red-400',
   },
   on_hold: {
     label: 'On Hold',
     Icon: PauseCircle,
     badgeClass:
-      'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+      'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground',
     buttonClass:
-      'hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-500/15 dark:hover:text-amber-400',
+      'hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted0/15 dark:hover:text-lead-warm',
   },
 };
 
@@ -215,8 +215,8 @@ export function DealStatusControl({
                       'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
                       selectedReason === r
                         ? pendingStatus === 'won'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
-                          : 'border-red-500 bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400'
+                          ? 'border-positive/20 bg-positive-subtle text-positive dark:bg-positive-subtle0/15 dark:text-positive'
+                          : 'border-red-500 bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400'
                         : 'border-border bg-transparent text-muted-foreground hover:border-foreground/30 hover:text-foreground',
                     )}
                   >

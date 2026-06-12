@@ -510,7 +510,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 
 function ErrorLine({ message }: { message: string }) {
   return (
-    <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50/70 px-3 py-2.5 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+    <div className="mt-3 rounded-xl border border-negative/20 bg-negative-subtle px-3 py-2.5 text-sm text-negative">
       {message}
     </div>
   );
@@ -613,9 +613,9 @@ function BusinessAffordance({
 function SlugHint({ state }: { state: SlugState }) {
   if (state.kind === 'idle') return null;
   if (state.kind === 'checking') return <p className="mt-1 text-xs text-muted-foreground">Checking…</p>;
-  if (state.kind === 'available') return <p className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400"><Check size={12} /> Available</p>;
-  if (state.kind === 'taken') return <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Taken. Try another.</p>;
-  return <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{state.message}</p>;
+  if (state.kind === 'available') return <p className="mt-1 inline-flex items-center gap-1 text-xs text-positive"><Check size={12} /> Available</p>;
+  if (state.kind === 'taken') return <p className="mt-1 text-xs text-negative">Taken. Try another.</p>;
+  return <p className="mt-1 text-xs text-negative">{state.message}</p>;
 }
 
 function WhereAffordance({
@@ -784,7 +784,7 @@ function SourcesAffordance({
               {opt.icon ? (
                 <img src={opt.icon} alt="" aria-hidden className="h-6 w-6 object-contain" />
               ) : (
-                <span className={cn('inline-flex h-6 w-6 items-center justify-center rounded-md text-xs font-semibold', selected ? 'bg-background/20' : 'bg-muted text-muted-foreground')}>
+                <span className={cn('inline-flex h-6 w-6 items-center justify-center rounded-md text-xs font-semibold', selected ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground')}>
                   {opt.label[0]}
                 </span>
               )}

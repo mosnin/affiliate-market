@@ -96,8 +96,7 @@ export function OnboardingIntro({
             {stage === 'line' ? (
               <motion.h1
                 key="intro-line"
-                className="max-w-2xl text-center text-3xl leading-tight tracking-tight sm:text-[2.75rem]"
-                style={{ fontFamily: 'var(--font-title)' }}
+                className="max-w-2xl text-center text-3xl font-semibold leading-tight tracking-tight sm:text-[2.75rem]"
                 transition={{ duration: 0.8, ease: EASE }}
                 {...rise}
               >
@@ -207,8 +206,7 @@ export function OnboardingReady({
                 {...rise}
               >
                 <p
-                  className="text-3xl tracking-tight sm:text-[2.5rem]"
-                  style={{ fontFamily: 'var(--font-title)' }}
+                  className="text-3xl font-semibold tracking-tight sm:text-[2.5rem]"
                 >
                   {finalLine}
                 </p>
@@ -217,8 +215,7 @@ export function OnboardingReady({
             ) : (
               <motion.p
                 key={`ready-word-${index}`}
-                className="text-2xl tracking-tight text-muted-foreground sm:text-3xl"
-                style={{ fontFamily: 'var(--font-title)' }}
+                className="text-2xl font-semibold tracking-tight text-muted-foreground sm:text-3xl"
                 transition={{ duration: 0.4, ease: EASE }}
                 {...rise}
               >

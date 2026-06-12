@@ -41,15 +41,15 @@ interface ContactCardProps {
 
 // Score label → pill colours. Hot uses rose (not orange — orange is Cola-only per STYLESHEET).
 const SCORE_PILL: Record<string, string> = {
-  hot: 'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15',
-  warm: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+  hot: 'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15',
+  warm: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
   cold: 'text-muted-foreground bg-muted',
 };
 
 // Small inline text tone used in the collapsed row (no bg pill, just coloured text).
 const SCORE_TEXT: Record<string, string> = {
-  hot: 'text-rose-600 dark:text-rose-400',
-  warm: 'text-amber-600 dark:text-amber-400',
+  hot: 'text-negative dark:text-negative',
+  warm: 'text-muted-foreground dark:text-muted-foreground',
   cold: 'text-muted-foreground',
 };
 
@@ -106,7 +106,7 @@ function CollapsedRow({
             <span className="truncate">{contact.phone}</span>
           )}
           {overdue && (
-            <span className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400">
+            <span className="inline-flex items-center gap-1 text-negative dark:text-negative">
               <Clock size={10} />
               follow-up overdue {timeAgo(overdue)}
             </span>

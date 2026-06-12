@@ -5,8 +5,8 @@ import { redirect } from 'next/navigation';
 
 const statusStyle = (status: string) => {
   switch (status) {
-    case 'pending':  return 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15';
-    case 'accepted': return 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15';
+    case 'pending':  return 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15';
+    case 'accepted': return 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15';
     default:         return 'text-muted-foreground bg-muted';
   }
 };

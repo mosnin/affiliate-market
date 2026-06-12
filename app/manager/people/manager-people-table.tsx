@@ -437,10 +437,10 @@ export function ManagerPeopleTable() {
       {/* Error state */}
       {!loading && error && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-4">
+          <div className="w-12 h-12 rounded-full bg-negative-subtle dark:bg-negative-subtle0/10 flex items-center justify-center mb-4">
             <AlertTriangle
               size={20}
-              className="text-rose-600 dark:text-rose-400"
+              className="text-negative dark:text-negative"
               strokeWidth={1.5}
             />
           </div>
@@ -630,8 +630,8 @@ function ManagerContactRow({
               className={cn(
                 'hidden sm:inline-flex items-center gap-1 text-[11px] font-medium rounded px-1.5 py-0.5',
                 followUpOverdue
-                  ? 'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15'
-                  : 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+                  ? 'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15'
+                  : 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
               )}
             >
               <CalendarDays size={10} />

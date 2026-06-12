@@ -24,19 +24,19 @@ export default function AffiliateLayout({
           <nav className="flex items-center gap-1">
             <Link
               href="/affiliate/explore"
-              className="px-3 h-8 inline-flex items-center rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+              className="px-3 h-8 inline-flex items-center rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
             >
               Explore
             </Link>
             <Link
               href="/affiliate/dashboard"
-              className="px-3 h-8 inline-flex items-center rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+              className="px-3 h-8 inline-flex items-center rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
             >
               Dashboard
             </Link>
             <Link
               href="/affiliate/payouts"
-              className="px-3 h-8 inline-flex items-center rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+              className="px-3 h-8 inline-flex items-center rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
             >
               Payouts
             </Link>

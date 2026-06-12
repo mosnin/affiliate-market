@@ -46,13 +46,13 @@ const RESOURCE_TYPES = [
 ] as const;
 
 const ACTION_BADGE_STYLES: Record<string, string> = {
-  CREATE: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
-  UPDATE: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400',
-  DELETE: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400',
+  CREATE: 'bg-positive-subtle text-positive dark:bg-positive-subtle0/15 dark:text-positive',
+  UPDATE: 'bg-brand-subtle text-primary dark:bg-brand-subtle0/15 dark:text-blue-400',
+  DELETE: 'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400',
   ACCESS: 'bg-muted text-muted-foreground',
   LOGIN: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400',
   LOGOUT: 'bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-400',
-  ADMIN_ACTION: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+  ADMIN_ACTION: 'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground',
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

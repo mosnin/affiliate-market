@@ -40,7 +40,7 @@ export function CopyApplicantPortalLink({ url, className }: Props) {
         aria-label={copied ? 'Copied' : 'Copy applicant portal link'}
         className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-[12px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors duration-150 active:scale-[0.98]"
       >
-        {copied ? <Check size={12} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={12} />}
+        {copied ? <Check size={12} className="text-positive dark:text-positive" /> : <Copy size={12} />}
         {copied ? 'Copied' : 'Copy portal link'}
       </button>
       <a

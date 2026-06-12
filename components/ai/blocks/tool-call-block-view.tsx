@@ -238,13 +238,13 @@ export function ToolCallBlockView({
         return {
           label: 'Complete',
           iconEl: <CheckCircle2 size={12} />,
-          tint: 'text-emerald-600 dark:text-emerald-400',
+          tint: 'text-positive dark:text-positive',
         };
       case 'error':
         return {
           label: 'Failed',
           iconEl: <XCircle size={12} />,
-          tint: 'text-rose-600 dark:text-rose-400',
+          tint: 'text-negative dark:text-negative',
         };
       case 'denied':
         return {
@@ -331,11 +331,11 @@ export function ToolCallBlockView({
     status === 'running'
       ? 'bg-muted-foreground/30'
       : block.display === 'error' || status === 'error'
-        ? 'bg-rose-500/60'
+        ? 'bg-negative-subtle0/60'
         : block.display === 'warning'
-          ? 'bg-amber-500/60'
+          ? 'bg-muted0/60'
           : block.display === 'success' && status === 'complete'
-            ? 'bg-emerald-500/60'
+            ? 'bg-positive-subtle0/60'
             : 'bg-muted-foreground/20';
 
   // Expand is only useful when there are args or a result summary to show in
@@ -426,7 +426,7 @@ export function ToolCallBlockView({
       {inlineError && (
         <p
           role="status"
-          className="text-[12px] text-rose-700 dark:text-rose-400 mt-1 px-1 leading-snug"
+          className="text-[12px] text-negative dark:text-negative mt-1 px-1 leading-snug"
         >
           {inlineError}
         </p>
@@ -475,10 +475,10 @@ export function ToolCallBlockView({
               )}
               {block.result?.error && block.result.ok === false && (
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400 mb-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-negative dark:text-negative mb-1">
                     Error
                   </p>
-                  <p className="text-xs text-rose-700 dark:text-rose-300">{block.result.error}</p>
+                  <p className="text-xs text-negative dark:text-negative">{block.result.error}</p>
                 </div>
               )}
             </div>

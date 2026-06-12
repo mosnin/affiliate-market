@@ -43,12 +43,12 @@ interface ObservabilityClientProps extends ObservabilityData {
 
 const LEVEL_STYLES: Record<string, string> = {
   fatal:
-    'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15',
+    'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15',
   error:
-    'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15',
+    'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15',
   warning:
-    'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  info: 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
+    'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  info: 'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15',
   debug:
     'text-muted-foreground bg-muted',
 };
@@ -225,7 +225,7 @@ export function ObservabilityClient({
             <p
               className={cn(
                 STAT_NUMBER_COMPACT,
-                alert && 'text-amber-600 dark:text-amber-400',
+                alert && 'text-muted-foreground dark:text-muted-foreground',
               )}
             >
               {value}

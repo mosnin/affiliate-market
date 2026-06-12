@@ -80,9 +80,9 @@ const OUTCOME_META: Record<
 };
 
 const OUTCOME_TONE_CLASS: Record<string, string> = {
-  green: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  amber: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  rose: 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400',
+  green: 'bg-positive-subtle dark:bg-positive-subtle0/10 text-positive dark:text-positive',
+  amber: 'bg-muted dark:bg-muted0/10 text-muted-foreground dark:text-muted-foreground',
+  rose: 'bg-negative-subtle dark:bg-negative-subtle0/10 text-negative dark:text-negative',
   muted: 'bg-muted text-muted-foreground',
 };
 
@@ -222,9 +222,9 @@ export function ActivityFeed({ slug }: { slug: string }) {
                         size={11}
                         className={cn(
                           'flex-shrink-0',
-                          outcomeMeta.tone === 'green' && 'text-emerald-600 dark:text-emerald-400',
-                          outcomeMeta.tone === 'amber' && 'text-amber-600 dark:text-amber-400',
-                          outcomeMeta.tone === 'rose' && 'text-rose-600 dark:text-rose-400',
+                          outcomeMeta.tone === 'green' && 'text-positive dark:text-positive',
+                          outcomeMeta.tone === 'amber' && 'text-muted-foreground dark:text-muted-foreground',
+                          outcomeMeta.tone === 'rose' && 'text-negative dark:text-negative',
                           outcomeMeta.tone === 'muted' && 'text-muted-foreground',
                         )}
                       />
@@ -259,7 +259,7 @@ export function ActivityFeed({ slug }: { slug: string }) {
                           Undo
                         </button>
                       ) : entry.outcome === 'failed' ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-rose-600 dark:text-rose-400">
+                        <span className="inline-flex items-center gap-1 text-[11px] text-negative dark:text-negative">
                           <AlertCircle size={11} />
                           Did not run
                         </span>

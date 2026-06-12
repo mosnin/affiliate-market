@@ -40,9 +40,9 @@ function relativeTime(iso: string): string {
 function statusBadge(status: TaskStatus) {
   const map: Record<TaskStatus, { label: string; classes: string }> = {
     queued:    { label: 'Queued',    classes: 'bg-muted text-muted-foreground' },
-    running:   { label: 'Running',   classes: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' },
+    running:   { label: 'Running',   classes: 'bg-brand-subtle text-primary dark:bg-blue-900/40 dark:text-blue-400' },
     completed: { label: 'Completed', classes: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' },
-    failed:    { label: 'Failed',    classes: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' },
+    failed:    { label: 'Failed',    classes: 'bg-negative-subtle text-negative dark:bg-red-900/40 dark:text-red-400' },
     cancelled: { label: 'Cancelled', classes: 'bg-muted text-muted-foreground/60' },
     paused:    { label: 'Paused',    classes: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-500' },
   };

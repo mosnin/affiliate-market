@@ -89,22 +89,22 @@ export function FormAnalyticsClient({
       label: 'Hot',
       value: distribution.hot,
       icon: Flame,
-      bar: 'bg-red-500',
-      text: 'text-red-600 dark:text-red-400',
+      bar: 'bg-negative-subtle0',
+      text: 'text-negative dark:text-red-400',
     },
     {
       label: 'Warm',
       value: distribution.warm,
       icon: Thermometer,
-      bar: 'bg-amber-500',
-      text: 'text-amber-600 dark:text-amber-400',
+      bar: 'bg-muted0',
+      text: 'text-muted-foreground dark:text-muted-foreground',
     },
     {
       label: 'Cold',
       value: distribution.cold,
       icon: Snowflake,
-      bar: 'bg-blue-500',
-      text: 'text-blue-600 dark:text-blue-400',
+      bar: 'bg-brand-subtle0',
+      text: 'text-primary dark:text-blue-400',
     },
     {
       label: 'Unqualified',
@@ -128,7 +128,7 @@ export function FormAnalyticsClient({
       value: stats.submissions30d,
       sub: 'rolling window',
       icon: TrendingUp,
-      color: 'text-emerald-500',
+      color: 'text-positive',
     },
     {
       label: 'Avg lead score',
@@ -142,7 +142,7 @@ export function FormAnalyticsClient({
       value: stats.emptyApplications,
       sub: 'no application data',
       icon: AlertTriangle,
-      color: 'text-amber-500',
+      color: 'text-muted-foreground',
     },
   ];
 

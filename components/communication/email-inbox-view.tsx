@@ -666,7 +666,7 @@ function EmailRow({
             className={cn(
               'transition-colors duration-200',
               item.starred
-                ? 'fill-amber-500 text-amber-500'
+                ? 'fill-lead-warm text-muted-foreground'
                 : 'text-muted-foreground hover:text-foreground',
             )}
             size={15}

@@ -31,7 +31,7 @@ export default async function PacketPage({ params }: Props) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background text-foreground">
         <div className="max-w-md text-center space-y-3">
-          <AlertTriangle size={28} className="mx-auto text-amber-500" />
+          <AlertTriangle size={28} className="mx-auto text-muted-foreground" />
           <h1 className="text-xl font-semibold">This link is no longer active</h1>
           <p className="text-sm text-muted-foreground">
             {revoked ? 'The sender has revoked this packet.' : 'The packet link has expired.'} Reach out to the sender for a fresh link.

@@ -661,7 +661,7 @@ function WorkspaceSwitcherRows({
             </div>
             <span className="flex-1 truncate font-medium">{w.name}</span>
             {w.isCurrent ? (
-              <Check size={13} strokeWidth={2} className="text-blue-500 flex-shrink-0" />
+              <Check size={13} strokeWidth={2} className="text-primary flex-shrink-0" />
             ) : (
               <kbd className="text-[10px] tabular-nums bg-foreground/[0.04] text-muted-foreground px-1.5 py-0.5 rounded font-mono">
                 {shortcut}

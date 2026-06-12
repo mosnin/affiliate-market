@@ -158,14 +158,12 @@ export function OnboardingQuick({ defaultName }: Props) {
       <div className="w-full max-w-md space-y-10">
         <div className="space-y-3 text-center">
           <h1
-            className="text-4xl tracking-tight text-foreground"
-            style={{ fontFamily: 'var(--font-title)' }}
+            className="text-3xl font-semibold tracking-tight text-foreground"
           >
             I keep your day moving
           </h1>
           <p
             className="text-3xl tracking-tight text-muted-foreground"
-            style={{ fontFamily: 'var(--font-title)' }}
           >
             so you don&apos;t have to.
           </p>
@@ -188,7 +186,7 @@ export function OnboardingQuick({ defaultName }: Props) {
               onChange={(e) => setName(e.target.value)}
               disabled={submitting}
               placeholder="Sarah Chen"
-              className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
             />
           </div>
 
@@ -205,7 +203,7 @@ export function OnboardingQuick({ defaultName }: Props) {
               onChange={(e) => setBusinessName(e.target.value)}
               disabled={submitting}
               placeholder="Park Slope Rentals"
-              className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
             />
 
             <div className="pt-1.5 flex items-center gap-2 text-xs text-muted-foreground min-h-[20px]">
@@ -214,15 +212,15 @@ export function OnboardingQuick({ defaultName }: Props) {
                 <Loader2 size={11} className="animate-spin flex-shrink-0" />
               )}
               {slugState.kind === 'available' && (
-                <CheckCircle2 size={12} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                <CheckCircle2 size={12} className="text-positive flex-shrink-0" />
               )}
               {slugState.kind === 'taken' && (
-                <span className="text-amber-600 dark:text-amber-400 flex-shrink-0">
+                <span className="text-negative flex-shrink-0">
                   taken - pick a different name
                 </span>
               )}
               {slugState.kind === 'invalid' && (
-                <span className="text-amber-600 dark:text-amber-400 flex-shrink-0 truncate">
+                <span className="text-negative flex-shrink-0 truncate">
                   {slugState.message}
                 </span>
               )}
@@ -251,7 +249,7 @@ export function OnboardingQuick({ defaultName }: Props) {
           </div>
 
           {submitError && (
-            <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50/70 dark:border-rose-900 dark:bg-rose-950/40 px-3 py-2.5 text-sm text-rose-800 dark:text-rose-200">
+            <div className="flex items-start gap-2 rounded-xl border border-negative/20 bg-negative-subtle px-3 py-2.5 text-sm text-negative">
               <AlertCircle size={15} className="flex-shrink-0 mt-0.5" />
               <span>{submitError}</span>
             </div>
@@ -260,7 +258,7 @@ export function OnboardingQuick({ defaultName }: Props) {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-foreground text-background px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand text-brand-foreground px-4 h-10 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {submitting ? (
               <Loader2 size={14} className="animate-spin" />

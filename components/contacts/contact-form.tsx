@@ -79,7 +79,7 @@ function FieldRow({
         )}
       </Label>
       {children}
-      {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+      {error && <p className="text-xs text-negative dark:text-negative">{error}</p>}
     </div>
   );
 }
@@ -628,7 +628,7 @@ function TypeItBody({
             <p className="text-xs text-muted-foreground">
               I&apos;ll figure out their stage, contact info, and what they&apos;re looking for.
             </p>
-            {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+            {error && <p className="text-xs text-negative dark:text-negative">{error}</p>}
           </>
         ) : (
           <ParsedPreviewCard parsed={preview} />

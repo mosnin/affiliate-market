@@ -35,7 +35,7 @@ export function DemoFeedbackBadge({ demoId, slug, status }: DemoFeedbackBadgePro
           key={i}
           size={10}
           className={cn(
-            i < feedback.rating ? 'text-amber-400 fill-amber-400' : 'text-muted-foreground/20'
+            i < feedback.rating ? 'text-lead-warm fill-lead-warm' : 'text-muted-foreground/20'
           )}
         />
       ))}

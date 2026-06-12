@@ -188,9 +188,9 @@ export function MorningStory({ slug, isFresh = false }: Props) {
     <div className="flex items-start gap-3 py-3">
       <span
         aria-hidden
-        className="w-7 h-7 rounded-full bg-emerald-500/10 flex items-center justify-center flex-shrink-0 mt-0.5"
+        className="w-7 h-7 rounded-full bg-positive-subtle0/10 flex items-center justify-center flex-shrink-0 mt-0.5"
       >
-        <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
+        <CheckCircle2 size={14} className="text-positive dark:text-positive" />
       </span>
       <span className="flex-1 text-sm text-foreground leading-relaxed">
         {displaySentence}

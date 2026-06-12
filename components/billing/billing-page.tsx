@@ -125,9 +125,9 @@ function SectionBlock({
 
 function StatusBadge({ status }: { status: BillingPageProps['subscriptionStatus'] }) {
   const map = {
-    active:   { label: 'Active',   className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-    trialing: { label: 'Trial',    className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-    past_due: { label: 'Past due', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+    active:   { label: 'Active',   className: 'bg-positive-subtle text-positive dark:bg-positive-subtle dark:text-positive' },
+    trialing: { label: 'Trial',    className: 'bg-brand-subtle text-primary dark:bg-blue-900/30 dark:text-blue-400' },
+    past_due: { label: 'Past due', className: 'bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground' },
     canceled: { label: 'Canceled', className: 'bg-muted text-muted-foreground' },
     inactive: { label: 'Inactive', className: 'bg-muted text-muted-foreground' },
   };
@@ -140,7 +140,7 @@ function StatusBadge({ status }: { status: BillingPageProps['subscriptionStatus'
       )}
     >
       {status === 'active' && (
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+        <span className="w-1.5 h-1.5 rounded-full bg-positive-subtle0 animate-pulse" />
       )}
       {label}
     </span>
@@ -148,7 +148,7 @@ function StatusBadge({ status }: { status: BillingPageProps['subscriptionStatus'
 }
 
 function InvoiceStatusBadge({ status }: { status: Invoice['status'] }) {
-  if (status === 'paid') return <Badge className="bg-emerald-100 text-emerald-700 border-0 dark:bg-emerald-900/30 dark:text-emerald-400">Paid</Badge>;
+  if (status === 'paid') return <Badge className="bg-positive-subtle text-positive border-0 dark:bg-positive-subtle dark:text-positive">Paid</Badge>;
   if (status === 'open') return <Badge variant="outline">Open</Badge>;
   return <Badge variant="outline" className="text-muted-foreground">Void</Badge>;
 }
@@ -262,13 +262,13 @@ export function BillingPage({
 
       {/* ── Past-due warning banner ── */}
       {subscriptionStatus === 'past_due' && (
-        <div className="rounded-lg border border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/40 px-5 py-4 flex items-start gap-3">
-          <AlertTriangle size={18} className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+        <div className="rounded-lg border border-negative/20 bg-negative-subtle dark:border-red-800 dark:bg-red-950/40 px-5 py-4 flex items-start gap-3">
+          <AlertTriangle size={18} className="text-negative dark:text-red-400 flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+            <p className="text-sm font-semibold text-negative dark:text-red-300">
               Your payment failed
             </p>
-            <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-0.5">
+            <p className="text-xs text-negative/80 dark:text-red-400/80 mt-0.5">
               Please update your payment method to avoid losing access.
             </p>
           </div>
@@ -321,15 +321,15 @@ export function BillingPage({
 
       {/* ── Trial countdown banner ── */}
       {subscriptionStatus === 'trialing' && trialInfo && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 px-5 py-4">
+        <div className="rounded-lg border border-primary/20 bg-brand-subtle dark:border-blue-800 dark:bg-blue-950/30 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <Clock size={16} className="text-blue-600 dark:text-blue-400" />
-              <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+              <Clock size={16} className="text-primary dark:text-blue-400" />
+              <p className="text-sm font-semibold text-primary dark:text-blue-300">
                 {trialInfo.daysLeft} {trialInfo.daysLeft === 1 ? 'day' : 'days'} left in your trial
               </p>
             </div>
-            <p className="text-xs text-blue-600/70 dark:text-blue-400/70 flex-shrink-0">
+            <p className="text-xs text-primary/70 dark:text-blue-400/70 flex-shrink-0">
               Ends{' '}
               {trialInfo.endDate.toLocaleDateString('en-US', {
                 month: 'short',
@@ -341,13 +341,13 @@ export function BillingPage({
           {/* Progress bar */}
           <div className="mt-3">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] text-blue-600/60 dark:text-blue-400/60">
+              <span className="text-[11px] text-primary/60 dark:text-blue-400/60">
                 Day {trialInfo.daysPassed} of {trialInfo.totalDays}
               </span>
             </div>
             <div className="h-2 rounded-full bg-blue-200/60 dark:bg-blue-900/40 overflow-hidden">
               <div
-                className="h-full rounded-full bg-blue-500 dark:bg-blue-400 transition-all duration-500"
+                className="h-full rounded-full bg-brand-subtle0 dark:bg-blue-400 transition-all duration-500"
                 style={{ width: `${trialInfo.progressPercent}%` }}
               />
             </div>
@@ -470,7 +470,7 @@ export function BillingPage({
                 <Icon size={13} className="text-primary" />
               </span>
               {label}
-              <Check size={13} className="ml-auto text-emerald-500 flex-shrink-0" />
+              <Check size={13} className="ml-auto text-positive flex-shrink-0" />
             </li>
           ))}
         </ul>

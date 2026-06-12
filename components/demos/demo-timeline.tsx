@@ -53,7 +53,7 @@ export function DemoTimeline({ status, createdAt, startsAt, googleEventId, sourc
     events.push({
       label: 'Confirmed',
       icon: UserCheck,
-      color: 'text-emerald-500',
+      color: 'text-positive',
       active: status === 'confirmed',
       completed: ['completed', 'no_show'].includes(status),
     });
@@ -64,7 +64,7 @@ export function DemoTimeline({ status, createdAt, startsAt, googleEventId, sourc
     events.push({
       label: 'Completed',
       icon: CheckCircle2,
-      color: 'text-emerald-500',
+      color: 'text-positive',
       time: new Date(startsAt).toLocaleDateString([], { month: 'short', day: 'numeric' }),
       active: !sourceDealId && feedbackRating == null,
       completed: true,
@@ -73,7 +73,7 @@ export function DemoTimeline({ status, createdAt, startsAt, googleEventId, sourc
       events.push({
         label: `Feedback (${feedbackRating}/5)`,
         icon: Star,
-        color: 'text-amber-500',
+        color: 'text-muted-foreground',
         active: false,
         completed: true,
       });
@@ -99,7 +99,7 @@ export function DemoTimeline({ status, createdAt, startsAt, googleEventId, sourc
     events.push({
       label: 'No show',
       icon: AlertTriangle,
-      color: 'text-amber-500',
+      color: 'text-muted-foreground',
       active: true,
       completed: false,
     });
@@ -128,7 +128,7 @@ export function DemoTimeline({ status, createdAt, startsAt, googleEventId, sourc
               key={i}
               className={cn(
                 'w-1.5 h-1.5 rounded-full',
-                e.completed ? 'bg-emerald-500' : e.active ? 'bg-primary' : 'bg-muted-foreground/30'
+                e.completed ? 'bg-positive-subtle0' : e.active ? 'bg-primary' : 'bg-muted-foreground/30'
               )}
             />
           ))}
@@ -147,13 +147,13 @@ export function DemoTimeline({ status, createdAt, startsAt, googleEventId, sourc
                 <div className="flex flex-col items-center">
                   <div className={cn(
                     'w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0',
-                    event.completed ? 'bg-emerald-100 dark:bg-emerald-900/30' :
+                    event.completed ? 'bg-positive-subtle dark:bg-positive-subtle' :
                     event.active ? 'bg-primary/10' : 'bg-muted'
                   )}>
-                    <Icon size={10} className={cn(event.completed ? 'text-emerald-600 dark:text-emerald-400' : event.active ? 'text-primary' : 'text-muted-foreground/50')} />
+                    <Icon size={10} className={cn(event.completed ? 'text-positive dark:text-positive' : event.active ? 'text-primary' : 'text-muted-foreground/50')} />
                   </div>
                   {!isLast && (
-                    <div className={cn('w-px h-3', event.completed ? 'bg-emerald-300 dark:bg-emerald-700' : 'bg-border')} />
+                    <div className={cn('w-px h-3', event.completed ? 'bg-positive/60 dark:bg-positive' : 'bg-border')} />
                   )}
                 </div>
                 <div className="flex items-center gap-2 -mt-0.5 pb-1">

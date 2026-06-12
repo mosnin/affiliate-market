@@ -141,11 +141,11 @@ export default async function AdminCompanyDetailPage({ params }: Params) {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {company.status === 'active' ? (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2.5 py-1 text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2.5 py-1 text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15">
               <CheckCircle2 size={11} /> Active
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2.5 py-1 text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2.5 py-1 text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15">
               <XCircle size={11} /> Suspended
             </span>
           )}
@@ -209,11 +209,11 @@ export default async function AdminCompanyDetailPage({ params }: Params) {
                           {roleLabel(m.role)}
                         </span>
                         {user?.onboard ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium rounded-full px-2 py-0.5 flex-shrink-0 text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium rounded-full px-2 py-0.5 flex-shrink-0 text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15">
                             <CheckCircle2 size={10} /> Active
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium rounded-full px-2 py-0.5 flex-shrink-0 text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium rounded-full px-2 py-0.5 flex-shrink-0 text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15">
                             Pending
                           </span>
                         )}
@@ -338,9 +338,9 @@ export default async function AdminCompanyDetailPage({ params }: Params) {
               const expires = new Date(inv.expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
               const statusPill =
                 inv.status === 'accepted'
-                  ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15'
+                  ? 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15'
                   : inv.status === 'pending'
-                    ? 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15'
+                    ? 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15'
                     : 'text-muted-foreground bg-muted';
               return (
                 <li key={inv.id} className="flex items-center gap-3 py-3">

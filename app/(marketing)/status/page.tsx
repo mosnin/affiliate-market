@@ -92,8 +92,8 @@ function checkIntegrations(): Health {
 }
 
 const DOT: Record<Health, string> = {
-  operational: 'bg-emerald-500',
-  degraded: 'bg-rose-500',
+  operational: 'bg-positive-subtle0',
+  degraded: 'bg-negative-subtle0',
   unknown: 'bg-muted-foreground/40',
 };
 

@@ -80,7 +80,7 @@ function HealthChip({ health }: { health: SellerRow['health'] }) {
       <span
         className={cn(
           base,
-          'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+          'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground',
         )}
       >
         <AlertTriangle size={9} aria-hidden />
@@ -94,7 +94,7 @@ function HealthChip({ health }: { health: SellerRow['health'] }) {
       <span
         className={cn(
           base,
-          'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
+          'bg-positive-subtle text-positive dark:bg-positive-subtle0/15 dark:text-positive',
         )}
       >
         <Star size={9} aria-hidden />
@@ -144,7 +144,7 @@ function ResponseTimePill({
       <span
         className={cn(
           baseClass,
-          'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
+          'bg-positive-subtle text-positive dark:bg-positive-subtle0/15 dark:text-positive',
         )}
       >
         <Check size={9} aria-hidden />
@@ -158,7 +158,7 @@ function ResponseTimePill({
       <span
         className={cn(
           baseClass,
-          'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+          'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground',
         )}
       >
         {label} avg

@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { Users2, MousePointerClick, ShoppingCart, Clock } from 'lucide-react';
 import {
   H1,
   H2,
@@ -13,7 +14,11 @@ import {
   FIELD_RHYTHM,
   META,
   CAPTION,
-  TITLE_FONT,
+  STAT_CARD,
+  ICON_SQUARE,
+  CHIP_POSITIVE,
+  CHIP_NEUTRAL,
+  CHIP_NEGATIVE,
 } from '@/lib/typography';
 import { formatCurrency } from '@/lib/formatting';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
@@ -21,12 +26,6 @@ import { getProgramStats } from '@/lib/affiliates/stats';
 import { listPartners } from '@/lib/affiliates/partners';
 import { PartnerActions } from '@/components/affiliate/partner-actions';
 import { CopyUrlButton } from '@/components/affiliate/copy-url-button';
-
-const STATUS_BADGE: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700 border-amber-200/70',
-  approved: 'bg-emerald-50 text-emerald-700 border-emerald-200/70',
-  suspended: 'bg-red-50 text-red-700 border-red-200/70',
-};
 
 const AFFILIATE_TABS = [
   { label: 'Overview', href: '' },
@@ -65,7 +64,7 @@ export default async function AffiliatesOverviewPage({
       {/* Page header */}
       <header className="space-y-1">
         <p className={cn(SECTION_LABEL)}>Affiliates</p>
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className={cn(H1)}>
           Affiliate program
         </h1>
       </header>
@@ -81,7 +80,7 @@ export default async function AffiliatesOverviewPage({
               className={cn(
                 'px-3.5 h-9 inline-flex items-center text-sm transition-colors border-b-2 -mb-px',
                 isActive
-                  ? 'border-foreground text-foreground font-medium'
+                  ? 'border-primary text-foreground font-medium'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
@@ -93,14 +92,17 @@ export default async function AffiliatesOverviewPage({
 
       {/* Program stats */}
       <section>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-xl overflow-hidden border border-border/60 bg-border/60">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: 'Partners', value: programStats.partners.toLocaleString() },
-            { label: 'Clicks', value: programStats.clicks.toLocaleString() },
-            { label: 'Customers', value: programStats.customers.toLocaleString() },
-            { label: 'Pending approval', value: formatCurrency(programStats.pendingCommissionsCents / 100) },
-          ].map(({ label, value }) => (
-            <div key={label} className="bg-background px-4 py-4 space-y-1.5">
+            { label: 'Partners', value: programStats.partners.toLocaleString(), Icon: Users2 },
+            { label: 'Clicks', value: programStats.clicks.toLocaleString(), Icon: MousePointerClick },
+            { label: 'Customers', value: programStats.customers.toLocaleString(), Icon: ShoppingCart },
+            { label: 'Pending approval', value: formatCurrency(programStats.pendingCommissionsCents / 100), Icon: Clock },
+          ].map(({ label, value, Icon }) => (
+            <div key={label} className={cn(STAT_CARD)}>
+              <div className={cn(ICON_SQUARE)}>
+                <Icon size={16} strokeWidth={1.75} />
+              </div>
               <p className={cn(SECTION_LABEL)}>{label}</p>
               <p className={cn(STAT_NUMBER_COMPACT)}>{value}</p>
             </div>
@@ -113,14 +115,14 @@ export default async function AffiliatesOverviewPage({
         <div className="flex items-center justify-between gap-4">
           <h2 className={cn(H2)}>Partners</h2>
           {programStats.pendingPartners > 0 && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200/70">
+            <span className={cn(CHIP_NEUTRAL)}>
               {programStats.pendingPartners} pending
             </span>
           )}
         </div>
 
         {partners.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-10 text-center space-y-3">
+          <div className="rounded-2xl border border-border bg-muted/20 px-5 py-10 text-center space-y-3">
             <p className={cn(BODY_MUTED)}>No affiliates yet. Share your join page to get started.</p>
             <div className="flex items-center justify-center gap-2">
               <span className="text-xs text-muted-foreground font-mono bg-muted/40 px-2 py-1 rounded">
@@ -134,11 +136,11 @@ export default async function AffiliatesOverviewPage({
             {/* Pending partners surfaced first */}
             {pending.length > 0 && (
               <div className="space-y-2">
-                <p className={cn(SECTION_LABEL, 'text-amber-600')}>pending approval</p>
-                <div className="rounded-xl border border-amber-200/60 overflow-hidden">
+                <p className={cn(SECTION_LABEL)}>pending approval</p>
+                <div className="rounded-2xl border border-border overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-amber-200/40 bg-amber-50/50">
+                      <tr className="border-b border-border/60 bg-muted/40">
                         <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Name</th>
                         <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium hidden sm:table-cell')}>Email</th>
                         <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium hidden md:table-cell')}>Joined</th>
@@ -170,10 +172,10 @@ export default async function AffiliatesOverviewPage({
 
             {/* All partners */}
             {rest.length > 0 && (
-              <div className="rounded-xl border border-border/60 overflow-hidden">
+              <div className="rounded-2xl border border-border overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border/60 bg-muted/30">
+                    <tr className="border-b border-border/60 bg-muted/40">
                       <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Name</th>
                       <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium hidden sm:table-cell')}>Email</th>
                       <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-right font-medium')}>Clicks</th>
@@ -203,12 +205,18 @@ export default async function AffiliatesOverviewPage({
                           {formatCurrency(p.earnedCents / 100)}
                         </td>
                         <td className="px-4 py-3 align-middle">
-                          <span className={cn(
-                            'inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border',
-                            STATUS_BADGE[p.status] ?? 'bg-muted text-muted-foreground border-border/60',
-                          )}>
-                            {p.status}
-                          </span>
+                          {p.status === 'approved' && (
+                            <span className={cn(CHIP_POSITIVE)}>{p.status}</span>
+                          )}
+                          {p.status === 'pending' && (
+                            <span className={cn(CHIP_NEUTRAL)}>{p.status}</span>
+                          )}
+                          {p.status === 'suspended' && (
+                            <span className={cn(CHIP_NEGATIVE)}>{p.status}</span>
+                          )}
+                          {p.status !== 'approved' && p.status !== 'pending' && p.status !== 'suspended' && (
+                            <span className={cn(CHIP_NEUTRAL)}>{p.status}</span>
+                          )}
                         </td>
                         <td className={cn(META, 'px-4 py-3 align-middle hidden lg:table-cell')}>
                           {new Date(p.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}

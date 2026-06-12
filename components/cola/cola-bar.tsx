@@ -276,7 +276,7 @@ export function ColaBar({ slug }: Props) {
         >
           <div className="flex items-center justify-between px-4 py-2 border-b border-border/60">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-positive-subtle0" />
               Cola
             </div>
             <div className="flex items-center gap-1">
@@ -371,13 +371,13 @@ export function ColaBar({ slug }: Props) {
               )}
 
               {error && (
-                <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50/70 dark:border-rose-900 dark:bg-rose-950/40 px-3 py-2 text-xs text-rose-800 dark:text-rose-200">
+                <div className="flex items-start gap-2 rounded-lg border border-negative/20 bg-negative-subtle/70 dark:border-negative/20 dark:bg-negative-subtle px-3 py-2 text-xs text-negative dark:text-negative">
                   <span className="flex-1">{error}</span>
                   <button
                     type="button"
                     onClick={clearError}
                     aria-label="Dismiss error"
-                    className="text-rose-600/70 dark:text-rose-300/70 hover:text-rose-800 dark:hover:text-rose-100"
+                    className="text-negative/70 dark:text-negative/70 hover:text-negative dark:hover:text-negative"
                   >
                     <X size={12} />
                   </button>
@@ -429,7 +429,7 @@ export function ColaBar({ slug }: Props) {
             className={cn(
               'w-8 h-8 flex items-center justify-center rounded-full transition-all',
               dictation.listening
-                ? 'bg-rose-500 text-white scale-110 shadow-lg shadow-rose-500/40'
+                ? 'bg-negative-subtle0 text-white scale-110 shadow-lg shadow-negative/40'
                 : 'text-muted-foreground/70 hover:text-foreground hover:bg-muted/60',
             )}
           >

@@ -118,7 +118,7 @@ export function TaskControls({
             variant="outline"
             size="sm"
             className={cn(
-              'gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-800',
+              'gap-1.5 border-primary/20 text-primary hover:bg-brand-subtle hover:text-blue-800',
               'dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/40 dark:hover:text-blue-300',
             )}
             disabled={loading !== null}

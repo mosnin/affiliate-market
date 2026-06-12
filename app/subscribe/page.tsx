@@ -148,7 +148,7 @@ function SubscribeContent() {
           </ul>
 
           {error && (
-            <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50/70 px-3 py-2.5 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+            <p className="mt-5 rounded-lg border border-negative/20 bg-negative-subtle/70 px-3 py-2.5 text-sm text-negative dark:border-negative/20 dark:bg-negative-subtle dark:text-negative">
               {error}
             </p>
           )}

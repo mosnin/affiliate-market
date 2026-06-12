@@ -565,7 +565,7 @@ export default async function AdminOverviewPage() {
             <p
               className={cn(
                 STAT_NUMBER_COMPACT,
-                alert && 'text-amber-600 dark:text-amber-400',
+                alert && 'text-muted-foreground dark:text-muted-foreground',
               )}
             >
               {value}
@@ -593,7 +593,7 @@ export default async function AdminOverviewPage() {
                 name={u.name || u.email}
                 email={u.email}
                 badge={`${u.daysLeft}d left`}
-                badgeClass="text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15"
+                badgeClass="text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15"
               />
             ))}
           </AtRiskCard>
@@ -612,7 +612,7 @@ export default async function AdminOverviewPage() {
                 name={u.name || u.email}
                 email={u.email}
                 badge={`${u.daysPastDue}d`}
-                badgeClass="text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15"
+                badgeClass="text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15"
               />
             ))}
           </AtRiskCard>
@@ -752,17 +752,17 @@ export default async function AdminOverviewPage() {
                 {
                   label: 'Hot',
                   value: hotLeads,
-                  pill: 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15',
+                  pill: 'text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15',
                 },
                 {
                   label: 'Warm',
                   value: warmLeads,
-                  pill: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+                  pill: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
                 },
                 {
                   label: 'Cold',
                   value: coldLeads,
-                  pill: 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
+                  pill: 'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15',
                 },
                 {
                   label: 'Unqualified',
@@ -839,8 +839,8 @@ export default async function AdminOverviewPage() {
                           className={cn(
                             'inline-flex text-[10px] font-medium rounded-full px-2 py-0.5',
                             user.onboard
-                              ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15'
-                              : 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+                              ? 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15'
+                              : 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
                           )}
                         >
                           {user.onboard ? 'Onboarded' : 'Pending'}

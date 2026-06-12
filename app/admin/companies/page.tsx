@@ -125,8 +125,8 @@ export default async function AdminCompaniesPage() {
                           className={cn(
                             'inline-flex items-center gap-1 text-[10px] font-semibold rounded-full px-2 py-0.5',
                             isActive
-                              ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15'
-                              : 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15',
+                              ? 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15'
+                              : 'text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15',
                           )}
                         >
                           {isActive ? <CheckCircle2 size={9} /> : <XCircle size={9} />}

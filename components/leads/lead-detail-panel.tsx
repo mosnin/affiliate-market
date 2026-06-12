@@ -114,9 +114,9 @@ export function LeadDetailPanel({
   const intentLabel = app?.leaseTermPreference;
   const intentBadge =
     intentLabel === 'Yes, ready now'
-      ? { text: 'Ready now', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300' }
+      ? { text: 'Ready now', cls: 'bg-positive-subtle text-positive dark:bg-positive-subtle0/20 dark:text-positive' }
       : intentLabel === 'Maybe'
-      ? { text: 'Maybe', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300' }
+      ? { text: 'Maybe', cls: 'bg-muted text-muted-foreground dark:bg-muted0/20 dark:text-muted-foreground' }
       : intentLabel === 'Just exploring'
       ? { text: 'Exploring', cls: 'bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300' }
       : null;
@@ -255,7 +255,7 @@ export function LeadDetailPanel({
               {lead.lastContactedAt && (
                 <>
                   <span className="opacity-40">·</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <span className="text-positive dark:text-positive flex items-center gap-1">
                     <CheckCircle2 size={10} />
                     Contacted {timeAgo(new Date(lead.lastContactedAt))}
                   </span>
@@ -352,11 +352,11 @@ export function LeadDetailPanel({
                           app.preApprovalStatus === 'yes' ||
                           app.preApprovalStatus === 'Pre-Approved' ||
                           app.preApprovalStatus === 'Yes'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'
+                            ? 'bg-positive-subtle text-positive dark:bg-positive-subtle0/20 dark:text-positive'
                             : app.preApprovalStatus === 'not-yet' ||
                               app.preApprovalStatus === 'Not Yet' ||
                               app.preApprovalStatus === 'In Progress'
-                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'
+                            ? 'bg-muted text-muted-foreground dark:bg-muted0/20 dark:text-muted-foreground'
                             : 'bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300',
                         )}
                       >
@@ -477,7 +477,7 @@ export function LeadDetailPanel({
                 className={cn(
                   'inline-flex items-center gap-1.5 text-sm font-medium rounded-lg px-3 py-2 transition-colors',
                   lead.lastContactedAt
-                    ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20'
+                    ? 'text-positive dark:text-positive bg-positive-subtle dark:bg-positive-subtle0/10 hover:bg-positive-subtle dark:hover:bg-positive-subtle0/20'
                     : 'text-muted-foreground bg-muted hover:text-foreground hover:bg-muted/80',
                 )}
               >

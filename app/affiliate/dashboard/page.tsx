@@ -2,22 +2,27 @@ import { redirect } from 'next/navigation';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { SignInButton } from '@clerk/nextjs';
+import { MousePointerClick, Users, Clock, Banknote } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   H1,
   H2,
-  H3,
   BODY_MUTED,
   SECTION_LABEL,
   STAT_NUMBER_COMPACT,
   PRIMARY_PILL,
-  GHOST_PILL,
   PAGE_RHYTHM,
   SECTION_RHYTHM,
-  FIELD_RHYTHM,
   META,
   CAPTION,
-  TITLE_FONT,
+  HERO_PANEL,
+  CARD,
+  STAT_CARD,
+  ICON_SQUARE,
+  HERO_GHOST_PILL,
+  CHIP_POSITIVE,
+  CHIP_NEUTRAL,
+  CHIP_NEGATIVE,
 } from '@/lib/typography';
 import { formatCurrency } from '@/lib/formatting';
 import { getPartnersByUser } from '@/lib/affiliates/partners';
@@ -29,20 +34,13 @@ import { PLATFORM_FEE_PERCENT } from '@/lib/affiliates/fees';
 import { CopyLinkButton } from '@/components/affiliate/copy-link-button';
 import { NewLinkButton } from '@/components/affiliate/new-link-button';
 
-const STATUS_BADGE: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700 border-amber-200/70',
-  approved: 'bg-emerald-50 text-emerald-700 border-emerald-200/70',
-  paid: 'bg-blue-50 text-blue-700 border-blue-200/70',
-  rejected: 'bg-red-50 text-red-700 border-red-200/70',
-};
-
 export default async function AffiliateDashboardPage() {
   const { userId } = await auth();
 
   if (!userId) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20 text-center space-y-4">
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className={cn(H1)}>
           Affiliate dashboard.
         </h1>
         <p className={cn(BODY_MUTED)}>Sign in to view your affiliate dashboard.</p>
@@ -63,7 +61,7 @@ export default async function AffiliateDashboardPage() {
   if (!partner) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20 text-center space-y-4">
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className={cn(H1)}>
           Start earning.
         </h1>
         <p className={cn(BODY_MUTED)}>
@@ -79,13 +77,13 @@ export default async function AffiliateDashboardPage() {
   if (partner.status === 'pending') {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20 text-center space-y-4">
-        <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200/70 flex items-center justify-center mx-auto">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="text-amber-600">
+        <div className="w-12 h-12 rounded-xl bg-brand-subtle text-primary flex items-center justify-center mx-auto">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="text-primary">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 8v4M12 16h.01" />
           </svg>
         </div>
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className={cn(H1)}>
           Application under review.
         </h1>
         <p className={cn(BODY_MUTED)}>
@@ -100,7 +98,7 @@ export default async function AffiliateDashboardPage() {
   if (partner.status === 'suspended') {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20 text-center space-y-4">
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className={cn(H1)}>
           Account suspended.
         </h1>
         <p className={cn(BODY_MUTED)}>
@@ -123,51 +121,57 @@ export default async function AffiliateDashboardPage() {
 
   return (
     <div className={cn('max-w-4xl mx-auto px-4 sm:px-6 py-10', PAGE_RHYTHM)}>
-      {/* Header */}
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="space-y-1">
-          <p className={cn(SECTION_LABEL)}>Affiliate dashboard</p>
-          <h1 className={cn(H1)} style={TITLE_FONT}>
-            {partner.name}
-          </h1>
-          <p className={cn(BODY_MUTED)}>
-            Earnings shown are yours — net of the {PLATFORM_FEE_PERCENT}% platform fee.
-          </p>
+      {/* Hero panel */}
+      <div className={cn(HERO_PANEL)}>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1">
+            <p className="text-white/70 text-[11px] font-medium uppercase tracking-wider">Payable balance</p>
+            <p className="text-[30px] font-semibold text-white tabular-nums">{formatCurrency(payableCents / 100)}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link href="/affiliate/explore" className={cn(PRIMARY_PILL)}>
+              Explore software
+            </Link>
+            <Link href="/affiliate/payouts" className={cn(HERO_GHOST_PILL)}>
+              View payouts
+            </Link>
+          </div>
         </div>
-        <Link href="/affiliate/explore" className={cn(PRIMARY_PILL, 'shrink-0')}>
-          Explore software
-        </Link>
-      </header>
+      </div>
 
       {/* Stat grid */}
       <section>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-xl overflow-hidden border border-border/60 bg-border/60">
-          {[
-            { label: 'Clicks', value: stats.clicks.toLocaleString() },
-            { label: 'Customers', value: stats.customers.toLocaleString() },
-            { label: 'Pending', value: formatCurrency(stats.pendingCents / 100) },
-            { label: 'Paid', value: formatCurrency(stats.paidCents / 100) },
-          ].map(({ label, value }) => (
-            <div key={label} className="bg-background px-4 py-4 space-y-1.5">
-              <p className={cn(SECTION_LABEL)}>{label}</p>
-              <p className={cn(STAT_NUMBER_COMPACT)}>{value}</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className={cn(STAT_CARD)}>
+            <div className={cn(ICON_SQUARE)}>
+              <MousePointerClick size={16} />
             </div>
-          ))}
+            <p className={cn(SECTION_LABEL)}>Clicks</p>
+            <p className={cn(STAT_NUMBER_COMPACT)}>{stats.clicks.toLocaleString()}</p>
+          </div>
+          <div className={cn(STAT_CARD)}>
+            <div className={cn(ICON_SQUARE)}>
+              <Users size={16} />
+            </div>
+            <p className={cn(SECTION_LABEL)}>Customers</p>
+            <p className={cn(STAT_NUMBER_COMPACT)}>{stats.customers.toLocaleString()}</p>
+          </div>
+          <div className={cn(STAT_CARD)}>
+            <div className={cn(ICON_SQUARE)}>
+              <Clock size={16} />
+            </div>
+            <p className={cn(SECTION_LABEL)}>Pending</p>
+            <p className={cn(STAT_NUMBER_COMPACT)}>{formatCurrency(stats.pendingCents / 100)}</p>
+          </div>
+          <div className={cn(STAT_CARD)}>
+            <div className={cn(ICON_SQUARE)}>
+              <Banknote size={16} />
+            </div>
+            <p className={cn(SECTION_LABEL)}>Paid</p>
+            <p className={cn(STAT_NUMBER_COMPACT)}>{formatCurrency(stats.paidCents / 100)}</p>
+          </div>
         </div>
       </section>
-
-      {/* Payable balance callout */}
-      {payableCents > 0 && (
-        <div className="rounded-xl border border-border/60 bg-muted/20 px-5 py-4 flex items-center justify-between gap-4">
-          <div className="space-y-0.5">
-            <p className={cn(SECTION_LABEL)}>ready to pay out</p>
-            <p className={cn(STAT_NUMBER_COMPACT)}>{formatCurrency(payableCents / 100)}</p>
-          </div>
-          <Link href="/affiliate/payouts" className={cn(GHOST_PILL, 'text-xs shrink-0')}>
-            View payouts
-          </Link>
-        </div>
-      )}
 
       {/* Links section */}
       <section className={cn(SECTION_RHYTHM)}>
@@ -177,17 +181,17 @@ export default async function AffiliateDashboardPage() {
         </div>
 
         {links.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-10 text-center">
+          <div className={cn(CARD, 'px-5 py-10 text-center')}>
             <p className={cn(BODY_MUTED)}>No referral links yet. Create one to get started.</p>
           </div>
         ) : (
-          <div className={cn(FIELD_RHYTHM)}>
+          <div className="space-y-3">
             {links.map((link) => {
               const url = buildReferralLinkUrl(link, appUrl);
               return (
                 <div
                   key={link.id}
-                  className="rounded-xl border border-border/60 bg-background px-4 py-3 flex items-center gap-3"
+                  className={cn(CARD, 'px-4 py-3 flex items-center gap-3')}
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-foreground truncate font-mono">{url}</p>
@@ -209,23 +213,23 @@ export default async function AffiliateDashboardPage() {
         <h2 className={cn(H2)}>Recent commissions</h2>
 
         {commissions.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-10 text-center">
+          <div className={cn(CARD, 'px-5 py-10 text-center')}>
             <p className={cn(BODY_MUTED)}>No commissions yet. Share your referral link to start earning.</p>
           </div>
         ) : (
-          <div className="rounded-xl border border-border/60 overflow-hidden">
+          <div className={cn(CARD, 'overflow-hidden')}>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border/60 bg-muted/30">
+                <tr className="border-b border-border/60 bg-muted/40">
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Date</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Order</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-right font-medium')}>Amount</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/40">
+              <tbody className="divide-y divide-border/60">
                 {commissions.map((c) => (
-                  <tr key={c.id} className="hover:bg-muted/10 transition-colors">
+                  <tr key={c.id} className="hover:bg-muted/30 transition-colors">
                     <td className={cn(META, 'px-4 py-3 align-middle')}>
                       {new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </td>
@@ -236,12 +240,18 @@ export default async function AffiliateDashboardPage() {
                       {formatCurrency(c.amountCents / 100)}
                     </td>
                     <td className="px-4 py-3 align-middle">
-                      <span className={cn(
-                        'inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border',
-                        STATUS_BADGE[c.status] ?? 'bg-muted text-muted-foreground border-border/60',
-                      )}>
-                        {c.status}
-                      </span>
+                      {(c.status === 'approved' || c.status === 'paid') && (
+                        <span className={cn(CHIP_POSITIVE)}>{c.status}</span>
+                      )}
+                      {c.status === 'pending' && (
+                        <span className={cn(CHIP_NEUTRAL)}>{c.status}</span>
+                      )}
+                      {c.status === 'rejected' && (
+                        <span className={cn(CHIP_NEGATIVE)}>{c.status}</span>
+                      )}
+                      {c.status !== 'approved' && c.status !== 'paid' && c.status !== 'pending' && c.status !== 'rejected' && (
+                        <span className={cn(CHIP_NEUTRAL)}>{c.status}</span>
+                      )}
                     </td>
                   </tr>
                 ))}

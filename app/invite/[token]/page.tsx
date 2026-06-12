@@ -94,7 +94,7 @@ export default async function AcceptInvitationPage({ params }: Params) {
               </div>
             ) : isAccepted ? (
               <>
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-positive-subtle dark:bg-positive-subtle0/10 text-positive dark:text-positive">
                   <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
                   <p className="text-sm">This invitation has already been accepted.</p>
                 </div>
@@ -106,14 +106,14 @@ export default async function AcceptInvitationPage({ params }: Params) {
                 </a>
               </>
             ) : isExpiredOrInvalid ? (
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400">
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-muted dark:bg-muted0/10 text-muted-foreground dark:text-muted-foreground">
                 <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
                 <p className="text-sm">This invitation is no longer valid. Ask your manager to send a new one.</p>
               </div>
             ) : inv ? (
               <>
                 {currentEmail && inv.email && currentEmail.toLowerCase() !== inv.email.toLowerCase() && (
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-muted dark:bg-muted0/10 text-muted-foreground dark:text-muted-foreground">
                     <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
                     <p className="text-sm">
                       You&apos;re signed in as <span className="font-semibold">{currentEmail}</span> but this invitation was sent to <span className="font-semibold">{inv.email}</span>. Please sign in with the correct account.

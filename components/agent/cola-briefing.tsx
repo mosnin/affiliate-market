@@ -140,7 +140,7 @@ export function ColaBriefing({ slug }: { slug: string }) {
             {data.pendingQuestions > 0 && (
               <Link
                 href={agentHref}
-                className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium px-2.5 py-1 rounded-full transition-colors"
+                className="inline-flex items-center gap-1.5 bg-muted0 hover:bg-lead-warm/90 text-white text-xs font-medium px-2.5 py-1 rounded-full transition-colors"
               >
                 <HelpCircle size={11} />
                 {data.pendingQuestions} question{data.pendingQuestions !== 1 ? 's' : ''}

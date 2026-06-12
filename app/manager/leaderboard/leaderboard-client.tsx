@@ -33,9 +33,9 @@ function formatPipeline(value: number): string {
 
 function BadgeChip({ badge }: { badge: string }) {
   const config: Record<string, { icon: typeof Trophy; tone: string }> = {
-    'Top Closer': { icon: Trophy, tone: 'text-amber-700 dark:text-amber-400' },
-    'Fast Responder': { icon: Zap, tone: 'text-blue-700 dark:text-blue-400' },
-    'Hot Streak': { icon: Flame, tone: 'text-rose-700 dark:text-rose-400' },
+    'Top Closer': { icon: Trophy, tone: 'text-muted-foreground dark:text-muted-foreground' },
+    'Fast Responder': { icon: Zap, tone: 'text-primary dark:text-blue-400' },
+    'Hot Streak': { icon: Flame, tone: 'text-negative dark:text-negative' },
   };
   const c = config[badge] ?? { icon: Medal, tone: 'text-muted-foreground' };
   const Icon = c.icon;

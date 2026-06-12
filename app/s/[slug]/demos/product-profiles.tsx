@@ -306,7 +306,7 @@ export function ProductProfiles({ slug, profiles: initialProfiles, onUpdate }: P
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
-                <button onClick={() => toggleActive(p.id, !p.isActive)} disabled={togglingId === p.id} className={cn('w-7 h-7 flex items-center justify-center rounded-md hover:bg-muted transition-colors disabled:opacity-50', p.isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')} title={p.isActive ? 'Deactivate' : 'Activate'}>
+                <button onClick={() => toggleActive(p.id, !p.isActive)} disabled={togglingId === p.id} className={cn('w-7 h-7 flex items-center justify-center rounded-md hover:bg-muted transition-colors disabled:opacity-50', p.isActive ? 'text-positive dark:text-positive' : 'text-muted-foreground')} title={p.isActive ? 'Deactivate' : 'Activate'}>
                   {togglingId === p.id ? <Loader2 size={14} className="animate-spin" /> : p.isActive ? <Check size={14} /> : <X size={14} />}
                 </button>
                 <button onClick={() => startEdit(p)} className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground transition-colors" title="Edit">

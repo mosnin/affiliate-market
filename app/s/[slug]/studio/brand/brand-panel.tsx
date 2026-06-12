@@ -182,7 +182,7 @@ export function BrandPanel() {
           {saving ? 'Saving…' : 'Save brand kit'}
         </Button>
         {saved && !saving && <p className={CAPTION}>Saved.</p>}
-        {error && <p className="text-[12.5px] text-rose-700 dark:text-rose-400">{error}</p>}
+        {error && <p className="text-[12.5px] text-negative dark:text-negative">{error}</p>}
       </div>
     </div>
   );

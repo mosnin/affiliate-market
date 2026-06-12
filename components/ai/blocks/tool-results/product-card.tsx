@@ -75,17 +75,17 @@ function formatSqft(v: number | null | undefined): string | null {
 /** Icon background tone keyed by listingStatus. */
 function iconBg(status: string | undefined): string {
   const s = (status ?? '').toLowerCase();
-  if (s === 'active') return 'bg-emerald-500/10';
-  if (s === 'pending') return 'bg-amber-500/10';
+  if (s === 'active') return 'bg-positive-subtle0/10';
+  if (s === 'pending') return 'bg-muted0/10';
   return 'bg-muted';
 }
 
 /** Status chip styling keyed by listingStatus. */
 const STATUS_CHIP: Record<string, string> = {
   active:
-    'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
+    'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
   pending:
-    'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+    'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
   sold: 'text-muted-foreground bg-muted',
   closed: 'text-muted-foreground bg-muted',
   withdrawn: 'text-muted-foreground bg-muted',

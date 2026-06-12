@@ -33,11 +33,11 @@ interface PortalMessage {
 }
 
 const STATUSES = [
-  { key: 'received', label: 'Received', icon: Inbox, color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
-  { key: 'under_review', label: 'Under Review', icon: Search, color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  { key: 'received', label: 'Received', icon: Inbox, color: 'bg-brand-subtle text-primary dark:bg-blue-900/30 dark:text-blue-300' },
+  { key: 'under_review', label: 'Under Review', icon: Search, color: 'bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground' },
   { key: 'demo_scheduled', label: 'Demo Scheduled', icon: CalendarCheck, color: 'bg-brand-subtle text-primary dark:bg-brand/10 dark:text-primary' },
-  { key: 'approved', label: 'Approved', icon: CheckCircle2, color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
-  { key: 'declined', label: 'Declined', icon: XCircle, color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
+  { key: 'approved', label: 'Approved', icon: CheckCircle2, color: 'bg-positive-subtle text-positive dark:bg-positive-subtle dark:text-positive' },
+  { key: 'declined', label: 'Declined', icon: XCircle, color: 'bg-negative-subtle text-negative dark:bg-red-900/30 dark:text-red-300' },
   { key: 'waitlisted', label: 'Waitlisted', icon: Clock, color: 'bg-brand-subtle text-primary dark:bg-brand-subtle dark:text-brand-subtle' },
   { key: 'needs_info', label: 'Needs Info', icon: AlertCircle, color: 'bg-brand-subtle text-primary dark:bg-brand-subtle dark:text-brand-subtle' },
 ];

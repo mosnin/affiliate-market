@@ -53,7 +53,7 @@ const STATUS_TONE: Record<string, { label: string; className: string }> = {
   },
   confirmed: {
     label: 'Confirmed',
-    className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+    className: 'bg-positive-subtle0/10 text-positive dark:text-positive',
   },
   completed: {
     label: 'Completed',
@@ -61,7 +61,7 @@ const STATUS_TONE: Record<string, { label: string; className: string }> = {
   },
   cancelled: {
     label: 'Cancelled',
-    className: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+    className: 'bg-negative-subtle0/10 text-negative dark:text-negative',
   },
 };
 
@@ -202,7 +202,7 @@ export function DemoManageClient({ demo, token, businessName, bookingSlug, profi
 
         {/* ─── Error ─────────────────────────────────────────────── */}
         {error && (
-          <p className="text-xs text-rose-600 dark:text-rose-400 mt-4">
+          <p className="text-xs text-negative dark:text-negative mt-4">
             {error}
           </p>
         )}
@@ -271,7 +271,7 @@ export function DemoManageClient({ demo, token, businessName, bookingSlug, profi
               disabled={loading}
               className={cn(
                 PRIMARY_PILL,
-                'bg-rose-600 text-white hover:bg-rose-600/90 disabled:opacity-60',
+                'bg-negative text-white hover:bg-negative/90 disabled:opacity-60',
               )}
             >
               {loading && <Loader2 size={14} className="animate-spin" />}

@@ -454,7 +454,7 @@ function RoutineRow({
               <span
                 className={cn(
                   'inline-flex items-center gap-1',
-                  failed && 'text-amber-600 dark:text-amber-500',
+                  failed && 'text-muted-foreground dark:text-muted-foreground',
                 )}
               >
                 {failed && <AlertTriangle size={11} />}

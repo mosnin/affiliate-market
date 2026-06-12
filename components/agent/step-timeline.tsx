@@ -106,7 +106,7 @@ function StepRow({ step }: { step: Step }) {
             </span>
           )}
           {step.costUsd != null && step.costUsd > 0 && (
-            <span className="text-[11px] font-mono text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded">
+            <span className="text-[11px] font-mono text-muted-foreground dark:text-muted-foreground bg-muted dark:bg-muted px-1.5 py-0.5 rounded">
               ${step.costUsd.toFixed(4)}
             </span>
           )}

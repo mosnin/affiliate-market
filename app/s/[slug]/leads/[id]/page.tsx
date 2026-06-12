@@ -23,8 +23,8 @@ import {
 } from 'lucide-react';
 
 function tierStyles(label: string | null) {
-  if (label === 'hot') return 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400';
-  if (label === 'warm') return 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400';
+  if (label === 'hot') return 'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400';
+  if (label === 'warm') return 'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground';
   return 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300';
 }
 
@@ -143,7 +143,7 @@ export default async function LeadDetailPage({
 
           {details?.recommendedNextAction && (
             <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground flex items-start gap-2">
-              <CircleAlert size={14} className="mt-0.5 text-amber-600" />
+              <CircleAlert size={14} className="mt-0.5 text-muted-foreground" />
               {details.recommendedNextAction}
             </div>
           )}

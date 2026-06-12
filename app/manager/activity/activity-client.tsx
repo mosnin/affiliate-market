@@ -103,12 +103,12 @@ function formatRelative(iso: string): string {
 // (STYLESHEET.md §Badges & pills) — tone for MEANING only: mutating ops
 // carry weight, read/auth events recede to muted. No raw -100 saturation.
 const ACTION_BADGE: Record<string, string> = {
-  CREATE: 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
-  UPDATE: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  DELETE: 'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15',
-  OFFBOARD: 'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15',
-  ADMIN_ACTION: 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
-  ACCESS: 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
+  CREATE: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
+  UPDATE: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  DELETE: 'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15',
+  OFFBOARD: 'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15',
+  ADMIN_ACTION: 'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15',
+  ACCESS: 'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15',
   LOGIN: 'bg-muted text-muted-foreground',
   LOGOUT: 'bg-muted text-muted-foreground',
 };

@@ -220,7 +220,7 @@ export function DealChecklist({ dealId, initial = [] }: DealChecklistProps) {
                 aria-label={done ? `Mark ${item.label} as not done` : `Mark ${item.label} as done`}
               >
                 {done
-                  ? <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400" />
+                  ? <CheckCircle2 size={18} className="text-positive dark:text-positive" />
                   : <Circle size={18} />}
               </button>
 
@@ -233,7 +233,7 @@ export function DealChecklist({ dealId, initial = [] }: DealChecklistProps) {
               </span>
 
               {overdue && !done && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 dark:text-red-400">
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-negative dark:text-red-400">
                   <AlertTriangle size={11} />
                   Overdue
                 </span>

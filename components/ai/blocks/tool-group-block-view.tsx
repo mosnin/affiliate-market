@@ -202,7 +202,7 @@ export function ToolGroupBlockView({ blocks, liveCallIds, onUserIntent }: ToolGr
       {!anyLive && anyFailed && failureMessage && (
         <p
           role="status"
-          className="pl-5 text-[12px] leading-snug text-rose-700 dark:text-rose-400"
+          className="pl-5 text-[12px] leading-snug text-negative dark:text-negative"
         >
           {failureMessage}
         </p>

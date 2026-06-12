@@ -228,9 +228,9 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.15, type: 'spring', stiffness: 200, damping: 15 }}
-            className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto"
+            className="w-12 h-12 rounded-full bg-positive-subtle0/10 flex items-center justify-center mx-auto"
           >
-            <Check size={20} className="text-emerald-600 dark:text-emerald-400" />
+            <Check size={20} className="text-positive dark:text-positive" />
           </motion.div>
           <h2 className="text-3xl tracking-tight text-foreground" style={TITLE_FONT}>
             Confirmed.
@@ -433,7 +433,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
                   </div>
                 )}
                 {waitlistDone && (
-                  <div className="flex items-center justify-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                  <div className="flex items-center justify-center gap-2 text-sm text-positive dark:text-positive">
                     <Check size={16} />
                     You&apos;re on the waitlist. We&apos;ll let you know.
                   </div>
@@ -597,7 +597,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
               </div>
 
               {error && (
-                <p className="text-xs text-rose-600 dark:text-rose-400 mt-3">{error}</p>
+                <p className="text-xs text-negative dark:text-negative mt-3">{error}</p>
               )}
 
               <button
@@ -616,7 +616,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
 
         {/* Surface availability errors at the bottom of the picker step */}
         {error && step !== 'details' && (
-          <p className="text-xs text-rose-600 dark:text-rose-400 mt-4 text-center">{error}</p>
+          <p className="text-xs text-negative dark:text-negative mt-4 text-center">{error}</p>
         )}
       </div>
 

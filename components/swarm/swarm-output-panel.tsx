@@ -20,10 +20,10 @@ export function SwarmOutputPanel({ result, status }: SwarmOutputPanelProps) {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: DURATION_BASE, ease: EASE_OUT }}
-        className="rounded-xl border border-rose-500/20 bg-rose-500/[0.04] p-6 space-y-4"
+        className="rounded-xl border border-negative/20 bg-negative-subtle0/[0.04] p-6 space-y-4"
       >
         <div className="flex items-center gap-2">
-          <AlertCircle className="text-rose-500 flex-shrink-0" size={18} />
+          <AlertCircle className="text-negative flex-shrink-0" size={18} />
           <p className={cn(H3, 'font-semibold')}>Swarm failed.</p>
         </div>
         {result && (
@@ -52,12 +52,12 @@ export function SwarmOutputPanel({ result, status }: SwarmOutputPanelProps) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: DURATION_BASE, ease: EASE_OUT }}
-      className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 space-y-4"
+      className="rounded-xl border border-positive/20 bg-positive-subtle0/[0.04] p-6 space-y-4"
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <CheckCircle2 className="text-emerald-500 flex-shrink-0" size={18} />
+          <CheckCircle2 className="text-positive flex-shrink-0" size={18} />
           <p className={cn(H3, 'font-semibold')}>Swarm complete.</p>
         </div>
         <button

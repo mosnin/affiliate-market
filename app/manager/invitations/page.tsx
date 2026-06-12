@@ -22,13 +22,13 @@ function statusPill(status: string): { label: string; class: string } | null {
       return {
         label: 'Pending',
         class:
-          'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+          'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
       };
     case 'accepted':
       return {
         label: 'Accepted',
         class:
-          'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
+          'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
       };
     case 'cancelled':
       return { label: 'Cancelled', class: 'text-muted-foreground bg-muted' };

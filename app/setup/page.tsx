@@ -69,7 +69,7 @@ export default async function SetupPage({
           </p>
           <a
             href="/setup"
-            className="inline-block px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+            className="inline-flex items-center justify-center rounded-xl bg-brand text-brand-foreground px-4 h-9 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98]"
           >
             Try again
           </a>
@@ -158,7 +158,7 @@ export default async function SetupPage({
             </p>
             <a
               href="/setup"
-              className="inline-block px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+              className="inline-flex items-center justify-center rounded-xl bg-brand text-brand-foreground px-4 h-9 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98]"
             >
               Try again
             </a>

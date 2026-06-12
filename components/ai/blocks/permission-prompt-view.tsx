@@ -171,7 +171,7 @@ function InlineComposeCard({
       {/* Char counter for SMS */}
       {kind === 'sms' && (
         <div className="flex items-center justify-end gap-2 px-2.5 pb-1.5 text-[11px] tabular-nums text-muted-foreground/70">
-          <span className={cn(smsOver && 'text-amber-600 dark:text-amber-400')}>
+          <span className={cn(smsOver && 'text-muted-foreground dark:text-muted-foreground')}>
             {smsLen} / {SMS_SOFT_LIMIT}
             {smsSegments > 1 && (
               <>
@@ -306,13 +306,13 @@ export function PermissionPromptView({
   const disabled = busy || submitting !== null;
 
   return (
-    <div className="rounded-xl border border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/5 px-4 py-3">
+    <div className="rounded-xl border border-border bg-muted/70 dark:bg-muted0/5 px-4 py-3">
       <div className="flex items-start gap-3">
-        <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0 text-amber-700 dark:text-amber-400">
+        <div className="w-8 h-8 rounded-lg bg-muted0/15 flex items-center justify-center flex-shrink-0 text-muted-foreground dark:text-muted-foreground">
           <ShieldCheck size={15} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-0.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground mb-0.5">
             {isSendEmail ? 'Email draft — review and send' : isSendSms ? 'SMS draft — review and send' : 'Approve before running'}
           </p>
           <p className="text-sm font-semibold text-foreground">{prompt.summary}</p>
@@ -346,7 +346,7 @@ export function PermissionPromptView({
                 disabled={disabled}
               />
               {parseError && (
-                <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">{parseError}</p>
+                <p className="mt-1 text-[11px] text-negative dark:text-negative">{parseError}</p>
               )}
             </div>
           ) : (
@@ -418,7 +418,7 @@ export function PermissionPromptView({
               type="button"
               onClick={doDeny}
               disabled={disabled}
-              className="inline-flex items-center gap-1 rounded-md border border-rose-400/50 bg-background text-rose-700 dark:text-rose-400 hover:bg-rose-500/10 px-3 py-2.5 min-h-[44px] text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-md border border-negative/20 bg-background text-negative dark:text-negative hover:bg-negative-subtle0/10 px-3 py-2.5 min-h-[44px] text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting === 'deny' ? (
                 <Loader2 size={12} className="animate-spin" />

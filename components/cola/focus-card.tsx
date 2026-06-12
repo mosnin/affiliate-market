@@ -467,7 +467,7 @@ export function FocusCard({
       className={cn(FOCUS_CARD_MAX, 'mx-auto rounded-lg border border-border/70 bg-card p-6 transition-opacity duration-150')}
     >
       <div className="flex items-center gap-3 text-sm">
-        <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+        <span className="inline-flex items-center gap-1.5 text-muted-foreground dark:text-muted-foreground">
           <HelpCircle size={13} />
           Cola has a question
         </span>
@@ -564,11 +564,11 @@ function FocusWelcome({
       {/* Amber circle with a slow breathing pulse — signals life, not decoration. */}
       <motion.div
         aria-hidden
-        className="mx-auto mb-6 w-16 h-16 rounded-full bg-amber-100/70 dark:bg-amber-500/10 flex items-center justify-center"
+        className="mx-auto mb-6 w-16 h-16 rounded-full bg-muted/70 dark:bg-muted0/10 flex items-center justify-center"
         animate={{ scale: [1, 1.04, 1] }}
         transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
       >
-        <MessageCircle size={20} className="text-amber-500 dark:text-amber-400" aria-hidden />
+        <MessageCircle size={20} className="text-muted-foreground dark:text-muted-foreground" aria-hidden />
       </motion.div>
       <h2
         className="text-3xl tracking-tight text-foreground"

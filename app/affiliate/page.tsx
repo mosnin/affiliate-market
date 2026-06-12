@@ -9,16 +9,15 @@
 
 import { useState } from 'react';
 import { Users, Share2, DollarSign } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
-  H1,
-  TITLE_FONT,
   BODY_MUTED,
   BODY,
   SECTION_LABEL,
   SECTION_RHYTHM,
+  PRIMARY_PILL,
+  ICON_SQUARE,
+  CARD,
 } from '@/lib/typography';
 import { cn } from '@/lib/utils';
 
@@ -97,10 +96,10 @@ export default function AffiliateLandingPage() {
   if (pageState === 'success') {
     return (
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-16 text-center space-y-4">
-        <div className="w-12 h-12 rounded-full bg-foreground/[0.06] flex items-center justify-center mx-auto">
-          <DollarSign size={20} strokeWidth={1.75} className="text-foreground" />
+        <div className="w-12 h-12 rounded-xl bg-brand-subtle text-primary flex items-center justify-center mx-auto">
+          <DollarSign size={20} strokeWidth={1.75} className="text-primary" />
         </div>
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Application received.
         </h1>
         <p className={cn(BODY_MUTED)}>
@@ -121,40 +120,36 @@ export default function AffiliateLandingPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 pb-16 space-y-14">
       {/* Hero */}
-      <header className="space-y-3">
-        <p className={cn(BODY_MUTED)}>Creators.</p>
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+      <div className="rounded-[20px] bg-hero text-hero-foreground px-6 py-8 sm:px-8 space-y-3">
+        <p className="text-white/70 text-[11px] font-medium uppercase tracking-wider">Creators</p>
+        <h1 className="text-3xl font-semibold tracking-tight text-white">
           You already promote things. Get paid for software.
         </h1>
-        <p className={cn(BODY_MUTED, 'max-w-xl')}>
+        <p className="text-white/80 text-sm max-w-xl">
           The same way you clip videos and push products — pick software your
           audience needs, grab your link, earn a commission on every sale it
           drives. Payouts go straight to your Stripe.
         </p>
         <a
           href="/affiliate/explore"
-          className="inline-flex items-center mt-1 text-sm font-medium text-foreground underline underline-offset-4 hover:opacity-80"
+          className="inline-flex items-center mt-2 text-sm font-semibold text-brand hover:text-brand/90"
         >
           Browse software to promote →
         </a>
-      </header>
+      </div>
 
       {/* How it works */}
       <section className={cn(SECTION_RHYTHM)}>
         <p className={cn(SECTION_LABEL)}>How it works</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
           {HOW_IT_WORKS.map(({ icon: Icon, title, description }, i) => (
-            <Card key={i} className="py-5 gap-3">
-              <CardHeader className="pb-0">
-                <div className="w-8 h-8 rounded-md bg-foreground/[0.04] flex items-center justify-center mb-1">
-                  <Icon size={15} strokeWidth={1.75} className="text-muted-foreground" />
-                </div>
-                <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription>{description}</CardDescription>
-              </CardContent>
-            </Card>
+            <div key={i} className="rounded-2xl border border-border bg-card p-5 space-y-3">
+              <div className="w-9 h-9 rounded-xl bg-brand-subtle text-primary flex items-center justify-center">
+                <Icon size={16} strokeWidth={1.75} className="text-primary" />
+              </div>
+              <p className="text-[17px] font-semibold text-foreground leading-snug">{title}</p>
+              <p className="text-sm text-muted-foreground">{description}</p>
+            </div>
           ))}
         </div>
       </section>
@@ -176,6 +171,7 @@ export default function AffiliateLandingPage() {
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 required
                 autoComplete="name"
+                className="rounded-xl"
               />
             </div>
 
@@ -191,6 +187,7 @@ export default function AffiliateLandingPage() {
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                 required
                 autoComplete="email"
+                className="rounded-xl"
               />
             </div>
 
@@ -206,6 +203,7 @@ export default function AffiliateLandingPage() {
                 value={form.code}
                 onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
                 autoComplete="off"
+                className="rounded-xl"
               />
               <p className="text-xs text-muted-foreground">
                 If someone invited you or you have a company slug, enter it here.
@@ -216,13 +214,13 @@ export default function AffiliateLandingPage() {
               <p className="text-sm text-destructive">{errorMsg}</p>
             )}
 
-            <Button
+            <button
               type="submit"
               disabled={pageState === 'loading' || !form.name.trim() || !form.email.trim()}
-              className="w-full sm:w-auto"
+              className={cn(PRIMARY_PILL, 'w-full sm:w-auto disabled:opacity-50')}
             >
               {pageState === 'loading' ? 'Submitting…' : 'Apply now'}
-            </Button>
+            </button>
           </form>
         </div>
       </section>

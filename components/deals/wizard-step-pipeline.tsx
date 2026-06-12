@@ -82,7 +82,7 @@ export function WizardStepPipeline({
           detectedPipelineType === 'buyer'
             ? 'bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-400'
             : detectedPipelineType === 'seller'
-            ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400'
+            ? 'bg-muted dark:bg-muted0/10 text-muted-foreground dark:text-muted-foreground'
             : 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400'
         )}>
           <Info size={13} className="flex-shrink-0" />

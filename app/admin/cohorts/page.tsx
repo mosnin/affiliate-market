@@ -213,9 +213,9 @@ export default async function AdminCohortsPage() {
       </Card>
 
       {fetchError && (
-        <Card className="rounded-xl border border-amber-300/50 bg-amber-50/30 dark:border-amber-500/20 dark:bg-amber-500/5">
+        <Card className="rounded-xl border border-border bg-muted/30 dark:border-border dark:bg-muted0/5">
           <CardContent className="px-5 py-4">
-            <p className="text-sm text-amber-700 dark:text-amber-400">
+            <p className="text-sm text-muted-foreground dark:text-muted-foreground">
               Could not load cohort data. Check server logs.
             </p>
           </CardContent>
@@ -263,12 +263,12 @@ export default async function AdminCohortsPage() {
                   <td className="px-3 py-2.5 text-xs font-semibold tabular-nums align-top">
                     {r.signups}
                   </td>
-                  <Cell count={r.onboarded} total={r.signups} color="bg-emerald-500" />
+                  <Cell count={r.onboarded} total={r.signups} color="bg-positive-subtle0" />
                   <Cell count={r.workspace} total={r.signups} color="bg-violet-500" />
                   <Cell count={r.trialing} total={r.signups} color="bg-blue-500" />
                   <Cell count={r.paid} total={r.signups} color="bg-foreground" />
-                  <Cell count={r.churned} total={r.signups} color="bg-rose-500" />
-                  <Cell count={r.active} total={r.signups} color="bg-emerald-600" />
+                  <Cell count={r.churned} total={r.signups} color="bg-negative-subtle0" />
+                  <Cell count={r.active} total={r.signups} color="bg-positive" />
                 </tr>
               ))}
             </tbody>
@@ -293,7 +293,7 @@ export default async function AdminCohortsPage() {
               label: 'Paid',
               value: totalPaid,
               icon: CheckCircle2,
-              color: 'text-emerald-500',
+              color: 'text-positive',
             },
             {
               label: 'Trial',
@@ -305,25 +305,25 @@ export default async function AdminCohortsPage() {
               label: 'Past due',
               value: totalPastDue,
               icon: AlertTriangle,
-              color: 'text-amber-500',
+              color: 'text-muted-foreground',
             },
             {
               label: 'Canceled',
               value: totalCanceled,
               icon: XCircle,
-              color: 'text-rose-500',
+              color: 'text-negative',
             },
             {
               label: 'Paid conv.',
               value: `${overallPaidRate}%`,
               icon: TrendingUp,
-              color: 'text-emerald-500',
+              color: 'text-positive',
             },
             {
               label: 'Churn rate',
               value: `${overallChurnRate}%`,
               icon: DollarSign,
-              color: 'text-rose-500',
+              color: 'text-negative',
             },
           ].map(({ label, value, icon: Icon, color }) => (
             <Card key={label} className="rounded-xl border bg-card h-full">

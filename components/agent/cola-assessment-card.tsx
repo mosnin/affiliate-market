@@ -112,7 +112,7 @@ export function ColaAssessmentCard({ entityType, entityId, entityName, slug }: C
 
   const scoreColor = data.explainedScore !== null
     ? data.explainedScore >= 70 ? 'text-primary dark:text-primary'
-    : data.explainedScore >= 40 ? 'text-amber-600 dark:text-amber-400'
+    : data.explainedScore >= 40 ? 'text-muted-foreground dark:text-muted-foreground'
     : 'text-muted-foreground'
     : '';
 

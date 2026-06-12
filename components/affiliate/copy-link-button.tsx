@@ -33,10 +33,10 @@ export function CopyLinkButton({ url }: CopyLinkButtonProps) {
     <button
       onClick={handleCopy}
       className={cn(
-        'inline-flex items-center gap-1 px-2 h-7 rounded text-xs font-medium transition-colors',
+        'inline-flex items-center gap-1 px-2 h-7 rounded-lg text-xs font-medium transition-colors',
         copied
-          ? 'text-foreground bg-foreground/[0.07]'
-          : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]',
+          ? 'text-foreground bg-muted'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
       )}
       title="Copy link"
     >

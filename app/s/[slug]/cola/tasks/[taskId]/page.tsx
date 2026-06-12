@@ -82,9 +82,9 @@ function formatDuration(startedAt: string | null, completedAt: string | null): s
 function statusBadge(status: TaskStatus) {
   const map: Record<TaskStatus, { label: string; classes: string }> = {
     queued:    { label: 'Queued',    classes: 'bg-muted text-muted-foreground' },
-    running:   { label: 'Running',   classes: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' },
+    running:   { label: 'Running',   classes: 'bg-brand-subtle text-primary dark:bg-blue-900/40 dark:text-blue-400' },
     completed: { label: 'Completed', classes: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' },
-    failed:    { label: 'Failed',    classes: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' },
+    failed:    { label: 'Failed',    classes: 'bg-negative-subtle text-negative dark:bg-red-900/40 dark:text-red-400' },
     cancelled: { label: 'Cancelled', classes: 'bg-muted text-muted-foreground/60' },
     paused:    { label: 'Paused',    classes: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-500' },
   };
@@ -99,9 +99,9 @@ function statusBadge(status: TaskStatus) {
 function stepStatusDot(status: StepStatus) {
   const map: Record<StepStatus, string> = {
     pending:   'bg-muted-foreground/40',
-    running:   'bg-blue-500',
+    running:   'bg-brand-subtle0',
     completed: 'bg-green-500',
-    failed:    'bg-red-500',
+    failed:    'bg-negative-subtle0',
     skipped:   'bg-muted-foreground/30',
   };
   return (
@@ -336,7 +336,7 @@ export default async function AgentTaskDetailPage({
 
                     {/* Error message */}
                     {step.status === 'failed' && step.errorMessage && (
-                      <p className="text-xs text-red-600 dark:text-red-400 leading-relaxed">
+                      <p className="text-xs text-negative dark:text-red-400 leading-relaxed">
                         {truncate(step.errorMessage, 200)}
                       </p>
                     )}

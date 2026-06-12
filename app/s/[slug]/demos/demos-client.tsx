@@ -86,11 +86,11 @@ interface DemosClientProps {
 }
 
 const STATUS_CONFIG: Record<DemoStatus, { label: string; color: string }> = {
-  scheduled: { label: 'Scheduled', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' },
-  confirmed: { label: 'Confirmed', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' },
+  scheduled: { label: 'Scheduled', color: 'bg-brand-subtle text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' },
+  confirmed: { label: 'Confirmed', color: 'bg-positive-subtle text-positive dark:bg-positive-subtle dark:text-positive' },
   completed: { label: 'Completed', color: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
-  cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
-  no_show: { label: 'No Show', color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' },
+  cancelled: { label: 'Cancelled', color: 'bg-negative-subtle text-negative dark:bg-red-900/30 dark:text-red-300' },
+  no_show: { label: 'No Show', color: 'bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground' },
 };
 
 type FilterTab = 'upcoming' | 'past' | 'all' | 'availability';
@@ -605,7 +605,7 @@ export function DemosClient({ slug, spaceId, initialDemos, hasGoogleCalendar, bo
                       </button>
                     )}
                     {demo.googleEventId && (
-                      <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400">
+                      <span className="flex items-center gap-1 text-[10px] text-positive dark:text-positive">
                         <Check size={10} /> Synced
                       </span>
                     )}

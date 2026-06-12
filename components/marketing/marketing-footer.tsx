@@ -124,7 +124,7 @@ export function MarketingFooter() {
             >
               <span
                 aria-hidden
-                className="inline-block size-1.5 rounded-full bg-emerald-500"
+                className="inline-block size-1.5 rounded-full bg-positive-subtle0"
               />
               All systems operational.
             </Link>

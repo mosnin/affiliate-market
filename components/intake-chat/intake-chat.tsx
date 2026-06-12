@@ -753,7 +753,7 @@ function CurrentQuestion({
           error,
         })}
         {error && (
-          <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>
+          <p className="mt-2 text-xs text-negative dark:text-negative">{error}</p>
         )}
         {!question.required && question.type !== 'checkbox' && (
           <div className="mt-3 flex justify-start">
@@ -973,7 +973,7 @@ function DateField({ value, onChange, onCommit, accentColor, error }: InputProps
           'flex-1 h-11 rounded-xl border bg-background px-4 text-[15px]',
           'transition-colors duration-150',
           error
-            ? 'border-rose-500/60'
+            ? 'border-negative/20'
             : 'border-border/70 focus:border-foreground/40 focus:outline-none',
         )}
       />
@@ -1095,7 +1095,7 @@ function ChatComposer({ question, value, onChange, onCommit, accentColor, error 
           'flex items-end gap-2 rounded-3xl border bg-background pl-4 pr-2 py-1.5',
           'transition-colors duration-150',
           error || showInlineError
-            ? 'border-rose-500/60'
+            ? 'border-negative/20'
             : 'border-border/70 focus-within:border-foreground/40',
         )}
       >
@@ -1158,7 +1158,7 @@ function ChatComposer({ question, value, onChange, onCommit, accentColor, error 
       </div>
       {showInlineError && (
         <p
-          className="px-2 text-xs text-rose-600 dark:text-rose-400"
+          className="px-2 text-xs text-negative dark:text-negative"
           role="status"
         >
           {inlineEmailError}
@@ -1281,7 +1281,7 @@ function ErrorTurn({
       role="alert"
     >
       <div className="flex items-start gap-2.5 text-sm text-foreground">
-        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-negative dark:text-negative" />
         <p>{message}</p>
       </div>
       <button

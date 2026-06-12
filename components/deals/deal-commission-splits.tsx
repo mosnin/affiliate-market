@@ -142,7 +142,7 @@ export function DealCommissionSplits({ dealId, dealValue, dealCommissionRate, in
                   className={cn(
                     'w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0 transition-colors',
                     paid
-                      ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+                      ? 'bg-positive-subtle0/20 text-positive dark:text-positive'
                       : 'border border-border text-muted-foreground hover:border-foreground',
                   )}
                   title={paid ? 'Paid — tap to unmark' : 'Unpaid — tap to mark paid'}
@@ -261,7 +261,7 @@ function Summary({ label, value, subValue, bold }: { label: string; value: numbe
       <p className={cn('tabular-nums mt-0.5', bold ? 'text-lg font-semibold' : 'text-sm font-medium')}>
         {formatCurrency(value)}
       </p>
-      {subValue && <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">{subValue}</p>}
+      {subValue && <p className="text-[10px] text-muted-foreground dark:text-muted-foreground mt-0.5">{subValue}</p>}
     </div>
   );
 }

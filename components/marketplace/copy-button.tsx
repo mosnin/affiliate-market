@@ -24,7 +24,7 @@ export function CopyButton({ text }: { text: string }) {
       className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
     >
       {copied ? (
-        <Check size={14} className="text-emerald-500" aria-hidden="true" />
+        <Check size={14} className="text-positive" aria-hidden="true" />
       ) : (
         <Copy size={14} aria-hidden="true" />
       )}

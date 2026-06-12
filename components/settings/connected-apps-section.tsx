@@ -98,7 +98,7 @@ function IntegrationHealthBadge({
       : status === 'expired'
         ? 'bg-yellow-500'
         : status === 'error'
-          ? 'bg-red-500'
+          ? 'bg-negative-subtle0'
           : 'bg-muted-foreground/40'; // disconnected
 
   const label =
@@ -116,7 +116,7 @@ function IntegrationHealthBadge({
       : status === 'expired'
         ? 'text-yellow-600 dark:text-yellow-400'
         : status === 'error'
-          ? 'text-red-600 dark:text-red-400'
+          ? 'text-negative dark:text-red-400'
           : 'text-muted-foreground';
 
   return (
@@ -439,16 +439,16 @@ export function ConnectedAppsSection({
       );
     }
     return (
-      <div className="rounded-xl border border-amber-300/60 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30 p-5 space-y-3">
-        <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+      <div className="rounded-xl border border-border bg-muted dark:border-border dark:bg-muted p-5 space-y-3">
+        <p className="text-sm font-medium text-foreground dark:text-muted-foreground">
           Integrations aren&apos;t configured yet.
         </p>
-        <ol className="text-sm text-amber-900/90 dark:text-amber-100/90 list-decimal list-inside space-y-1.5 leading-relaxed">
+        <ol className="text-sm text-foreground/90 dark:text-muted-foreground/90 list-decimal list-inside space-y-1.5 leading-relaxed">
           <li>
-            Set <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-[12px] font-mono">COMPOSIO_API_KEY</code> on Vercel (Settings → Environment Variables → Production + Preview). Grab the key from the Composio dashboard → Settings.
+            Set <code className="px-1 py-0.5 rounded bg-muted dark:bg-muted text-[12px] font-mono">COMPOSIO_API_KEY</code> on Vercel (Settings → Environment Variables → Production + Preview). Grab the key from the Composio dashboard → Settings.
           </li>
           <li>
-            Set <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-[12px] font-mono">NEXT_PUBLIC_APP_URL</code> to your production URL — the OAuth callback uses it.
+            Set <code className="px-1 py-0.5 rounded bg-muted dark:bg-muted text-[12px] font-mono">NEXT_PUBLIC_APP_URL</code> to your production URL — the OAuth callback uses it.
           </li>
           <li>
             In the Composio dashboard, enable each toolkit you want (Gmail, Slack, Calendar, …) AND create an Auth Config under Authentication management. Just enabling the toolkit isn&apos;t enough — without the Auth Config, connection initiation fails.
@@ -481,14 +481,14 @@ export function ConnectedAppsSection({
             'rounded-lg border px-4 py-3 flex items-start gap-3',
             callbackResult!.ok
               ? 'border-green-300/60 bg-green-50 text-green-900 dark:border-green-900/60 dark:bg-green-950/40 dark:text-green-100'
-              : 'border-amber-300/60 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100',
+              : 'border-border bg-muted text-foreground dark:border-border dark:bg-muted dark:text-muted-foreground',
           )}
         >
           <span
             aria-hidden
             className={cn(
               'mt-1 w-2 h-2 rounded-full flex-shrink-0',
-              callbackResult!.ok ? 'bg-green-500' : 'bg-amber-500',
+              callbackResult!.ok ? 'bg-green-500' : 'bg-muted0',
             )}
           />
           <div className="flex-1 min-w-0 text-sm">
@@ -518,12 +518,12 @@ export function ConnectedAppsSection({
       )}
 
       {showAppUrlWarning && (
-        <div className="rounded-lg border border-amber-300/60 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-100 leading-relaxed">
+        <div className="rounded-lg border border-border bg-muted dark:border-border dark:bg-muted px-4 py-3 text-sm text-foreground dark:text-muted-foreground leading-relaxed">
           <p className="font-medium">
-            <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-[12px] font-mono">NEXT_PUBLIC_APP_URL</code> isn&apos;t set.
+            <code className="px-1 py-0.5 rounded bg-muted dark:bg-muted text-[12px] font-mono">NEXT_PUBLIC_APP_URL</code> isn&apos;t set.
           </p>
           <p className="mt-1 opacity-90">
-            New connections will OAuth at the provider but won&apos;t make it back to this app — Composio redirects to its default URL instead. Set <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-[12px] font-mono">NEXT_PUBLIC_APP_URL</code> to your production domain on Vercel and redeploy.
+            New connections will OAuth at the provider but won&apos;t make it back to this app — Composio redirects to its default URL instead. Set <code className="px-1 py-0.5 rounded bg-muted dark:bg-muted text-[12px] font-mono">NEXT_PUBLIC_APP_URL</code> to your production domain on Vercel and redeploy.
           </p>
         </div>
       )}
@@ -615,19 +615,19 @@ function StatusPill({
   if (comingSoon) return null;
   if (status === 'active')
     return (
-      <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider rounded-full px-1.5 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400">
+      <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider rounded-full px-1.5 py-0.5 bg-positive-subtle text-positive dark:bg-positive-subtle dark:text-positive">
         Connected
       </span>
     );
   if (status === 'expired')
     return (
-      <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider rounded-full px-1.5 py-0.5 bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400">
+      <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider rounded-full px-1.5 py-0.5 bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground">
         Auth expired
       </span>
     );
   if (status === 'failed')
     return (
-      <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider rounded-full px-1.5 py-0.5 bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400">
+      <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider rounded-full px-1.5 py-0.5 bg-negative-subtle text-negative dark:bg-negative-subtle dark:text-negative">
         Connection error
       </span>
     );
@@ -690,12 +690,12 @@ function IntegrationRow({
           )}
         </div>
         {errorLine && (
-          <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed line-clamp-2">
+          <p className="mt-1 text-[11px] text-muted-foreground dark:text-muted-foreground leading-relaxed line-clamp-2">
             {errorLine}
           </p>
         )}
         {showWatch && isFailed && (
-          <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
+          <p className="mt-1 text-[11px] text-muted-foreground dark:text-muted-foreground leading-relaxed">
             Cola couldn&apos;t tune in to this app. Try reconnecting.
           </p>
         )}

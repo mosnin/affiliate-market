@@ -59,16 +59,16 @@ export function normalizeSeatUsage(
 function tintClasses(ratio: number): { border: string; text: string; bar: string } {
   if (ratio >= 1) {
     return {
-      border: 'border-rose-500/40 bg-rose-50/60 dark:bg-rose-500/10',
-      text: 'text-rose-700 dark:text-rose-300',
-      bar: 'bg-rose-500',
+      border: 'border-negative/20 bg-negative-subtle/60 dark:bg-negative-subtle0/10',
+      text: 'text-negative dark:text-negative',
+      bar: 'bg-negative-subtle0',
     };
   }
   if (ratio >= 0.8) {
     return {
-      border: 'border-amber-500/40 bg-amber-50/60 dark:bg-amber-500/10',
-      text: 'text-amber-700 dark:text-amber-300',
-      bar: 'bg-amber-500',
+      border: 'border-border bg-muted/60 dark:bg-muted0/10',
+      text: 'text-muted-foreground dark:text-muted-foreground',
+      bar: 'bg-muted0',
     };
   }
   return {
@@ -111,7 +111,7 @@ export function SeatUsagePill({
       <span
         title={tooltip}
         className={cn(
-          'inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-50/60 font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300 tabular-nums',
+          'inline-flex items-center rounded-full border border-positive/20 bg-positive-subtle/60 font-medium text-positive dark:bg-positive-subtle0/10 dark:text-positive tabular-nums',
           sizing,
           className,
         )}
@@ -120,7 +120,7 @@ export function SeatUsagePill({
       >
         <span
           aria-hidden="true"
-          className="h-1.5 w-1.5 rounded-full bg-emerald-500"
+          className="h-1.5 w-1.5 rounded-full bg-positive-subtle0"
         />
         <span>
           {safeUsed} {safeUsed === 1 ? 'member' : 'members'}

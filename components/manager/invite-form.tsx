@@ -151,7 +151,7 @@ export function InviteForm({ isOwner = true, seatUsage }: InviteFormProps) {
             seatLimit={normalizedUsage.seatLimit}
           />
           {overCap && (
-            <span className="text-xs text-rose-600 dark:text-rose-400">
+            <span className="text-xs text-negative dark:text-negative">
               Only {Math.max(0, Math.floor(remaining))} seats available.{' '}
               <Link href="/manager/billing" className="underline underline-offset-2">
                 Upgrade plan
@@ -170,7 +170,7 @@ export function InviteForm({ isOwner = true, seatUsage }: InviteFormProps) {
       {message && (
         <div
           className={`text-xs ${
-            message.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'
+            message.type === 'success' ? 'text-positive dark:text-positive' : 'text-destructive'
           }`}
         >
           <p>{message.text}</p>

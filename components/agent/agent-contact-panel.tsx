@@ -56,9 +56,9 @@ interface AgentContactData {
 }
 
 const CHANNEL_PILL: Record<string, string> = {
-  sms: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
-  email: 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400',
-  note: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+  sms: 'bg-positive-subtle text-positive dark:bg-positive-subtle0/15 dark:text-positive',
+  email: 'bg-brand-subtle text-primary dark:bg-brand-subtle0/15 dark:text-blue-400',
+  note: 'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground',
 };
 
 const AGENT_LABELS: Record<string, string> = {
@@ -397,7 +397,7 @@ export function AgentContactPanel({ contactId, slug, contactName }: { contactId:
                     <div key={entry.id} className="flex gap-2 items-start text-sm">
                       <span className={cn(
                         'mt-0.5 w-1.5 h-1.5 rounded-full shrink-0',
-                        entry.outcome === 'success' ? 'bg-emerald-500' :
+                        entry.outcome === 'success' ? 'bg-positive-subtle0' :
                         entry.outcome === 'error' ? 'bg-destructive' : 'bg-muted-foreground/40',
                       )} />
                       <div className="flex-1 min-w-0">
@@ -410,7 +410,7 @@ export function AgentContactPanel({ contactId, slug, contactName }: { contactId:
                           {AGENT_LABELS[entry.agentType] ?? entry.agentType} · {timeAgo(entry.createdAt)}
                         </p>
                       </div>
-                      {entry.outcome === 'success' && <CheckCircle2 size={12} className="text-emerald-500 shrink-0 mt-0.5" />}
+                      {entry.outcome === 'success' && <CheckCircle2 size={12} className="text-positive shrink-0 mt-0.5" />}
                       {entry.outcome === 'error' && <XCircle size={12} className="text-destructive shrink-0 mt-0.5" />}
                     </div>
                   ))

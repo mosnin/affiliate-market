@@ -465,7 +465,7 @@ export function DemoAvailabilityManager({
         </div>
       )}
       {saved && !dirty && (
-        <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+        <div className="flex items-center gap-2 text-sm text-positive dark:text-positive">
           <Check size={14} />
           Availability saved.
         </div>

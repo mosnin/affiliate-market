@@ -18,19 +18,19 @@ type Announcement = {
 
 const STYLES: Record<Announcement['severity'], { strip: string; icon: React.ElementType; iconColor: string }> = {
   info: {
-    strip: 'bg-blue-50 border-blue-200 text-blue-900 dark:bg-blue-500/10 dark:border-blue-500/30 dark:text-blue-200',
+    strip: 'bg-brand-subtle border-primary/20 text-blue-900 dark:bg-brand-subtle0/10 dark:border-blue-500/30 dark:text-blue-200',
     icon: Info,
-    iconColor: 'text-blue-600 dark:text-blue-400',
+    iconColor: 'text-primary dark:text-blue-400',
   },
   warning: {
-    strip: 'bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-500/10 dark:border-amber-500/30 dark:text-amber-200',
+    strip: 'bg-muted border-border text-foreground dark:bg-muted0/10 dark:border-border dark:text-muted-foreground',
     icon: AlertTriangle,
-    iconColor: 'text-amber-600 dark:text-amber-400',
+    iconColor: 'text-muted-foreground dark:text-muted-foreground',
   },
   critical: {
-    strip: 'bg-red-50 border-red-200 text-red-900 dark:bg-red-500/10 dark:border-red-500/30 dark:text-red-200',
+    strip: 'bg-negative-subtle border-negative/20 text-red-900 dark:bg-negative-subtle0/10 dark:border-red-500/30 dark:text-red-200',
     icon: AlertCircle,
-    iconColor: 'text-red-600 dark:text-red-400',
+    iconColor: 'text-negative dark:text-red-400',
   },
 };
 

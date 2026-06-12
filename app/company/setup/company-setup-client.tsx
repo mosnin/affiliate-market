@@ -118,7 +118,7 @@ function JoinForm() {
 
   if (joined) {
     return (
-      <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 py-2">
+      <div className="flex items-center gap-2 text-positive dark:text-positive py-2">
         <CheckCircle2 size={16} />
         <p className="text-sm font-medium">Joined {joined}. Redirecting…</p>
       </div>

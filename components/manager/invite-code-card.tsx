@@ -63,7 +63,7 @@ export function InviteCodeCard({ isOwner = true }: { isOwner?: boolean }) {
               <span className="text-sm font-mono font-semibold tracking-widest">{code}</span>
             </div>
             <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleCopy}>
-              {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+              {copied ? <Check size={13} className="text-positive" /> : <Copy size={13} />}
               {copied ? 'Copied.' : 'Copy link'}
             </Button>
             {isOwner && (

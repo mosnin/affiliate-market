@@ -98,8 +98,8 @@ function getEventStyle(type: string): EventStyle {
     case 'agent_completed':
       return {
         icon: <CheckCircle2 size={13} />,
-        dotClass: 'bg-emerald-500',
-        iconClass: 'text-emerald-600 dark:text-emerald-400',
+        dotClass: 'bg-positive-subtle0',
+        iconClass: 'text-positive dark:text-positive',
       };
     case 'agent_failed':
       return {
@@ -110,14 +110,14 @@ function getEventStyle(type: string): EventStyle {
     case 'audit_started':
       return {
         icon: <Brain size={13} />,
-        dotClass: 'bg-amber-500',
-        iconClass: 'text-amber-600 dark:text-amber-400',
+        dotClass: 'bg-muted0',
+        iconClass: 'text-muted-foreground dark:text-muted-foreground',
       };
     case 'swarm_completed':
       return {
         icon: <CheckCircle2 size={15} />,
-        dotClass: 'bg-emerald-500',
-        iconClass: 'text-emerald-600 dark:text-emerald-400',
+        dotClass: 'bg-positive-subtle0',
+        iconClass: 'text-positive dark:text-positive',
       };
     case 'swarm_failed':
       return {

@@ -143,8 +143,8 @@ export function WhatIDid({ slug }: { slug: string }) {
 
             const RowInner = (
               <>
-                <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-                  <Icon size={13} className="text-emerald-600 dark:text-emerald-400" />
+                <div className="w-9 h-9 rounded-lg bg-positive-subtle dark:bg-positive-subtle0/10 flex items-center justify-center flex-shrink-0">
+                  <Icon size={13} className="text-positive dark:text-positive" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm leading-snug">

@@ -126,7 +126,7 @@ export default async function ProductDetailPage({
               <ul className="space-y-2">
                 {product.features.map((feature, i) => (
                   <li key={i} className="flex items-start gap-2.5">
-                    <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
+                    <Check size={14} className="mt-0.5 shrink-0 text-positive" aria-hidden="true" />
                     <span className="text-sm text-foreground">{feature}</span>
                   </li>
                 ))}

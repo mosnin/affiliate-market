@@ -125,7 +125,7 @@ export function ApprovalsPill() {
         onClick={() => setOpen(true)}
         className={cn(
           'inline-flex items-center gap-1.5 mr-1 h-8 px-2.5 rounded-lg text-xs font-medium transition-colors',
-          'bg-amber-50 text-amber-800 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25',
+          'bg-muted text-muted-foreground hover:bg-muted dark:bg-muted0/15 dark:text-muted-foreground dark:hover:bg-muted0/25',
         )}
         title={count === 1 ? '1 action awaiting your approval' : `${count} actions awaiting your approval`}
         aria-label={`${count} approval${count === 1 ? '' : 's'} pending`}

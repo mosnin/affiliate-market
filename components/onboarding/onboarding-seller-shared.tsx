@@ -94,10 +94,10 @@ export function PickerButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'rounded-xl border px-4 py-3 text-sm transition-all',
+        'rounded-xl border px-4 py-3 text-sm transition-all duration-150',
         selected
-          ? 'border-foreground bg-foreground text-background'
-          : 'border-border bg-background text-foreground hover:bg-foreground/[0.04]',
+          ? 'border-primary bg-brand-subtle/50 text-primary'
+          : 'border-border bg-card text-foreground hover:border-primary/40',
       )}
     >
       {children}
@@ -119,7 +119,7 @@ export function StageContinue({
         type="button"
         disabled={disabled}
         onClick={onClick}
-        className="inline-flex items-center justify-center gap-2 rounded-full bg-foreground text-background px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand text-brand-foreground px-5 h-9 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {children} <ArrowRight size={14} />
       </button>
@@ -141,7 +141,7 @@ export function StageWhoYouServe({
   return (
     <div className="space-y-8">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl tracking-tight text-foreground" style={{ fontFamily: 'var(--font-title)' }}>
+        <h2 className="text-[21px] leading-snug tracking-tight font-semibold text-foreground">
           Who do you work with most?
         </h2>
         <p className="text-sm text-muted-foreground">Pick up to 3. I&apos;ll tune my replies and recommendations to them.</p>
@@ -160,8 +160,8 @@ export function StageWhoYouServe({
               className={cn(
                 'rounded-xl border px-4 py-3 text-sm font-medium transition-all',
                 selected
-                  ? 'border-foreground bg-foreground text-background'
-                  : 'border-border bg-background text-foreground hover:bg-foreground/[0.04]',
+                  ? 'border-primary bg-brand-subtle/50 text-primary'
+                  : 'border-border bg-card text-foreground hover:border-primary/40',
                 atCap && 'opacity-40 cursor-not-allowed',
               )}
             >
@@ -178,7 +178,7 @@ export function StageWhoYouServe({
           rows={3}
           maxLength={500}
           placeholder='e.g. "Never push for a demo on the first message. Always sign off as Sarah from Coastal Realty."'
-          className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </Section>
 
@@ -204,7 +204,7 @@ export function StageVoice({
   return (
     <div className="space-y-8">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl tracking-tight text-foreground" style={{ fontFamily: 'var(--font-title)' }}>
+        <h2 className="text-[21px] leading-snug tracking-tight font-semibold text-foreground">
           Which one sounds more like you?
         </h2>
         <p className="text-sm text-muted-foreground">
@@ -240,8 +240,8 @@ function VoiceCard({
         'text-left rounded-xl border p-5 transition-all',
         // Paper-flat: ring, not shadow, on the selected card (STYLESHEET §Shadows).
         selected
-          ? 'border-foreground bg-foreground/[0.04] ring-2 ring-foreground/10 ring-offset-2 ring-offset-background'
-          : 'border-border bg-background hover:bg-foreground/[0.04]',
+          ? 'border-primary bg-brand-subtle/50'
+          : 'border-border bg-card hover:border-primary/40',
       )}
     >
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">{label}</p>
@@ -260,7 +260,7 @@ export function StageSources({
   return (
     <div className="space-y-8">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl tracking-tight text-foreground" style={{ fontFamily: 'var(--font-title)' }}>
+        <h2 className="text-[21px] leading-snug tracking-tight font-semibold text-foreground">
           Where do most of your leads come from?
         </h2>
         <p className="text-sm text-muted-foreground">
@@ -279,14 +279,14 @@ export function StageSources({
               className={cn(
                 'rounded-xl border px-3 py-3 text-sm font-medium transition-all flex flex-col items-center gap-2',
                 selected
-                  ? 'border-foreground bg-foreground text-background'
-                  : 'border-border bg-background text-foreground hover:bg-foreground/[0.04]',
+                  ? 'border-primary bg-brand-subtle/50 text-primary'
+                  : 'border-border bg-card text-foreground hover:border-primary/40',
               )}
             >
               {opt.icon ? (
                 <img src={opt.icon} alt="" aria-hidden className="w-6 h-6 object-contain" />
               ) : (
-                <span className={cn('w-6 h-6 rounded-md inline-flex items-center justify-center text-xs font-semibold', selected ? 'bg-background/20' : 'bg-muted text-muted-foreground')}>
+                <span className={cn('w-6 h-6 rounded-md inline-flex items-center justify-center text-xs font-semibold', selected ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground')}>
                   {opt.label[0]}
                 </span>
               )}
@@ -305,7 +305,7 @@ export function StageSources({
 
 export function ErrorLine({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50/70 dark:border-rose-900 dark:bg-rose-950/40 px-3 py-2.5 text-sm text-rose-800 dark:text-rose-200">
+    <div className="flex items-start gap-2 rounded-xl border border-negative/20 bg-negative-subtle px-3 py-2.5 text-sm text-negative">
       <span>{message}</span>
     </div>
   );

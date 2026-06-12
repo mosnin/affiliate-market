@@ -58,10 +58,10 @@ function formatAgent(t: string): string {
 }
 
 const OUTCOME_CFG = {
-  completed: { icon: CheckCircle2, cls: 'text-emerald-600 dark:text-emerald-400' },
-  queued_for_approval: { icon: Clock, cls: 'text-amber-500 dark:text-amber-400' },
-  suggested: { icon: Lightbulb, cls: 'text-amber-400 dark:text-amber-300' },
-  failed: { icon: AlertCircle, cls: 'text-rose-600 dark:text-rose-400' },
+  completed: { icon: CheckCircle2, cls: 'text-positive dark:text-positive' },
+  queued_for_approval: { icon: Clock, cls: 'text-muted-foreground dark:text-muted-foreground' },
+  suggested: { icon: Lightbulb, cls: 'text-lead-warm dark:text-muted-foreground' },
+  failed: { icon: AlertCircle, cls: 'text-negative dark:text-negative' },
 } as const;
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -275,17 +275,17 @@ export function AgentMissionControl({ slug }: { slug: string }) {
               {latestRun.entries.length} action{latestRun.entries.length !== 1 ? 's' : ''}
             </span>
             {runCompleted > 0 && (
-              <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
+              <span className="text-[11px] font-medium text-positive dark:text-positive bg-positive-subtle dark:bg-positive-subtle0/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
                 {runCompleted} done
               </span>
             )}
             {runQueued > 0 && (
-              <span className="text-[11px] font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
+              <span className="text-[11px] font-medium text-muted-foreground dark:text-muted-foreground bg-muted dark:bg-muted0/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
                 {runQueued} draft{runQueued !== 1 ? 's' : ''}
               </span>
             )}
             {runFailed > 0 && (
-              <span className="text-[11px] font-medium text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
+              <span className="text-[11px] font-medium text-negative dark:text-negative bg-negative-subtle dark:bg-negative-subtle0/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
                 {runFailed} failed
               </span>
             )}
@@ -373,7 +373,7 @@ export function AgentMissionControl({ slug }: { slug: string }) {
                   <span className={cn(
                     'w-1.5 h-1.5 rounded-full mt-[5px] flex-shrink-0',
                     insight.importance >= 0.7 ? 'bg-red-500' :
-                    insight.importance >= 0.4 ? 'bg-amber-400' :
+                    insight.importance >= 0.4 ? 'bg-lead-warm' :
                     'bg-muted-foreground/30',
                   )} />
                   <div className="flex-1 min-w-0">
@@ -384,7 +384,7 @@ export function AgentMissionControl({ slug }: { slug: string }) {
                         insight.entityType === 'contact'
                           ? 'bg-brand-subtle text-primary dark:bg-brand/15 dark:text-primary'
                           : insight.entityType === 'deal'
-                            ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400'
+                            ? 'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground'
                             : 'bg-muted text-muted-foreground',
                       )}>
                         {insight.entityName}

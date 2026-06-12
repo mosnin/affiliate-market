@@ -41,7 +41,7 @@ export function RemoveMemberButton({ membershipId, memberName }: RemoveMemberBut
           type="button"
           onClick={handleRemove}
           disabled={loading}
-          className="h-7 px-2 inline-flex items-center rounded-md text-xs font-medium text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10 transition-colors disabled:opacity-50"
+          className="h-7 px-2 inline-flex items-center rounded-md text-xs font-medium text-negative hover:bg-negative-subtle dark:text-negative dark:hover:bg-negative-subtle0/10 transition-colors disabled:opacity-50"
         >
           {loading ? 'Removing…' : 'Confirm'}
         </button>
@@ -62,7 +62,7 @@ export function RemoveMemberButton({ membershipId, memberName }: RemoveMemberBut
       type="button"
       onClick={() => setConfirming(true)}
       aria-label={`Remove ${memberName}`}
-      className="h-7 px-2 inline-flex items-center rounded-md text-xs font-medium text-muted-foreground hover:text-rose-700 dark:hover:text-rose-400 hover:bg-muted transition-colors"
+      className="h-7 px-2 inline-flex items-center rounded-md text-xs font-medium text-muted-foreground hover:text-negative dark:hover:text-negative hover:bg-muted transition-colors"
     >
       Remove
     </button>

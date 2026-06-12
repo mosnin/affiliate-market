@@ -124,7 +124,7 @@ export function ComposeEmailDialog({ contactId, contactName, contactEmail }: Com
               <p className="text-xs text-destructive">That didn&apos;t go through.</p>
             )}
             {status === 'sent' && (
-              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Sent.</p>
+              <p className="text-xs text-positive dark:text-positive font-medium">Sent.</p>
             )}
 
             <div className="flex justify-end gap-2">
@@ -134,7 +134,7 @@ export function ComposeEmailDialog({ contactId, contactName, contactEmail }: Com
               <Button
                 onClick={handleSend}
                 disabled={sending || !subject.trim() || !body.trim() || status === 'sent'}
-                className={cn('gap-2', status === 'sent' && 'bg-emerald-600 hover:bg-emerald-600 dark:bg-emerald-500 dark:hover:bg-emerald-500')}
+                className={cn('gap-2', status === 'sent' && 'bg-positive hover:bg-positive dark:bg-positive-subtle0 dark:hover:bg-positive-subtle0')}
               >
                 <Send size={14} />
                 {sending ? 'Sending…' : status === 'sent' ? 'Sent!' : 'Send'}

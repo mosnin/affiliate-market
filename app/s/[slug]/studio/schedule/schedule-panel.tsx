@@ -54,10 +54,10 @@ function nowLocalForInput(): string {
 }
 
 const STATUS_TONE: Record<string, string> = {
-  scheduled: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  publishing: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  posted: 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
-  failed: 'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15',
+  scheduled: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  publishing: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  posted: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
+  failed: 'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15',
   canceled: 'text-muted-foreground bg-muted',
 };
 
@@ -294,7 +294,7 @@ export function SchedulePanel({
         </div>
 
         {error && (
-          <div className="rounded-lg border border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/5 px-3 py-2 flex items-start gap-2 text-[12.5px] text-rose-700 dark:text-rose-400">
+          <div className="rounded-lg border border-negative/20 bg-negative-subtle/70 dark:bg-negative-subtle0/5 px-3 py-2 flex items-start gap-2 text-[12.5px] text-negative dark:text-negative">
             <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
             <span>{error}</span>
           </div>

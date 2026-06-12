@@ -35,7 +35,7 @@ export function JoinCodeAcceptButton({ code }: { code: string }) {
 
   if (done) {
     return (
-      <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium text-sm">
+      <div className="flex items-center gap-2 text-positive dark:text-positive font-medium text-sm">
         <CheckCircle2 size={16} />
         Joined! Redirecting…
       </div>

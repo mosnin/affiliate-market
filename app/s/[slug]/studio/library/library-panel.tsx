@@ -174,7 +174,7 @@ export function LibraryPanel() {
   }
   if (error && items.length === 0) {
     return (
-      <p className="py-12 text-center text-[12.5px] text-rose-700 dark:text-rose-400">
+      <p className="py-12 text-center text-[12.5px] text-negative dark:text-negative">
         {error}
       </p>
     );
@@ -215,7 +215,7 @@ export function LibraryPanel() {
       </div>
 
       {error && (
-        <p className="text-[12.5px] text-rose-700 dark:text-rose-400 text-center">
+        <p className="text-[12.5px] text-negative dark:text-negative text-center">
           {error}
         </p>
       )}

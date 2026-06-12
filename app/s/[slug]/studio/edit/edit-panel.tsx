@@ -256,13 +256,13 @@ export function EditPanel({
 
       {/* Error */}
       {error && (
-        <div className="rounded-lg border border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/5 px-3 py-2 flex items-start gap-2 text-[12.5px] text-rose-700 dark:text-rose-400">
+        <div className="rounded-lg border border-negative/20 bg-negative-subtle/70 dark:bg-negative-subtle0/5 px-3 py-2 flex items-start gap-2 text-[12.5px] text-negative dark:text-negative">
           <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
           <span>{error}</span>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="ml-auto text-rose-700/70 dark:text-rose-400/70 hover:text-rose-700 dark:hover:text-rose-400"
+            className="ml-auto text-negative/70 dark:text-negative/70 hover:text-negative dark:hover:text-negative"
           >
             Dismiss
           </button>

@@ -162,7 +162,7 @@ export function OnboardingChecklist({ slug, hasLeads, hasContacts, hasDemos, has
               )}
             >
               {step.completed ? (
-                <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                <CheckCircle2 size={16} className="text-positive dark:text-positive flex-shrink-0" />
               ) : (
                 <Circle size={16} className="text-muted-foreground/40 flex-shrink-0 group-hover:text-muted-foreground" />
               )}

@@ -196,7 +196,7 @@ export function AgentDealPanel({ dealId, slug, dealTitle }: { dealId: string; sl
                   <div key={entry.id} className="flex gap-2 items-start text-sm">
                     <span className={cn(
                       'mt-1 w-1.5 h-1.5 rounded-full shrink-0',
-                      entry.outcome === 'success' ? 'bg-emerald-500' :
+                      entry.outcome === 'success' ? 'bg-positive-subtle0' :
                       entry.outcome === 'error' ? 'bg-destructive' : 'bg-muted-foreground/40',
                     )} />
                     <div className="flex-1 min-w-0">
@@ -209,7 +209,7 @@ export function AgentDealPanel({ dealId, slug, dealTitle }: { dealId: string; sl
                         {AGENT_LABELS[entry.agentType] ?? entry.agentType} · {timeAgo(entry.createdAt)}
                       </p>
                     </div>
-                    {entry.outcome === 'success' && <CheckCircle2 size={11} className="text-emerald-500 shrink-0 mt-0.5" />}
+                    {entry.outcome === 'success' && <CheckCircle2 size={11} className="text-positive shrink-0 mt-0.5" />}
                     {entry.outcome === 'error' && <XCircle size={11} className="text-destructive shrink-0 mt-0.5" />}
                   </div>
                 ))

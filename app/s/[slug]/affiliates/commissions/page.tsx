@@ -11,7 +11,9 @@ import {
   SECTION_RHYTHM,
   META,
   CAPTION,
-  TITLE_FONT,
+  CHIP_POSITIVE,
+  CHIP_NEUTRAL,
+  CHIP_NEGATIVE,
 } from '@/lib/typography';
 import { formatCurrency } from '@/lib/formatting';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
@@ -33,13 +35,6 @@ const STATUS_FILTER_TABS: { label: string; value: string }[] = [
   { label: 'Paid', value: 'paid' },
   { label: 'Rejected', value: 'rejected' },
 ];
-
-const STATUS_BADGE: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700 border-amber-200/70',
-  approved: 'bg-emerald-50 text-emerald-700 border-emerald-200/70',
-  paid: 'bg-blue-50 text-blue-700 border-blue-200/70',
-  rejected: 'bg-red-50 text-red-700 border-red-200/70',
-};
 
 export default async function AffiliateCommissionsPage({
   params,
@@ -67,7 +62,7 @@ export default async function AffiliateCommissionsPage({
       {/* Page header */}
       <header className="space-y-1">
         <p className={cn(SECTION_LABEL)}>Affiliates</p>
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className={cn(H1)}>
           Commissions
         </h1>
       </header>
@@ -83,7 +78,7 @@ export default async function AffiliateCommissionsPage({
               className={cn(
                 'px-3.5 h-9 inline-flex items-center text-sm transition-colors border-b-2 -mb-px',
                 isActive
-                  ? 'border-foreground text-foreground font-medium'
+                  ? 'border-primary text-foreground font-medium'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
@@ -108,7 +103,7 @@ export default async function AffiliateCommissionsPage({
                 className={cn(
                   'px-3 h-8 inline-flex items-center rounded-full text-xs font-medium transition-colors border',
                   isActive
-                    ? 'bg-foreground text-background border-foreground'
+                    ? 'bg-primary text-primary-foreground border-primary'
                     : 'bg-background text-muted-foreground border-border/60 hover:text-foreground hover:border-foreground/30',
                 )}
               >
@@ -123,7 +118,7 @@ export default async function AffiliateCommissionsPage({
         </h2>
 
         {commissions.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-10 text-center">
+          <div className="rounded-2xl border border-border bg-muted/20 px-5 py-10 text-center">
             <p className={cn(BODY_MUTED)}>
               {activeStatus
                 ? `No ${activeStatus} commissions.`
@@ -131,10 +126,10 @@ export default async function AffiliateCommissionsPage({
             </p>
           </div>
         ) : (
-          <div className="rounded-xl border border-border/60 overflow-hidden">
+          <div className="rounded-2xl border border-border overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border/60 bg-muted/30">
+                <tr className="border-b border-border/60 bg-muted/40">
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Date</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium hidden sm:table-cell')}>Partner</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium hidden md:table-cell')}>Order</th>
@@ -160,12 +155,18 @@ export default async function AffiliateCommissionsPage({
                       {formatCurrency(c.amountCents / 100)}
                     </td>
                     <td className="px-4 py-3 align-middle">
-                      <span className={cn(
-                        'inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border',
-                        STATUS_BADGE[c.status] ?? 'bg-muted text-muted-foreground border-border/60',
-                      )}>
-                        {c.status}
-                      </span>
+                      {(c.status === 'approved' || c.status === 'paid') && (
+                        <span className={cn(CHIP_POSITIVE)}>{c.status}</span>
+                      )}
+                      {c.status === 'pending' && (
+                        <span className={cn(CHIP_NEUTRAL)}>{c.status}</span>
+                      )}
+                      {c.status === 'rejected' && (
+                        <span className={cn(CHIP_NEGATIVE)}>{c.status}</span>
+                      )}
+                      {c.status !== 'approved' && c.status !== 'paid' && c.status !== 'pending' && c.status !== 'rejected' && (
+                        <span className={cn(CHIP_NEUTRAL)}>{c.status}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 align-middle text-right">
                       {c.status === 'pending' && (

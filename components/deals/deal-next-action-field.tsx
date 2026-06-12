@@ -75,7 +75,7 @@ export function DealNextActionField({ dealId, initialAction, initialDueAt }: Dea
   return (
     <div className={cn(
       'rounded-lg border bg-card p-4',
-      overdue ? 'border-red-200 dark:border-red-800' : 'border-border/70',
+      overdue ? 'border-negative/20 dark:border-red-800' : 'border-border/70',
     )}>
       <div className="flex items-center gap-2 mb-2">
         <ArrowRight size={14} className="text-muted-foreground" />
@@ -83,7 +83,7 @@ export function DealNextActionField({ dealId, initialAction, initialDueAt }: Dea
           Next action
         </p>
         {overdue && (
-          <span className="text-[10px] font-semibold text-red-700 dark:text-red-400 uppercase tracking-wide">
+          <span className="text-[10px] font-semibold text-negative dark:text-red-400 uppercase tracking-wide">
             Overdue
           </span>
         )}

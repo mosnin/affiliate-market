@@ -11,7 +11,9 @@ import {
   SECTION_RHYTHM,
   META,
   CAPTION,
-  TITLE_FONT,
+  CHIP_POSITIVE,
+  CHIP_NEUTRAL,
+  CHIP_NEGATIVE,
 } from '@/lib/typography';
 import { formatCurrency } from '@/lib/formatting';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
@@ -24,13 +26,6 @@ const AFFILIATE_TABS = [
   { label: 'Commissions', href: '/commissions' },
   { label: 'Payouts', href: '/payouts' },
 ];
-
-const PAYOUT_STATUS_BADGE: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700 border-amber-200/70',
-  processing: 'bg-blue-50 text-blue-700 border-blue-200/70',
-  completed: 'bg-emerald-50 text-emerald-700 border-emerald-200/70',
-  failed: 'bg-red-50 text-red-700 border-red-200/70',
-};
 
 export default async function AffiliatePayoutsAdminPage({
   params,
@@ -56,7 +51,7 @@ export default async function AffiliatePayoutsAdminPage({
       <header className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <p className={cn(SECTION_LABEL)}>Affiliates</p>
-          <h1 className={cn(H1)} style={TITLE_FONT}>
+          <h1 className={cn(H1)}>
             Payouts
           </h1>
         </div>
@@ -74,7 +69,7 @@ export default async function AffiliatePayoutsAdminPage({
               className={cn(
                 'px-3.5 h-9 inline-flex items-center text-sm transition-colors border-b-2 -mb-px',
                 isActive
-                  ? 'border-foreground text-foreground font-medium'
+                  ? 'border-primary text-foreground font-medium'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
@@ -89,16 +84,16 @@ export default async function AffiliatePayoutsAdminPage({
         <h2 className={cn(H2)}>Payout history</h2>
 
         {payouts.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-10 text-center">
+          <div className="rounded-2xl border border-border bg-muted/20 px-5 py-10 text-center">
             <p className={cn(BODY_MUTED)}>
               No payouts yet. Run a payout batch to pay out all partners with approved commissions.
             </p>
           </div>
         ) : (
-          <div className="rounded-xl border border-border/60 overflow-hidden">
+          <div className="rounded-2xl border border-border overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border/60 bg-muted/30">
+                <tr className="border-b border-border/60 bg-muted/40">
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Date</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium hidden sm:table-cell')}>Partner</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-right font-medium')}>Amount</th>
@@ -123,12 +118,18 @@ export default async function AffiliatePayoutsAdminPage({
                       {p.method ?? '—'}
                     </td>
                     <td className="px-4 py-3 align-middle">
-                      <span className={cn(
-                        'inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border',
-                        PAYOUT_STATUS_BADGE[p.status] ?? 'bg-muted text-muted-foreground border-border/60',
-                      )}>
-                        {p.status}
-                      </span>
+                      {p.status === 'completed' && (
+                        <span className={cn(CHIP_POSITIVE)}>{p.status}</span>
+                      )}
+                      {(p.status === 'pending' || p.status === 'processing') && (
+                        <span className={cn(CHIP_NEUTRAL)}>{p.status}</span>
+                      )}
+                      {p.status === 'failed' && (
+                        <span className={cn(CHIP_NEGATIVE)}>{p.status}</span>
+                      )}
+                      {p.status !== 'completed' && p.status !== 'pending' && p.status !== 'processing' && p.status !== 'failed' && (
+                        <span className={cn(CHIP_NEUTRAL)}>{p.status}</span>
+                      )}
                     </td>
                   </tr>
                 ))}

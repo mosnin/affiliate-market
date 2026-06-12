@@ -201,7 +201,7 @@ const messages: Message[] = [
     title: 'Ethan Cole',
     time: '6m ago',
     content: 'Submitted application • Score 76 • Prefers Midtown',
-    color: 'from-emerald-400 to-teal-500'
+    color: 'from-brand to-teal-500'
   },
   {
     title: 'Ava Martinez',

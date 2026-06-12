@@ -179,7 +179,7 @@ export default async function ProductsPage({
                       <span className={cn(
                         'text-[10px] font-medium px-1.5 py-0.5 rounded-full',
                         published
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                          ? 'bg-positive-subtle text-positive dark:bg-positive-subtle dark:text-positive'
                           : 'bg-muted text-muted-foreground',
                       )}>
                         {published ? 'Published' : 'Draft'}

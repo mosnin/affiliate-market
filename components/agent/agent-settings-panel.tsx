@@ -218,7 +218,7 @@ export function AgentSettingsPanel({ slug: _slug }: Props) {
               </span>
               <span className={cn(
                 'font-medium',
-                usage.pct >= 90 ? 'text-destructive' : usage.pct >= 70 ? 'text-amber-500' : 'text-muted-foreground',
+                usage.pct >= 90 ? 'text-destructive' : usage.pct >= 70 ? 'text-muted-foreground' : 'text-muted-foreground',
               )}>
                 {usage.pct}% · resets in {timeUntil(usage.resetsAt)}
               </span>
@@ -227,7 +227,7 @@ export function AgentSettingsPanel({ slug: _slug }: Props) {
               <div
                 className={cn(
                   'h-full rounded-full transition-all',
-                  usage.pct >= 90 ? 'bg-destructive' : usage.pct >= 70 ? 'bg-amber-400' : 'bg-brand',
+                  usage.pct >= 90 ? 'bg-destructive' : usage.pct >= 70 ? 'bg-lead-warm' : 'bg-brand',
                 )}
                 style={{ width: `${usage.pct}%` }}
               />
@@ -266,7 +266,7 @@ export function AgentSettingsPanel({ slug: _slug }: Props) {
           ))}
         </div>
         {savedField === 'budget' && (
-          <p className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 size={11} /> Saved</p>
+          <p className="text-xs text-positive flex items-center gap-1"><CheckCircle2 size={11} /> Saved</p>
         )}
       </div>
 

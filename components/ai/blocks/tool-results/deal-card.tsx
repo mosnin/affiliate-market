@@ -61,12 +61,12 @@ function formatShortDate(iso: string | null | undefined): string {
 /* ─── Stage chip ─────────────────────────────────────────────────────────── */
 
 const STAGE_CHIP: Record<string, string> = {
-  active:       'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
-  offer:        'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
-  under_contract: 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
-  won:          'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
-  closed:       'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
-  lost:         'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15',
+  active:       'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15',
+  offer:        'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15',
+  under_contract: 'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15',
+  won:          'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
+  closed:       'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
+  lost:         'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15',
 };
 
 function stageChipClass(stage: string | undefined): string {
@@ -141,7 +141,7 @@ function CollapsedRow({ deal, isExpanded }: { deal: DealSummary; isExpanded: boo
             <span
               className={cn(
                 'truncate',
-                overdue && 'text-rose-600 dark:text-rose-400',
+                overdue && 'text-negative dark:text-negative',
               )}
             >
               {overdue ? 'overdue: ' : 'next: '}

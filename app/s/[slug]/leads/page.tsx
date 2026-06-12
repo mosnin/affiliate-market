@@ -121,13 +121,13 @@ export default async function LeadsPage({
           <div className="h-3 w-px bg-border hidden sm:block" />
           <div className="flex flex-wrap gap-3">
             {tierCounts.hot > 0 && (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-positive dark:text-positive">
                 <Flame size={13} />
                 {tierCounts.hot} hot
               </div>
             )}
             {tierCounts.warm > 0 && (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground dark:text-muted-foreground">
                 <Thermometer size={13} />
                 {tierCounts.warm} warm
               </div>

@@ -199,7 +199,7 @@ export function BulkInviteForm({ seatUsage }: BulkInviteFormProps = {}) {
         )}
 
         {exceedsCap && remainingLabel !== null && (
-          <p className="text-xs text-rose-600 dark:text-rose-400">
+          <p className="text-xs text-negative dark:text-negative">
             Only {remainingLabel} seat{remainingLabel === 1 ? '' : 's'} available.{' '}
             <Link href="/manager/billing" className="underline underline-offset-2">
               Upgrade plan
@@ -225,12 +225,12 @@ export function BulkInviteForm({ seatUsage }: BulkInviteFormProps = {}) {
           <div className="space-y-2 pt-2 border-t border-border">
             <div className="flex items-center gap-3 text-xs">
               {sentCount > 0 && (
-                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                <span className="flex items-center gap-1 text-positive dark:text-positive">
                   <CheckCircle2 size={12} /> {sentCount} sent
                 </span>
               )}
               {dupCount > 0 && (
-                <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                <span className="flex items-center gap-1 text-muted-foreground dark:text-muted-foreground">
                   <AlertCircle size={12} /> {dupCount} duplicate{dupCount !== 1 ? 's' : ''}
                 </span>
               )}

@@ -137,7 +137,7 @@ export function MemoryList() {
               {row.importance >= 0.6 && (
                 <>
                   <span className="text-muted-foreground/40">·</span>
-                  <span className="text-amber-600 dark:text-amber-400">important</span>
+                  <span className="text-muted-foreground dark:text-muted-foreground">important</span>
                 </>
               )}
             </div>

@@ -222,8 +222,8 @@ export function AvailabilityOverrides({ slug, productProfiles = [] }: Availabili
                 className={cn(
                   'flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all',
                   formType === 'blocked'
-                    ? 'border-red-400 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300'
-                    : 'border-border hover:border-red-300'
+                    ? 'border-red-400 bg-negative-subtle text-negative dark:border-red-700 dark:bg-red-900/20 dark:text-red-300'
+                    : 'border-border hover:border-negative/20'
                 )}
               >
                 <CalendarOff size={13} /> Day Off
@@ -348,17 +348,17 @@ export function AvailabilityOverrides({ slug, productProfiles = [] }: Availabili
                 className={cn(
                   'flex items-center justify-between rounded-lg border px-4 py-3',
                   o.isBlocked
-                    ? 'border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-900/10'
+                    ? 'border-negative/20 bg-negative-subtle/50 dark:border-red-800 dark:bg-red-900/10'
                     : 'border-border bg-card'
                 )}
               >
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
-                    o.isBlocked ? 'bg-red-100 dark:bg-red-900/30' : 'bg-primary/10'
+                    o.isBlocked ? 'bg-negative-subtle dark:bg-red-900/30' : 'bg-primary/10'
                   )}>
                     {o.isBlocked
-                      ? <CalendarOff size={15} className="text-red-600 dark:text-red-400" />
+                      ? <CalendarOff size={15} className="text-negative dark:text-red-400" />
                       : <Clock size={15} className="text-primary" />
                     }
                   </div>

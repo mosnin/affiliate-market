@@ -151,7 +151,7 @@ export function FilePreviewModal({ file, onClose, onDelete }: Props) {
                     onClose();
                   }
                 }}
-                className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 px-3 h-9 text-[13px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-full border border-negative/20 px-3 h-9 text-[13px] font-medium text-negative dark:text-negative hover:bg-negative-subtle0/10 transition-colors"
               >
                 <Trash2 size={13} />
                 Delete
@@ -186,7 +186,7 @@ function PreviewBody({
 }) {
   if (error) {
     return (
-      <div className="px-5 py-12 flex items-center justify-center gap-2 text-sm text-rose-600 dark:text-rose-400">
+      <div className="px-5 py-12 flex items-center justify-center gap-2 text-sm text-negative dark:text-negative">
         <AlertCircle size={14} />
         {error}
       </div>

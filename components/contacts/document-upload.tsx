@@ -122,7 +122,7 @@ export function DocumentUpload({ contactId, uploadedBy = 'guest', onUploaded }: 
               <File size={14} className="text-muted-foreground flex-shrink-0" />
               <span className="text-xs font-medium truncate flex-1">{doc.fileName}</span>
               <span className="text-[10px] text-muted-foreground">{formatSize(doc.fileSize)}</span>
-              <CheckCircle2 size={12} className="text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
+              <CheckCircle2 size={12} className="text-positive dark:text-positive flex-shrink-0" />
             </div>
           ))}
         </div>

@@ -11,8 +11,8 @@ import { LogoutButton } from '../auth-ui';
 export const dynamic = 'force-dynamic';
 
 const ORDER_STATUS_TONE: Record<string, string> = {
-  pending: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  paid: 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
+  pending: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  paid: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
   refunded: 'text-muted-foreground bg-muted',
   canceled: 'text-muted-foreground bg-muted',
 };
@@ -25,8 +25,8 @@ const ORDER_STATUS_LABEL: Record<string, string> = {
 };
 
 const LICENSE_STATUS_TONE: Record<string, string> = {
-  active: 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
-  revoked: 'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15',
+  active: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
+  revoked: 'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15',
   expired: 'text-muted-foreground bg-muted',
 };
 

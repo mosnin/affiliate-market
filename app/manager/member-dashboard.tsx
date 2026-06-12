@@ -208,9 +208,9 @@ export async function MemberDashboard({ ctx }: MemberDashboardProps) {
     const label = scoreLabel ?? `${leadScore}`;
     const color =
       scoreLabel === 'Hot' || (leadScore && leadScore >= HOT_LEAD_THRESHOLD)
-        ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15'
+        ? 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15'
         : scoreLabel === 'Warm' || (leadScore && leadScore >= WARM_LEAD_THRESHOLD)
-          ? 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15'
+          ? 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15'
           : 'text-muted-foreground bg-muted';
     return (
       <span className={`inline-flex items-center text-[10px] font-semibold rounded-full px-2 py-0.5 ${color}`}>
@@ -371,8 +371,8 @@ export async function MemberDashboard({ ctx }: MemberDashboardProps) {
                       <span
                         className={`inline-flex items-center text-[10px] font-semibold rounded-full px-2 py-0.5 flex-shrink-0 ${
                           isOverdue
-                            ? 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15'
-                            : 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15'
+                            ? 'text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15'
+                            : 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15'
                         }`}
                       >
                         {isOverdue

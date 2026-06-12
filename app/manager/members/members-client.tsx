@@ -145,7 +145,7 @@ export function MembersClient({
                         </span>
                         <span className={rolePillClass}>{roleLabel(m.role)}</span>
                         {!m.userOnboard && (
-                          <span className="inline-flex text-[10px] font-semibold rounded-full px-2 py-0.5 flex-shrink-0 text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15">
+                          <span className="inline-flex text-[10px] font-semibold rounded-full px-2 py-0.5 flex-shrink-0 text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15">
                             Pending
                           </span>
                         )}

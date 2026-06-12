@@ -74,7 +74,7 @@ function LinkRow({ icon: Icon, label, description, url, previewHref }: LinkRowPr
           <span
             className={cn(
               'block truncate text-[11px] leading-tight mt-0.5 transition-colors duration-150',
-              copied ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground/80',
+              copied ? 'text-positive dark:text-positive' : 'text-muted-foreground/80',
             )}
           >
             {copied ? 'Copied to clipboard' : description}
@@ -85,7 +85,7 @@ function LinkRow({ icon: Icon, label, description, url, previewHref }: LinkRowPr
           className={cn(
             'flex-shrink-0 transition-colors duration-150',
             copied
-              ? 'text-emerald-600 dark:text-emerald-400'
+              ? 'text-positive dark:text-positive'
               : 'text-muted-foreground/40 group-hover:text-muted-foreground',
           )}
         >
@@ -137,7 +137,7 @@ export function ShareLinksMenu({ slug }: ShareLinksMenuProps) {
           type="button"
           aria-label="Share my links"
           title="Share my links"
-          className="h-8 w-8 flex items-center justify-center rounded-full border border-border/70 bg-background text-muted-foreground/70 hover:text-foreground hover:bg-foreground/[0.04] transition-colors data-[state=open]:bg-foreground/[0.045] data-[state=open]:text-foreground"
+          className="h-9 w-9 inline-flex items-center justify-center rounded-xl border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors duration-150 data-[state=open]:bg-muted/60 data-[state=open]:text-foreground"
         >
           <Link2 size={14} strokeWidth={1.75} />
         </button>

@@ -17,8 +17,8 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_TONE: Record<string, string> = {
-  pending: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  paid: 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
+  pending: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  paid: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
   refunded: 'text-muted-foreground bg-muted',
   canceled: 'text-muted-foreground bg-muted',
 };
@@ -126,7 +126,7 @@ export default async function OrderReceiptPage({
               Status:{' '}
               <span
                 className={
-                  license.status === 'active' ? 'text-emerald-600 dark:text-emerald-400' : ''
+                  license.status === 'active' ? 'text-positive dark:text-positive' : ''
                 }
               >
                 {license.status}

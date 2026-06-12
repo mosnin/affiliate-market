@@ -41,7 +41,7 @@ export function JoinWithCodeCard() {
     return (
       <Card>
         <CardContent className="px-5 py-4">
-          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+          <div className="flex items-center gap-2 text-positive dark:text-positive">
             <CheckCircle2 size={16} />
             <p className="text-sm font-medium">Joined {joined}. Redirecting…</p>
           </div>

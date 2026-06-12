@@ -55,9 +55,9 @@ export function snoozeDateFromHours(hours: number): string {
 function getScoreBadge(scoreLabel: string | null) {
   if (!scoreLabel) return null;
   const colors: Record<string, string> = {
-    hot: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400',
-    warm: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
-    cold: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400',
+    hot: 'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400',
+    warm: 'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground',
+    cold: 'bg-brand-subtle text-primary dark:bg-brand-subtle0/15 dark:text-blue-400',
     unqualified: 'bg-gray-100 text-gray-600 dark:bg-gray-500/15 dark:text-gray-400',
   };
   return colors[scoreLabel] ?? colors.unqualified;
@@ -241,7 +241,7 @@ export function FollowUpsView({ slug, contacts: initialContacts, deals: initialD
               <span className={cn(
                 'ml-1.5 inline-flex min-w-[18px] h-[18px] px-1 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums',
                 t.key === 'overdue' && t.count > 0
-                  ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
+                  ? 'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400'
                   : 'bg-muted text-muted-foreground'
               )}>
                 {t.count}
@@ -267,7 +267,7 @@ export function FollowUpsView({ slug, contacts: initialContacts, deals: initialD
                   <div className={cn(
                     'w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0',
                     overdueBool
-                      ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
+                      ? 'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400'
                       : 'bg-primary/10 text-primary'
                   )}>
                     {contact.name.charAt(0).toUpperCase()}
@@ -309,8 +309,8 @@ export function FollowUpsView({ slug, contacts: initialContacts, deals: initialD
                   <span className={cn(
                     'text-[11px] font-semibold rounded-md px-2 py-0.5 flex-shrink-0 hidden sm:inline',
                     overdueBool
-                      ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
-                      : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
+                      ? 'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400'
+                      : 'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground'
                   )}>
                     {formatDate(contact.followUpAt)}
                   </span>
@@ -324,7 +324,7 @@ export function FollowUpsView({ slug, contacts: initialContacts, deals: initialD
                         title="Snooze"
                         disabled={isBusy}
                         onClick={() => setSnoozeOpen(snoozeOpen === contact.id ? null : contact.id)}
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/15 transition-colors"
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-muted-foreground hover:bg-muted dark:hover:bg-muted0/15 transition-colors"
                       >
                         <Timer size={14} />
                       </button>
@@ -348,7 +348,7 @@ export function FollowUpsView({ slug, contacts: initialContacts, deals: initialD
                       title="Mark done"
                       disabled={isBusy}
                       onClick={() => handleMarkDone(contact.id)}
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/15 transition-colors"
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-positive hover:bg-positive-subtle dark:hover:bg-positive-subtle0/15 transition-colors"
                     >
                       <CheckCircle2 size={14} />
                     </button>
@@ -375,7 +375,7 @@ export function FollowUpsView({ slug, contacts: initialContacts, deals: initialD
                   <div className={cn(
                     'w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0',
                     overdueBool
-                      ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
+                      ? 'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400'
                       : 'bg-primary/10 text-primary'
                   )}>
                     <Briefcase size={16} />
@@ -389,8 +389,8 @@ export function FollowUpsView({ slug, contacts: initialContacts, deals: initialD
                   <span className={cn(
                     'text-[11px] font-semibold rounded-md px-2 py-0.5 flex-shrink-0 hidden sm:inline',
                     overdueBool
-                      ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
-                      : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
+                      ? 'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400'
+                      : 'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground'
                   )}>
                     {formatDate(deal.followUpAt)}
                   </span>
@@ -401,7 +401,7 @@ export function FollowUpsView({ slug, contacts: initialContacts, deals: initialD
                         title="Snooze"
                         disabled={isBusy}
                         onClick={() => setSnoozeOpen(snoozeOpen === `deal-${deal.id}` ? null : `deal-${deal.id}`)}
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/15 transition-colors"
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-muted-foreground hover:bg-muted dark:hover:bg-muted0/15 transition-colors"
                       >
                         <Timer size={14} />
                       </button>
@@ -424,7 +424,7 @@ export function FollowUpsView({ slug, contacts: initialContacts, deals: initialD
                       title="Mark done"
                       disabled={isBusy}
                       onClick={() => handleMarkDealDone(deal.id)}
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/15 transition-colors"
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-positive hover:bg-positive-subtle dark:hover:bg-positive-subtle0/15 transition-colors"
                     >
                       <CheckCircle2 size={14} />
                     </button>

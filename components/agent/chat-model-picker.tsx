@@ -117,7 +117,7 @@ export function ChatModelPicker() {
           </span>
         )}
         {saved && !saving && (
-          <span className="text-xs text-emerald-600 flex items-center gap-1">
+          <span className="text-xs text-positive flex items-center gap-1">
             <CheckCircle2 size={11} /> Saved
           </span>
         )}

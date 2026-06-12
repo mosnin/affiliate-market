@@ -194,7 +194,7 @@ function ScorePill({ tier }: { tier: Lead['tier'] }) {
         'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 flex-shrink-0',
         'text-[11px] font-medium tabular-nums',
         tier === 'hot' && 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15',
-        tier === 'warm' && 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+        tier === 'warm' && 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
         tier === 'cold' && 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
       )}
     >

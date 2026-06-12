@@ -80,7 +80,7 @@ function StaticCard({ name }: { name: string }) {
   return (
     <div className="rounded-md border border-border/70 bg-background px-2 py-1.5">
       <div className="flex items-center gap-1.5">
-        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-500" />
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-positive-subtle0" />
         <p className="text-[11px] font-medium leading-tight truncate text-foreground">
           {name}
         </p>
@@ -234,7 +234,7 @@ function FocalDealCard({ confirmed }: { confirmed: boolean }) {
           <div className="flex items-center gap-1.5">
             {/* Health dot — emerald on-track, same vocabulary as the real
                 DealCard. The deal is active and closing cleanly. */}
-            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-500" />
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-positive-subtle0" />
             <p className="text-[11px] font-medium leading-tight truncate text-foreground">
               M. Chen · 415 Lex
             </p>

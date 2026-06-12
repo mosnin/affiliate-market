@@ -219,7 +219,7 @@ export function OffboardMemberDialog({
             </div>
 
             {error && (
-              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+              <div className="rounded-md border border-negative/20 bg-negative-subtle px-3 py-2 text-xs text-negative dark:border-negative/20 dark:bg-negative-subtle0/10 dark:text-negative">
                 {error}
               </div>
             )}
@@ -291,7 +291,7 @@ export function OffboardMemberDialog({
             )}
 
             {error && (
-              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+              <div className="rounded-md border border-negative/20 bg-negative-subtle px-3 py-2 text-xs text-negative dark:border-negative/20 dark:bg-negative-subtle0/10 dark:text-negative">
                 {error}
               </div>
             )}
@@ -328,7 +328,7 @@ export function OffboardMemberDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400" />
+                <CheckCircle2 size={18} className="text-positive dark:text-positive" />
                 Offboarded {leavingName}
               </DialogTitle>
               <DialogDescription>

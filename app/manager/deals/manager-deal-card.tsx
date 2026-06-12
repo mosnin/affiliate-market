@@ -153,9 +153,9 @@ export function ManagerDealCard({
             className={cn(
               'text-[11px] tabular-nums mt-1',
               health.state === 'stuck'
-                ? 'text-red-600 dark:text-red-400'
+                ? 'text-negative dark:text-red-400'
                 : health.state === 'at-risk'
-                  ? 'text-amber-600 dark:text-amber-400'
+                  ? 'text-muted-foreground dark:text-muted-foreground'
                   : 'text-muted-foreground',
             )}
           >

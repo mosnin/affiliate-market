@@ -103,7 +103,7 @@ export function FortitudoFooter() {
             href="/status"
             className="inline-flex items-center gap-2 text-xs text-white/40 transition-colors hover:text-white/70"
           >
-            <span aria-hidden className="inline-block size-1.5 rounded-full bg-emerald-500" />
+            <span aria-hidden className="inline-block size-1.5 rounded-full bg-positive-subtle0" />
             All systems operational.
           </Link>
         </div>

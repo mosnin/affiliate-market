@@ -1281,7 +1281,7 @@ export function KanbanBoard({
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   {status === 'won' ? (
-                    <Trophy size={16} className="text-emerald-600" />
+                    <Trophy size={16} className="text-positive" />
                   ) : (
                     <XCircle size={16} className="text-destructive" />
                   )}
@@ -1305,7 +1305,7 @@ export function KanbanBoard({
                         'px-3 py-1.5 rounded-md text-xs font-medium border transition-all',
                         selectedReason === reason
                           ? status === 'won'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30'
+                            ? 'bg-positive-subtle text-positive border-positive/20 dark:bg-positive-subtle0/15 dark:text-positive dark:border-positive/20'
                             : 'bg-destructive/10 text-destructive border-destructive/30'
                           : 'bg-muted text-muted-foreground border-transparent hover:bg-accent hover:text-foreground',
                       )}
@@ -1336,7 +1336,7 @@ export function KanbanBoard({
                   variant={status === 'won' ? 'default' : 'destructive'}
                   onClick={handleWonLostConfirm}
                   disabled={!selectedReason || statusChangePending}
-                  className={status === 'won' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : undefined}
+                  className={status === 'won' ? 'bg-positive hover:bg-positive/90 text-white' : undefined}
                 >
                   {statusChangePending ? 'Saving…' : confirmLabel}
                 </Button>

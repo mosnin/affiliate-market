@@ -1533,21 +1533,21 @@ export function ColaWorkspace({
             className="sticky bottom-0 z-10 w-full max-w-3xl mx-auto chat-content-wrap pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-background via-background to-background/0"
           >
             {atLimit ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-4 text-center">
+              <div className="rounded-xl border border-border bg-muted dark:border-border dark:bg-muted p-4 text-center">
                 <div className="flex justify-center mb-2">
-                  <AlertCircle size={20} className="text-amber-600 dark:text-amber-400" />
+                  <AlertCircle size={20} className="text-muted-foreground dark:text-muted-foreground" />
                 </div>
-                <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
+                <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground mb-1">
                   You&apos;ve reached the 50-message limit for this conversation.
                 </p>
-                <p className="text-xs text-amber-700 dark:text-amber-300 mb-3">
+                <p className="text-xs text-muted-foreground dark:text-muted-foreground mb-3">
                   Start a new conversation to continue chatting.
                 </p>
                 <Button
                   size="sm"
                   onClick={handleNewConversation}
                   variant="outline"
-                  className="border-amber-400 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-800"
+                  className="border-border text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
                 >
                   Start new conversation
                 </Button>

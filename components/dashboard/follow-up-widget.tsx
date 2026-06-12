@@ -78,14 +78,14 @@ export function FollowUpWidget({ slug, contacts: initialContacts }: Props) {
     if (initialContacts.length === 0) return null;
     // User cleared all follow-ups this session — show success state
     return (
-      <div className="rounded-lg border border-emerald-200 dark:border-emerald-500/25 bg-emerald-50/60 dark:bg-emerald-500/5 px-5 py-4">
+      <div className="rounded-2xl border border-border bg-positive-subtle px-5 py-4">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-md bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
-            <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
+          <div className="w-7 h-7 rounded-xl bg-brand-subtle flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 size={14} className="text-positive" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">All caught up!</p>
-            <p className="text-xs text-emerald-700/70 dark:text-emerald-400/70">
+            <p className="text-sm font-semibold text-positive">All caught up!</p>
+            <p className="text-xs text-positive/70">
               No follow-ups due right now. Nice work.
             </p>
           </div>
@@ -186,10 +186,10 @@ export function FollowUpWidget({ slug, contacts: initialContacts }: Props) {
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span
                     className={cn(
-                      'text-[11px] font-semibold rounded-md px-2 py-0.5',
+                      'text-[11px] font-semibold rounded-lg px-2.5 py-0.5',
                       isOverdue
-                        ? 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400'
-                        : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
+                        ? 'bg-negative-subtle text-negative'
+                        : 'bg-muted text-muted-foreground'
                     )}
                   >
                     {isOverdue ? 'Overdue' : 'Due'}{' '}
@@ -230,7 +230,7 @@ export function FollowUpWidget({ slug, contacts: initialContacts }: Props) {
                     title="Mark done"
                     disabled={isBusy}
                     onClick={() => handleClearFollowUp(contact.id)}
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/15 transition-colors"
+                    className="w-6 h-6 rounded-xl flex items-center justify-center text-muted-foreground hover:text-positive hover:bg-positive-subtle transition-colors"
                   >
                     <CheckCircle2 size={14} />
                   </button>

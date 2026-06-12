@@ -213,7 +213,7 @@ export function SubagentTaskBlockView({ block }: SubagentTaskBlockViewProps) {
             failed
               ? 'bg-destructive'
               : state.status === 'completed'
-                ? 'bg-emerald-500'
+                ? 'bg-positive-subtle0'
                 : 'bg-blue-500',
             live && 'animate-pulse',
           )}

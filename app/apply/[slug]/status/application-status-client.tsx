@@ -76,13 +76,13 @@ const STATUS_CONFIG: Record<
     label: 'Received',
     icon: Inbox,
     color: 'text-blue-500',
-    bgColor: 'bg-blue-100 dark:bg-blue-900/30',
+    bgColor: 'bg-brand-subtle dark:bg-blue-900/30',
   },
   under_review: {
     label: 'Under Review',
     icon: Search,
-    color: 'text-amber-500',
-    bgColor: 'bg-amber-100 dark:bg-amber-900/30',
+    color: 'text-muted-foreground',
+    bgColor: 'bg-muted dark:bg-muted',
   },
   demo_scheduled: {
     label: 'Demo Scheduled',
@@ -93,14 +93,14 @@ const STATUS_CONFIG: Record<
   approved: {
     label: 'Approved',
     icon: CheckCircle2,
-    color: 'text-emerald-500',
-    bgColor: 'bg-emerald-100 dark:bg-emerald-900/30',
+    color: 'text-positive',
+    bgColor: 'bg-positive-subtle dark:bg-positive-subtle',
   },
   declined: {
     label: 'Declined',
     icon: XCircle,
     color: 'text-red-500',
-    bgColor: 'bg-red-100 dark:bg-red-900/30',
+    bgColor: 'bg-negative-subtle dark:bg-red-900/30',
   },
   waitlisted: {
     label: 'Waitlisted',
@@ -574,21 +574,21 @@ function SimpleStatusView({
       label: 'Received',
       icon: Inbox,
       color: 'text-blue-500',
-      bgColor: 'bg-blue-100 dark:bg-blue-900/30',
+      bgColor: 'bg-brand-subtle dark:bg-blue-900/30',
     },
     {
       key: 'under_review',
       label: 'Under Review',
       icon: Search,
-      color: 'text-amber-500',
-      bgColor: 'bg-amber-100 dark:bg-amber-900/30',
+      color: 'text-muted-foreground',
+      bgColor: 'bg-muted dark:bg-muted',
     },
     {
       key: 'approved',
       label: 'Approved',
       icon: CheckCircle2,
-      color: 'text-emerald-500',
-      bgColor: 'bg-emerald-100 dark:bg-emerald-900/30',
+      color: 'text-positive',
+      bgColor: 'bg-positive-subtle dark:bg-positive-subtle',
     },
     {
       key: 'needs_info',
@@ -602,7 +602,7 @@ function SimpleStatusView({
       label: 'Declined',
       icon: XCircle,
       color: 'text-red-500',
-      bgColor: 'bg-red-100 dark:bg-red-900/30',
+      bgColor: 'bg-negative-subtle dark:bg-red-900/30',
     },
   ];
 
@@ -679,7 +679,7 @@ function SimpleStatusView({
                         className={cn(
                           'w-px h-6',
                           isPast
-                            ? 'bg-emerald-300 dark:bg-emerald-700'
+                            ? 'bg-positive/60 dark:bg-positive'
                             : 'bg-border',
                         )}
                       />
@@ -818,8 +818,8 @@ function YourDemosPanel({
                 <div
                   className={cn(
                     'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium flex-shrink-0',
-                    isConfirmed && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
-                    isScheduled && 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+                    isConfirmed && 'bg-positive-subtle text-positive dark:bg-positive-subtle0/15 dark:text-positive',
+                    isScheduled && 'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground',
                     isCompleted && 'bg-muted text-muted-foreground',
                   )}
                 >
@@ -858,7 +858,7 @@ function YourDemosPanel({
       </ul>
 
       {error && (
-        <div role="alert" className="px-5 py-3 border-t border-border/40 flex items-start gap-2 text-sm text-rose-700 dark:text-rose-300">
+        <div role="alert" className="px-5 py-3 border-t border-border/40 flex items-start gap-2 text-sm text-negative dark:text-negative">
           <AlertCircle size={14} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
           <span>{error}</span>
         </div>
@@ -941,9 +941,9 @@ function DemoRequestPanel({
     return (
       <div
         role="status"
-        className="rounded-xl bg-emerald-50/60 dark:bg-emerald-500/10 border border-emerald-200/70 dark:border-emerald-500/20 p-4 flex items-center gap-3"
+        className="rounded-xl bg-positive-subtle/60 dark:bg-positive-subtle0/10 border border-positive/20 dark:border-positive/20 p-4 flex items-center gap-3"
       >
-        <CalendarCheck size={16} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" aria-hidden="true" />
+        <CalendarCheck size={16} className="text-positive dark:text-positive flex-shrink-0" aria-hidden="true" />
         <div className="flex-1 min-w-0 text-sm">
           <p className="font-medium text-foreground">Demo request sent.</p>
           <p className="text-muted-foreground">Your seller will respond shortly.</p>
@@ -1041,7 +1041,7 @@ function DemoRequestPanel({
       </div>
 
       {submitError && (
-        <div role="alert" className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50/60 dark:border-rose-900 dark:bg-rose-950/40 px-3 py-2 text-sm text-rose-800 dark:text-rose-200">
+        <div role="alert" className="flex items-start gap-2 rounded-md border border-negative/20 bg-negative-subtle/60 dark:border-negative/20 dark:bg-negative-subtle px-3 py-2 text-sm text-negative dark:text-negative">
           <AlertCircle size={14} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
           <span>{submitError}</span>
         </div>

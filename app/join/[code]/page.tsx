@@ -50,7 +50,7 @@ export default async function JoinWithCodePage({ params }: Params) {
                 <p className="text-sm">This invite code is invalid or has been revoked. Ask your manager for a new one.</p>
               </div>
             ) : isSuspended ? (
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400">
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-muted dark:bg-muted0/10 text-muted-foreground dark:text-muted-foreground">
                 <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
                 <p className="text-sm">This company is currently suspended and not accepting new members.</p>
               </div>

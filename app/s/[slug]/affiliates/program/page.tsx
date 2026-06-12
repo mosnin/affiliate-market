@@ -7,7 +7,6 @@ import {
   SECTION_LABEL,
   PAGE_RHYTHM,
   SECTION_RHYTHM,
-  TITLE_FONT,
 } from '@/lib/typography';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { getOrCreateDefaultProgram } from '@/lib/affiliates/programs';
@@ -49,7 +48,7 @@ export default async function AffiliateProgramPage({
       {/* Page header */}
       <header className="space-y-1">
         <p className={cn(SECTION_LABEL)}>Affiliates</p>
-        <h1 className={cn(H1)} style={TITLE_FONT}>
+        <h1 className={cn(H1)}>
           Program settings
         </h1>
       </header>
@@ -65,7 +64,7 @@ export default async function AffiliateProgramPage({
               className={cn(
                 'px-3.5 h-9 inline-flex items-center text-sm transition-colors border-b-2 -mb-px',
                 isActive
-                  ? 'border-foreground text-foreground font-medium'
+                  ? 'border-primary text-foreground font-medium'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >

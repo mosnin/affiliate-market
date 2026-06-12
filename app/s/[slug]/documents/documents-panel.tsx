@@ -213,7 +213,7 @@ export function DocumentsPanel() {
               <button
                 type="button"
                 onClick={() => remove(draft.id as string, draft.title)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 px-3 h-9 text-[13px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-full border border-negative/20 px-3 h-9 text-[13px] font-medium text-negative dark:text-negative hover:bg-negative-subtle0/10 transition-colors"
               >
                 <Trash2 size={13} />
                 Delete
@@ -402,13 +402,13 @@ function ErrorBanner({
   onDismiss: () => void;
 }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/5 px-3 py-2 text-[12.5px] text-rose-700 dark:text-rose-400">
+    <div className="flex items-start gap-2 rounded-lg border border-negative/20 bg-negative-subtle/70 dark:bg-negative-subtle0/5 px-3 py-2 text-[12.5px] text-negative dark:text-negative">
       <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
       <span>{message}</span>
       <button
         type="button"
         onClick={onDismiss}
-        className="ml-auto text-rose-700/70 hover:text-rose-700 dark:text-rose-400/70 dark:hover:text-rose-400"
+        className="ml-auto text-negative/70 hover:text-negative dark:text-negative/70 dark:hover:text-negative"
       >
         Dismiss
       </button>
