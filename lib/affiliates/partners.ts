@@ -16,6 +16,8 @@ export interface AffiliatePartnerRow {
   status: PartnerStatus;
   payoutMethod: string | null;
   payoutDetails: Record<string, unknown> | null;
+  /** Stripe Connect (Express) account that receives this creator's payouts. */
+  stripeAccountId: string | null;
   createdAt: string;
 }
 
@@ -174,6 +176,39 @@ export async function getPartnerByUser(opts: {
 export const getPartnerByClerkUserId = (clerkUserId: string) =>
   getPartnerByUser({ clerkUserId });
 export const getPartnerByEmail = (email: string) => getPartnerByUser({ email });
+
+/**
+ * ALL of a creator's partner rows — one per seller program they've joined
+ * (the explore flow joins many). Matched by clerkUserId OR email.
+ */
+export async function getPartnersByUser(opts: {
+  clerkUserId?: string | null;
+  email?: string | null;
+}): Promise<AffiliatePartnerRow[]> {
+  const seen = new Map<string, AffiliatePartnerRow>();
+
+  if (opts.clerkUserId) {
+    const { data } = await supabase
+      .from('AffiliatePartner')
+      .select('*')
+      .eq('clerkUserId', opts.clerkUserId)
+      .order('createdAt', { ascending: true });
+    for (const row of (data ?? []) as AffiliatePartnerRow[]) seen.set(row.id, row);
+  }
+
+  if (opts.email) {
+    const { data } = await supabase
+      .from('AffiliatePartner')
+      .select('*')
+      .ilike('email', opts.email.trim().toLowerCase())
+      .order('createdAt', { ascending: true });
+    for (const row of (data ?? []) as AffiliatePartnerRow[]) {
+      if (!seen.has(row.id)) seen.set(row.id, row);
+    }
+  }
+
+  return [...seen.values()];
+}
 
 /** Partners for a space, decorated with click/customer/earnings rollups. */
 export async function listPartners(spaceId: string): Promise<PartnerWithStats[]> {

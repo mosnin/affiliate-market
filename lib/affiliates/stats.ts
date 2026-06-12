@@ -19,12 +19,27 @@ export interface ProgramStats {
   paidOutCents: number;
 }
 
-/** Lifetime stats for one partner (affiliate dashboard). */
+/**
+ * Lifetime stats for one partner (affiliate dashboard). Money figures are
+ * the creator's NET (after the platform fee) — that's the number a creator
+ * should ever see.
+ */
 export async function getAffiliateStats(partnerId: string): Promise<AffiliateStats> {
+  return getAffiliateStatsForPartners([partnerId]);
+}
+
+/** Aggregated net stats across all of a creator's partner rows. */
+export async function getAffiliateStatsForPartners(
+  partnerIds: string[],
+): Promise<AffiliateStats> {
+  if (partnerIds.length === 0) {
+    return { clicks: 0, referrals: 0, customers: 0, pendingCents: 0, approvedCents: 0, paidCents: 0 };
+  }
+
   const { data: links } = await supabase
     .from('ReferralLink')
     .select('id')
-    .eq('partnerId', partnerId);
+    .in('partnerId', partnerIds);
   const linkIds = (links ?? []).map((l) => l.id);
 
   const [clicksRes, referralsRes, commissionsRes] = await Promise.all([
@@ -34,8 +49,11 @@ export async function getAffiliateStats(partnerId: string): Promise<AffiliateSta
           .select('id', { count: 'exact', head: true })
           .in('linkId', linkIds)
       : Promise.resolve({ count: 0 } as { count: number | null }),
-    supabase.from('Referral').select('status').eq('partnerId', partnerId),
-    supabase.from('AffiliateCommission').select('amountCents, status').eq('partnerId', partnerId),
+    supabase.from('Referral').select('status').in('partnerId', partnerIds),
+    supabase
+      .from('AffiliateCommission')
+      .select('amountCents, netCents, status')
+      .in('partnerId', partnerIds),
   ]);
 
   const referralRows = referralsRes.data ?? [];
@@ -43,9 +61,10 @@ export async function getAffiliateStats(partnerId: string): Promise<AffiliateSta
   let approvedCents = 0;
   let paidCents = 0;
   for (const c of commissionsRes.data ?? []) {
-    if (c.status === 'pending') pendingCents += c.amountCents ?? 0;
-    else if (c.status === 'approved') approvedCents += c.amountCents ?? 0;
-    else if (c.status === 'paid') paidCents += c.amountCents ?? 0;
+    const net = c.netCents ?? c.amountCents ?? 0;
+    if (c.status === 'pending') pendingCents += net;
+    else if (c.status === 'approved') approvedCents += net;
+    else if (c.status === 'paid') paidCents += net;
   }
 
   return {

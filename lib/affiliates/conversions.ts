@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 import { getLinkByCode } from '@/lib/affiliates/links';
 import { getPartnerById } from '@/lib/affiliates/partners';
 import { calculateCommissionCents } from '@/lib/affiliates/commissions';
+import { splitCommissionCents } from '@/lib/affiliates/fees';
 import { sendCommissionEarnedEmail } from '@/lib/affiliates/emails';
 import type { AffiliateProgramRow } from '@/lib/affiliates/programs';
 
@@ -128,6 +129,7 @@ export async function recordConversion(
     }
 
     const commissionCents = calculateCommissionCents(program, input.amountCents);
+    const { platformFeeCents, netCents } = splitCommissionCents(commissionCents);
     const status = selfReferral
       ? 'rejected'
       : program.autoApproveCommissions
@@ -140,6 +142,8 @@ export async function recordConversion(
       referralId,
       orderId: input.orderId,
       amountCents: commissionCents,
+      platformFeeCents,
+      netCents,
       currency: input.currency || 'usd',
       status,
       level: 1,
@@ -159,7 +163,7 @@ export async function recordConversion(
     void sendCommissionEarnedEmail({
       to: partner.email,
       partnerName: partner.name,
-      amountCents: commissionCents,
+      amountCents: netCents,
       pendingApproval: status === 'pending',
     });
 

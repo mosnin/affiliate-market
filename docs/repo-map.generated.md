@@ -7,10 +7,10 @@
 
 ## At a glance
 
-- **Page routes:** 199
-- **API endpoints:** 330
+- **Page routes:** 200
+- **API endpoints:** 332
 - **Cron jobs:** 10
-- **DB tables:** 110  ·  **RPCs:** 23  ·  **migrations:** 164
+- **DB tables:** 110  ·  **RPCs:** 23  ·  **migrations:** 165
 - **Agent tools — TS (lib/ai-tools):** 56 declared, 55 wired into `ALL_TOOLS`
 - **Agent tools — Python (agent/):** 53 declared
 
@@ -40,10 +40,11 @@
 - `/admin/users`
 - `/admin/users/[userId]`
 
-**affiliate** (3)
+**affiliate** (4)
 
 - `/affiliate`
 - `/affiliate/dashboard`
+- `/affiliate/explore`
 - `/affiliate/payouts`
 
 **apply** (5)
@@ -345,14 +346,16 @@
 - `/api/admin/triggers/backfill`
 - `/api/admin/triggers/test-fire`
 
-**/api/affiliates** (13)
+**/api/affiliates** (15)
 
 - `/api/affiliates/commissions`
 - `/api/affiliates/commissions/[id]/approve`
 - `/api/affiliates/commissions/[id]/reject`
+- `/api/affiliates/explore/link`
 - `/api/affiliates/join`
 - `/api/affiliates/me`
 - `/api/affiliates/me/links`
+- `/api/affiliates/me/stripe-connect`
 - `/api/affiliates/partners`
 - `/api/affiliates/partners/[id]/approve`
 - `/api/affiliates/partners/[id]/suspend`
@@ -881,7 +884,7 @@ the runtimes diverge — this table makes the drift visible.
 
 **RPCs (23):** `book_demo_atomic`, `charge_credits_for_chat_usage`, `cleanup_agent_data`, `create_company_with_owner`, `create_space_with_defaults`, `current_user_internal_id`, `ensure_agent_settings_for_space`, `grant_credits`, `match_agent_memory`, `match_documents`, `match_documents_hybrid`, `offboard_company_member`, `purge_credit_rows_for_account`, `refund_credit_txn`, `reorder_deal`, `resolve_billing_account_for_space`, `routine_next_run_at`, `routine_set_next_run`, `search_knowledge_docs`, `spend_credits`, `stamp_brief_enabled_at`, `sync_commission_ledger`, `update_updated_at_column`
 
-**Migrations:** 164 (latest: `20260702000000_enable_rls_on_unprotected_tables.sql`)
+**Migrations:** 165 (latest: `20260702000000_enable_rls_on_unprotected_tables.sql`)
 
 ## External services
 

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/logger';
+import { transferPayout } from '@/lib/affiliates/stripe-connect';
 
 export type PayoutStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
@@ -7,9 +8,13 @@ export interface AffiliatePayoutRow {
   id: string;
   spaceId: string;
   partnerId: string;
+  /** Creator NET — what actually gets transferred. */
   amountCents: number;
+  /** Cola's cut accrued over this payout's commissions. */
+  platformFeeCents: number;
   method: string | null;
   status: PayoutStatus;
+  stripeTransferId: string | null;
   periodStart: string | null;
   periodEnd: string | null;
   paidAt: string | null;
@@ -21,19 +26,30 @@ export interface PayoutWithPartner extends AffiliatePayoutRow {
   partnerEmail: string;
 }
 
-/** Approved-but-unpaid commission total for one partner. */
+/** Approved-but-unpaid NET balance for one partner (after platform fee). */
 export async function getPayableBalanceCents(partnerId: string): Promise<number> {
+  return getPayableBalanceCentsForPartners([partnerId]);
+}
+
+/** Combined approved-but-unpaid NET balance across a creator's partner rows. */
+export async function getPayableBalanceCentsForPartners(
+  partnerIds: string[],
+): Promise<number> {
+  if (partnerIds.length === 0) return 0;
   const { data } = await supabase
     .from('AffiliateCommission')
-    .select('amountCents')
-    .eq('partnerId', partnerId)
+    .select('amountCents, netCents')
+    .in('partnerId', partnerIds)
     .eq('status', 'approved');
-  return (data ?? []).reduce((sum, c) => sum + (c.amountCents ?? 0), 0);
+  return (data ?? []).reduce((sum, c) => sum + (c.netCents ?? c.amountCents ?? 0), 0);
 }
 
 /**
  * Pay out one partner: marks every approved commission paid and records the
- * payout. Returns null when there is nothing to pay.
+ * payout (creator NET; the platform fee is retained, not transferred). When
+ * the creator has a connected Stripe account and Stripe is configured, the
+ * transfer happens immediately and the payout completes; otherwise it stays
+ * 'pending' for manual settlement. Returns null when there is nothing to pay.
  */
 export async function createPayout(
   spaceId: string,
@@ -41,18 +57,19 @@ export async function createPayout(
 ): Promise<AffiliatePayoutRow | null> {
   const { data: commissions } = await supabase
     .from('AffiliateCommission')
-    .select('id, amountCents, createdAt')
+    .select('id, amountCents, netCents, platformFeeCents, createdAt')
     .eq('spaceId', spaceId)
     .eq('partnerId', partnerId)
     .eq('status', 'approved');
 
   if (!commissions || commissions.length === 0) return null;
-  const total = commissions.reduce((sum, c) => sum + (c.amountCents ?? 0), 0);
-  if (total <= 0) return null;
+  const netTotal = commissions.reduce((sum, c) => sum + (c.netCents ?? c.amountCents ?? 0), 0);
+  const feeTotal = commissions.reduce((sum, c) => sum + (c.platformFeeCents ?? 0), 0);
+  if (netTotal <= 0) return null;
 
   const { data: partner } = await supabase
     .from('AffiliatePartner')
-    .select('payoutMethod')
+    .select('payoutMethod, stripeAccountId')
     .eq('id', partnerId)
     .maybeSingle();
 
@@ -62,8 +79,9 @@ export async function createPayout(
     .insert({
       spaceId,
       partnerId,
-      amountCents: total,
-      method: partner?.payoutMethod ?? null,
+      amountCents: netTotal,
+      platformFeeCents: feeTotal,
+      method: partner?.stripeAccountId ? 'stripe' : (partner?.payoutMethod ?? null),
       status: 'pending',
       periodStart: new Date(Math.min(...dates)).toISOString(),
       periodEnd: new Date().toISOString(),
@@ -85,6 +103,22 @@ export async function createPayout(
       payoutId: payout.id,
       error: updErr.message,
     });
+  }
+
+  // Stripe Connect: move the money now when we can.
+  const transferId = await transferPayout({
+    payoutId: payout.id,
+    stripeAccountId: partner?.stripeAccountId ?? null,
+    amountCents: netTotal,
+  });
+  if (transferId) {
+    const { data: completed } = await supabase
+      .from('AffiliatePayout')
+      .update({ status: 'completed', stripeTransferId: transferId, paidAt: new Date().toISOString() })
+      .eq('id', payout.id)
+      .select('*')
+      .single();
+    if (completed) return completed as AffiliatePayoutRow;
   }
 
   return payout as AffiliatePayoutRow;
@@ -147,10 +181,18 @@ export async function listPayouts(spaceId: string): Promise<PayoutWithPartner[]>
 }
 
 export async function listPayoutsForPartner(partnerId: string): Promise<AffiliatePayoutRow[]> {
+  return listPayoutsForPartners([partnerId]);
+}
+
+/** Payout history across all of a creator's partner rows. */
+export async function listPayoutsForPartners(
+  partnerIds: string[],
+): Promise<AffiliatePayoutRow[]> {
+  if (partnerIds.length === 0) return [];
   const { data } = await supabase
     .from('AffiliatePayout')
     .select('*')
-    .eq('partnerId', partnerId)
+    .in('partnerId', partnerIds)
     .order('createdAt', { ascending: false })
     .limit(100);
   return (data ?? []) as AffiliatePayoutRow[];

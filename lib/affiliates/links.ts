@@ -8,6 +8,7 @@ export interface ReferralLinkRow {
   programId: string;
   code: string;
   destinationUrl: string | null;
+  productId: string | null;
   createdAt: string;
 }
 
@@ -15,6 +16,8 @@ export interface ReferralLinkWithClicks {
   id: string;
   code: string;
   destinationUrl: string | null;
+  productId: string | null;
+  productName: string | null;
   clicks: number;
 }
 
@@ -39,6 +42,23 @@ export function buildReferralUrl(code: string, base: string): string {
   return `${origin}/marketplace?via=${encodeURIComponent(code)}`;
 }
 
+/**
+ * Shareable URL honouring the link's destination (e.g. a product page from
+ * the explore flow). Falls back to the marketplace home.
+ */
+export function buildReferralLinkUrl(
+  link: { code: string; destinationUrl: string | null },
+  base: string,
+): string {
+  const origin = (base || '').replace(/\/$/, '');
+  const dest =
+    link.destinationUrl && link.destinationUrl.startsWith('/')
+      ? link.destinationUrl
+      : '/marketplace';
+  const sep = dest.includes('?') ? '&' : '?';
+  return `${origin}${dest}${sep}via=${encodeURIComponent(link.code)}`;
+}
+
 export async function getLinkByCode(code: string): Promise<ReferralLinkRow | null> {
   if (!code) return null;
   const { data } = await supabase
@@ -52,6 +72,7 @@ export async function getLinkByCode(code: string): Promise<ReferralLinkRow | nul
 export async function createLink(
   partnerId: string,
   destinationUrl?: string | null,
+  productId?: string | null,
 ): Promise<ReferralLinkRow | null> {
   const { data: partner } = await supabase
     .from('AffiliatePartner')
@@ -71,6 +92,7 @@ export async function createLink(
         programId: partner.programId,
         code,
         destinationUrl: destinationUrl ?? null,
+        productId: productId ?? null,
       })
       .select('*')
       .single();
@@ -84,29 +106,62 @@ export async function createLink(
   return null;
 }
 
+/** Existing product link for a partner, if they already generated one. */
+export async function getLinkForProduct(
+  partnerId: string,
+  productId: string,
+): Promise<ReferralLinkRow | null> {
+  const { data } = await supabase
+    .from('ReferralLink')
+    .select('*')
+    .eq('partnerId', partnerId)
+    .eq('productId', productId)
+    .order('createdAt', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (data as ReferralLinkRow) ?? null;
+}
+
 export async function listLinksForPartner(partnerId: string): Promise<ReferralLinkWithClicks[]> {
+  return listLinksForPartners([partnerId]);
+}
+
+/** Links across all of a creator's partner rows (one per seller program). */
+export async function listLinksForPartners(
+  partnerIds: string[],
+): Promise<ReferralLinkWithClicks[]> {
+  if (partnerIds.length === 0) return [];
   const { data: links } = await supabase
     .from('ReferralLink')
-    .select('id, code, destinationUrl')
-    .eq('partnerId', partnerId)
+    .select('id, code, destinationUrl, productId')
+    .in('partnerId', partnerIds)
     .order('createdAt', { ascending: true });
   if (!links || links.length === 0) return [];
 
   const ids = links.map((l) => l.id);
-  const { data: clicks } = await supabase
-    .from('ReferralClick')
-    .select('linkId')
-    .in('linkId', ids);
+  const productIds = [...new Set(links.map((l) => l.productId).filter(Boolean))] as string[];
+
+  const [clicksRes, productsRes] = await Promise.all([
+    supabase.from('ReferralClick').select('linkId').in('linkId', ids),
+    productIds.length > 0
+      ? supabase.from('Product').select('id, name, address').in('id', productIds)
+      : Promise.resolve({ data: [] as { id: string; name: string | null; address: string | null }[] }),
+  ]);
 
   const counts = new Map<string, number>();
-  for (const c of clicks ?? []) {
+  for (const c of clicksRes.data ?? []) {
     counts.set(c.linkId, (counts.get(c.linkId) ?? 0) + 1);
   }
+  const productNames = new Map(
+    (productsRes.data ?? []).map((p) => [p.id, p.name ?? p.address ?? null]),
+  );
 
   return links.map((l) => ({
     id: l.id,
     code: l.code,
     destinationUrl: l.destinationUrl ?? null,
+    productId: l.productId ?? null,
+    productName: l.productId ? (productNames.get(l.productId) ?? null) : null,
     clicks: counts.get(l.id) ?? 0,
   }));
 }

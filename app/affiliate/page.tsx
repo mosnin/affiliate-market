@@ -122,14 +122,21 @@ export default function AffiliateLandingPage() {
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 pb-16 space-y-14">
       {/* Hero */}
       <header className="space-y-3">
-        <p className={cn(BODY_MUTED)}>Partners.</p>
+        <p className={cn(BODY_MUTED)}>Creators.</p>
         <h1 className={cn(H1)} style={TITLE_FONT}>
-          Earn commissions promoting the best software.
+          You already promote things. Get paid for software.
         </h1>
         <p className={cn(BODY_MUTED, 'max-w-xl')}>
-          Join the Cola affiliate program. Share your link with your audience and
-          earn a commission for every customer who signs up through you.
+          The same way you clip videos and push products — pick software your
+          audience needs, grab your link, earn a commission on every sale it
+          drives. Payouts go straight to your Stripe.
         </p>
+        <a
+          href="/affiliate/explore"
+          className="inline-flex items-center mt-1 text-sm font-medium text-foreground underline underline-offset-4 hover:opacity-80"
+        >
+          Browse software to promote →
+        </a>
       </header>
 
       {/* How it works */}

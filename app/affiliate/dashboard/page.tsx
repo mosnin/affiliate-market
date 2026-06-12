@@ -20,11 +20,12 @@ import {
   TITLE_FONT,
 } from '@/lib/typography';
 import { formatCurrency } from '@/lib/formatting';
-import { getPartnerByUser } from '@/lib/affiliates/partners';
-import { listLinksForPartner, buildReferralUrl } from '@/lib/affiliates/links';
-import { getAffiliateStats } from '@/lib/affiliates/stats';
+import { getPartnersByUser } from '@/lib/affiliates/partners';
+import { listLinksForPartners, buildReferralLinkUrl } from '@/lib/affiliates/links';
+import { getAffiliateStatsForPartners } from '@/lib/affiliates/stats';
 import { listCommissionsForPartner } from '@/lib/affiliates/commissions';
-import { getPayableBalanceCents } from '@/lib/affiliates/payouts';
+import { getPayableBalanceCentsForPartners } from '@/lib/affiliates/payouts';
+import { PLATFORM_FEE_PERCENT } from '@/lib/affiliates/fees';
 import { CopyLinkButton } from '@/components/affiliate/copy-link-button';
 import { NewLinkButton } from '@/components/affiliate/new-link-button';
 
@@ -55,19 +56,21 @@ export default async function AffiliateDashboardPage() {
   const clerkUser = await currentUser();
   const email = clerkUser?.emailAddresses?.[0]?.emailAddress ?? null;
 
-  const partner = await getPartnerByUser({ clerkUserId: userId, email });
+  const allPartners = await getPartnersByUser({ clerkUserId: userId, email });
+  const partner =
+    allPartners.find((p) => p.status === 'approved') ?? allPartners[0] ?? null;
 
   if (!partner) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20 text-center space-y-4">
         <h1 className={cn(H1)} style={TITLE_FONT}>
-          No affiliate account found.
+          Start earning.
         </h1>
         <p className={cn(BODY_MUTED)}>
-          You haven&apos;t applied to any affiliate program yet.
+          Pick a product you actually like, grab your link, share it with your audience.
         </p>
-        <Link href="/affiliate" className={cn(PRIMARY_PILL, 'mt-2 inline-flex')}>
-          Apply to a program
+        <Link href="/affiliate/explore" className={cn(PRIMARY_PILL, 'mt-2 inline-flex')}>
+          Explore software to promote
         </Link>
       </div>
     );
@@ -107,12 +110,13 @@ export default async function AffiliateDashboardPage() {
     );
   }
 
-  // approved partner — load all data
+  // approved — aggregate across every program this creator has joined
+  const approvedIds = allPartners.filter((p) => p.status === 'approved').map((p) => p.id);
   const [stats, links, commissions, payableCents] = await Promise.all([
-    getAffiliateStats(partner.id),
-    listLinksForPartner(partner.id),
+    getAffiliateStatsForPartners(approvedIds),
+    listLinksForPartners(approvedIds),
     listCommissionsForPartner(partner.id, 10),
-    getPayableBalanceCents(partner.id),
+    getPayableBalanceCentsForPartners(approvedIds),
   ]);
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
@@ -120,11 +124,19 @@ export default async function AffiliateDashboardPage() {
   return (
     <div className={cn('max-w-4xl mx-auto px-4 sm:px-6 py-10', PAGE_RHYTHM)}>
       {/* Header */}
-      <header className="space-y-1">
-        <p className={cn(SECTION_LABEL)}>Affiliate dashboard</p>
-        <h1 className={cn(H1)} style={TITLE_FONT}>
-          {partner.name}
-        </h1>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-1">
+          <p className={cn(SECTION_LABEL)}>Affiliate dashboard</p>
+          <h1 className={cn(H1)} style={TITLE_FONT}>
+            {partner.name}
+          </h1>
+          <p className={cn(BODY_MUTED)}>
+            Earnings shown are yours — net of the {PLATFORM_FEE_PERCENT}% platform fee.
+          </p>
+        </div>
+        <Link href="/affiliate/explore" className={cn(PRIMARY_PILL, 'shrink-0')}>
+          Explore software
+        </Link>
       </header>
 
       {/* Stat grid */}
@@ -171,7 +183,7 @@ export default async function AffiliateDashboardPage() {
         ) : (
           <div className={cn(FIELD_RHYTHM)}>
             {links.map((link) => {
-              const url = buildReferralUrl(link.code, appUrl);
+              const url = buildReferralLinkUrl(link, appUrl);
               return (
                 <div
                   key={link.id}
@@ -180,6 +192,7 @@ export default async function AffiliateDashboardPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-foreground truncate font-mono">{url}</p>
                     <p className={cn(META, 'mt-0.5')}>
+                      {link.productName ? `${link.productName} · ` : ''}
                       {link.clicks} {link.clicks === 1 ? 'click' : 'clicks'}
                     </p>
                   </div>

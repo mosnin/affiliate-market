@@ -17,8 +17,14 @@ import {
   TITLE_FONT,
 } from '@/lib/typography';
 import { formatCurrency } from '@/lib/formatting';
-import { getPartnerByUser } from '@/lib/affiliates/partners';
-import { listPayoutsForPartner, getPayableBalanceCents } from '@/lib/affiliates/payouts';
+import { getPartnersByUser } from '@/lib/affiliates/partners';
+import {
+  listPayoutsForPartners,
+  getPayableBalanceCentsForPartners,
+} from '@/lib/affiliates/payouts';
+import { stripeConnectConfigured } from '@/lib/affiliates/stripe-connect';
+import { PLATFORM_FEE_PERCENT } from '@/lib/affiliates/fees';
+import { ConnectStripeButton } from '@/components/affiliate/connect-stripe-button';
 
 const PAYOUT_STATUS_BADGE: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 border-amber-200/70',
@@ -47,7 +53,8 @@ export default async function AffiliatePayoutsPage() {
   const clerkUser = await currentUser();
   const email = clerkUser?.emailAddresses?.[0]?.emailAddress ?? null;
 
-  const partner = await getPartnerByUser({ clerkUserId: userId, email });
+  const allPartners = await getPartnersByUser({ clerkUserId: userId, email });
+  const partner = allPartners.find((p) => p.status === 'approved') ?? allPartners[0] ?? null;
 
   if (!partner) {
     return (
@@ -76,10 +83,12 @@ export default async function AffiliatePayoutsPage() {
     );
   }
 
+  const approvedIds = allPartners.filter((p) => p.status === 'approved').map((p) => p.id);
   const [payouts, payableCents] = await Promise.all([
-    listPayoutsForPartner(partner.id),
-    getPayableBalanceCents(partner.id),
+    listPayoutsForPartners(approvedIds),
+    getPayableBalanceCentsForPartners(approvedIds),
   ]);
+  const stripeConnected = allPartners.some((p) => p.stripeAccountId);
 
   return (
     <div className={cn('max-w-4xl mx-auto px-4 sm:px-6 py-10', PAGE_RHYTHM)}>
@@ -89,7 +98,37 @@ export default async function AffiliatePayoutsPage() {
         <h1 className={cn(H1)} style={TITLE_FONT}>
           Payouts
         </h1>
+        <p className={cn(BODY_MUTED)}>
+          Amounts are yours to keep — already net of Cola&apos;s {PLATFORM_FEE_PERCENT}% platform fee.
+        </p>
       </header>
+
+      {/* Stripe Connect */}
+      <section
+        className={cn(
+          'rounded-xl border px-5 py-4 flex flex-wrap items-center justify-between gap-4',
+          stripeConnected ? 'border-emerald-200/70 bg-emerald-50/40' : 'border-border/60 bg-muted/20',
+        )}
+      >
+        <div className="space-y-0.5 min-w-0">
+          <p className={cn(SECTION_LABEL)}>
+            {stripeConnected ? 'stripe connected' : 'get paid automatically'}
+          </p>
+          <p className="text-sm text-foreground">
+            {stripeConnected
+              ? 'Payouts are transferred straight to your Stripe account.'
+              : 'Connect your Stripe account and payouts land there automatically — no invoices, no waiting.'}
+          </p>
+        </div>
+        {!stripeConnected &&
+          (stripeConnectConfigured() ? (
+            <ConnectStripeButton />
+          ) : (
+            <p className={cn(META, 'text-muted-foreground')}>
+              Stripe payouts aren&apos;t enabled on this deployment yet — payouts are settled manually.
+            </p>
+          ))}
+      </section>
 
       {/* Payable balance stat */}
       <section>
