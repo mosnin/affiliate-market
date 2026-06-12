@@ -138,7 +138,7 @@ export default async function ConfigurePage({
             </div>
           </div>
         ) : (
-          <Link href="/company">
+          <Link href="/company/setup">
             <div className="rounded-lg border border-border bg-card px-5 py-4 hover:border-primary/40 transition-colors cursor-pointer group">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">

@@ -89,7 +89,7 @@ export default async function AuthRedirectPage({
 
     // They logged in via the manager page but don't have manager access yet.
     // Send them to the company setup page so they can create or join one.
-    redirect('/company');
+    redirect('/company/setup');
   }
 
   // intent=seller (or no intent) — go to workspace or setup
