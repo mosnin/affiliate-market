@@ -1,10 +1,10 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
-import { ShoppingCart, ChevronRight } from 'lucide-react';
+import { ShoppingCart, ChevronRight, ArrowUpRight, TrendingUp } from 'lucide-react';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { getOrdersForSpace } from '@/lib/marketplace/orders';
-import { H1, TITLE_FONT, BODY_MUTED, PAGE_MAX, CARD, SECTION_LABEL } from '@/lib/typography';
+import { H1, TITLE_FONT, BODY_MUTED, PAGE_MAX, CARD, SECTION_LABEL, HERO_PANEL, PRIMARY_PILL, HERO_GHOST_PILL } from '@/lib/typography';
 import { cn } from '@/lib/utils';
 
 const STATUS_CONFIG: Record<string, { label: string; chip: string }> = {

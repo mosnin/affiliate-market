@@ -506,13 +506,13 @@ function StageWhoYouAre(props: {
         <span className="font-mono truncate">{linkPreview}</span>
         {props.slugState.kind === 'checking' && <Loader2 size={11} className="animate-spin flex-shrink-0" />}
         {props.slugState.kind === 'available' && (
-          <CheckCircle2 size={12} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+          <CheckCircle2 size={12} className="text-positive flex-shrink-0" />
         )}
         {props.slugState.kind === 'taken' && (
-          <span className="text-amber-600 dark:text-amber-400 flex-shrink-0">taken — pick another name</span>
+          <span className="text-negative flex-shrink-0">taken — pick another name</span>
         )}
         {props.slugState.kind === 'invalid' && (
-          <span className="text-amber-600 dark:text-amber-400 flex-shrink-0 truncate">{props.slugState.message}</span>
+          <span className="text-negative flex-shrink-0 truncate">{props.slugState.message}</span>
         )}
         {!props.slugTouched && props.slugState.kind === 'taken' && (
           <button
@@ -575,7 +575,7 @@ function StageWhoYouServe(props: {
   return (
     <div className="space-y-8">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl tracking-tight text-foreground" style={{ fontFamily: 'var(--font-title)' }}>
+        <h2 className="text-[21px] leading-snug tracking-tight font-semibold text-foreground">
           Who do you work with most?
         </h2>
         <p className="text-sm text-muted-foreground">Pick up to 3. I&apos;ll tune my replies and recommendations to them.</p>
@@ -650,7 +650,7 @@ function StageVoice({
   return (
     <div className="space-y-8">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl tracking-tight text-foreground" style={{ fontFamily: 'var(--font-title)' }}>
+        <h2 className="text-[21px] leading-snug tracking-tight font-semibold text-foreground">
           Which one sounds more like you?
         </h2>
         <p className="text-sm text-muted-foreground">
@@ -711,7 +711,7 @@ function StageSources({
   return (
     <div className="space-y-8">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl tracking-tight text-foreground" style={{ fontFamily: 'var(--font-title)' }}>
+        <h2 className="text-[21px] leading-snug tracking-tight font-semibold text-foreground">
           How do leads find you today?
         </h2>
         <p className="text-sm text-muted-foreground">
@@ -737,7 +737,7 @@ function StageSources({
               {opt.icon ? (
                 <img src={opt.icon} alt="" aria-hidden className="w-6 h-6 object-contain" />
               ) : (
-                <span className={cn('w-6 h-6 rounded-md inline-flex items-center justify-center text-xs font-semibold', selected ? 'bg-background/20' : 'bg-muted text-muted-foreground')}>
+                <span className={cn('w-6 h-6 rounded-md inline-flex items-center justify-center text-xs font-semibold', selected ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground')}>
                   {opt.label[0]}
                 </span>
               )}
@@ -789,7 +789,7 @@ function StagePlan({
   return (
     <div className="space-y-8">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl tracking-tight text-foreground" style={{ fontFamily: 'var(--font-title)' }}>
+        <h2 className="text-[21px] leading-snug tracking-tight font-semibold text-foreground">
           Here&apos;s what I&apos;m starting on, {firstName}.
         </h2>
         <p className="text-sm text-muted-foreground">Take me in when this looks right — you can change anything later.</p>
