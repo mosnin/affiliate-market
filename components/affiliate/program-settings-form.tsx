@@ -23,6 +23,8 @@ interface ProgramSettingsFormProps {
     cookieWindowDays: number;
     autoApproveAffiliates: boolean;
     autoApproveCommissions: boolean;
+    recurring: boolean;
+    recurringMonths: number | null;
   };
 }
 
@@ -38,6 +40,10 @@ export function ProgramSettingsForm({ slug, initial }: ProgramSettingsFormProps)
   const [cookieWindowDays, setCookieWindowDays] = useState(String(initial.cookieWindowDays));
   const [autoApproveAffiliates, setAutoApproveAffiliates] = useState(initial.autoApproveAffiliates);
   const [autoApproveCommissions, setAutoApproveCommissions] = useState(initial.autoApproveCommissions);
+  const [recurring, setRecurring] = useState(initial.recurring);
+  const [recurringMonths, setRecurringMonths] = useState(
+    initial.recurringMonths ? String(initial.recurringMonths) : '',
+  );
   const [saving, setSaving] = useState(false);
 
   async function handleSave(e: React.FormEvent) {
@@ -72,6 +78,10 @@ export function ProgramSettingsForm({ slug, initial }: ProgramSettingsFormProps)
           cookieWindowDays: numCookie,
           autoApproveAffiliates,
           autoApproveCommissions,
+          recurring,
+          recurringMonths: recurring && recurringMonths.trim()
+            ? parseInt(recurringMonths, 10)
+            : null,
         }),
       });
 
@@ -179,6 +189,42 @@ export function ProgramSettingsForm({ slug, initial }: ProgramSettingsFormProps)
         <p className="text-xs text-muted-foreground">
           How long after a click a conversion is attributed to the affiliate.
         </p>
+      </div>
+
+      {/* Recurring commissions */}
+      <div className="space-y-3 pt-1">
+        <div className="flex items-center justify-between max-w-sm">
+          <div className="space-y-0.5">
+            <p className={cn(BODY, 'font-medium')}>Recurring commissions</p>
+            <p className="text-xs text-muted-foreground">
+              Pay the creator every billing period the customer stays subscribed.
+            </p>
+          </div>
+          <Switch checked={recurring} onCheckedChange={setRecurring} />
+        </div>
+        {recurring && (
+          <div className="space-y-1.5">
+            <Label htmlFor="prog-recurring-months" className={cn(BODY, 'font-medium')}>
+              For how many months
+            </Label>
+            <div className="flex items-center gap-2 max-w-[200px]">
+              <Input
+                id="prog-recurring-months"
+                type="number"
+                min="1"
+                max="120"
+                step="1"
+                value={recurringMonths}
+                onChange={(e) => setRecurringMonths(e.target.value)}
+                placeholder="forever"
+              />
+              <span className={cn(BODY_MUTED, 'shrink-0')}>months</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Leave blank to pay for as long as the subscription lasts.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Auto-approve switches */}

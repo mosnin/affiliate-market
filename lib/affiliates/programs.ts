@@ -58,6 +58,10 @@ export interface ProgramPatch {
   cookieWindowDays?: number;
   autoApproveAffiliates?: boolean;
   autoApproveCommissions?: boolean;
+  /** Pay creators on subscription renewals too. */
+  recurring?: boolean;
+  /** Cap on commissioned periods (1 = first month only); null/0 = lifetime. */
+  recurringMonths?: number | null;
 }
 
 export async function updateProgram(
@@ -75,6 +79,13 @@ export async function updateProgram(
   }
   if (patch.autoApproveAffiliates !== undefined) update.autoApproveAffiliates = patch.autoApproveAffiliates;
   if (patch.autoApproveCommissions !== undefined) update.autoApproveCommissions = patch.autoApproveCommissions;
+  if (patch.recurring !== undefined) update.recurring = patch.recurring;
+  if (patch.recurringMonths !== undefined) {
+    update.recurringMonths =
+      patch.recurringMonths == null || patch.recurringMonths <= 0
+        ? null
+        : Math.min(120, Math.round(patch.recurringMonths));
+  }
 
   const { data, error } = await supabase
     .from('AffiliateProgram')

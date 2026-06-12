@@ -38,6 +38,14 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.autoApproveCommissions === 'boolean') {
     patch.autoApproveCommissions = body.autoApproveCommissions;
   }
+  if (typeof body.recurring === 'boolean') {
+    patch.recurring = body.recurring;
+  }
+  if (body.recurringMonths === null) {
+    patch.recurringMonths = null;
+  } else if (typeof body.recurringMonths === 'number' && Number.isFinite(body.recurringMonths)) {
+    patch.recurringMonths = body.recurringMonths;
+  }
 
   const program = await updateProgram(result.space.id, patch);
   if (!program) return NextResponse.json({ error: 'Update failed' }, { status: 500 });

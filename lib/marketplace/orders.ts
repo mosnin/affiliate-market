@@ -212,6 +212,30 @@ export async function attachStripeSession(orderId: string, sessionId: string): P
     .eq('id', orderId);
 }
 
+/** Recorded when a subscription checkout completes — renewals look it up. */
+export async function attachStripeSubscription(
+  orderId: string,
+  subscriptionId: string,
+): Promise<void> {
+  await supabase
+    .from('MarketplaceOrder')
+    .update({ stripeSubscriptionId: subscriptionId })
+    .eq('id', orderId);
+}
+
+export async function getOrderByStripeSubscription(
+  subscriptionId: string,
+): Promise<OrderWithProduct | null> {
+  const { data } = await supabase
+    .from('MarketplaceOrder')
+    .select('*')
+    .eq('stripeSubscriptionId', subscriptionId)
+    .maybeSingle();
+  if (!data) return null;
+  const [order] = await decorateOrders([data as OrderRow]);
+  return order ?? null;
+}
+
 /**
  * Single place an order becomes PAID — used by the Stripe webhook, the
  * success-page reconciliation, and the no-Stripe mock flow. Idempotent:

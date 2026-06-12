@@ -11,7 +11,9 @@ import {
 } from '@/lib/typography';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { getOrCreateDefaultProgram } from '@/lib/affiliates/programs';
+import { getBridgeForSpace, bridgeWebhookUrl } from '@/lib/affiliates/stripe-bridge';
 import { ProgramSettingsForm } from '@/components/affiliate/program-settings-form';
+import { StripeBridgeCard } from '@/components/affiliate/stripe-bridge-card';
 
 const AFFILIATE_TABS = [
   { label: 'Overview', href: '' },
@@ -36,7 +38,11 @@ export default async function AffiliateProgramPage({
   const userSpace = await getSpaceForUser(userId);
   if (!userSpace || userSpace.id !== space.id) notFound();
 
-  const program = await getOrCreateDefaultProgram(space.id);
+  const [program, bridge] = await Promise.all([
+    getOrCreateDefaultProgram(space.id),
+    getBridgeForSpace(space.id),
+  ]);
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
 
   return (
     <div className={cn(PAGE_RHYTHM)}>
@@ -80,7 +86,25 @@ export default async function AffiliateProgramPage({
             cookieWindowDays: program.cookieWindowDays,
             autoApproveAffiliates: program.autoApproveAffiliates,
             autoApproveCommissions: program.autoApproveCommissions,
+            recurring: program.recurring,
+            recurringMonths: program.recurringMonths,
           }}
+        />
+      </section>
+
+      {/* Seller's own-app Stripe bridge */}
+      <section className={cn(SECTION_RHYTHM)}>
+        <StripeBridgeCard
+          initial={
+            bridge
+              ? {
+                  id: bridge.id,
+                  url: bridgeWebhookUrl(bridge.id, appUrl),
+                  hasSecret: Boolean(bridge.webhookSecretEnc),
+                  lastEventAt: bridge.lastEventAt,
+                }
+              : null
+          }
         />
       </section>
     </div>
