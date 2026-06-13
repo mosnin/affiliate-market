@@ -57,7 +57,10 @@ export default async function AffiliatesOverviewPage({
   ]);
 
   const pending = partners.filter((p) => p.status === 'pending');
-  const rest = partners.filter((p) => p.status !== 'pending');
+  // Leaderboard order: best earners first, so the seller sees who's driving sales.
+  const rest = partners
+    .filter((p) => p.status !== 'pending')
+    .sort((a, b) => b.earnedCents - a.earnedCents || b.customers - a.customers);
   const joinUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/affiliate`;
 
   return (

@@ -28,6 +28,7 @@ import { formatCurrency } from '@/lib/formatting';
 import { getPartnersByUser } from '@/lib/affiliates/partners';
 import { listLinksForPartners, buildReferralLinkUrl } from '@/lib/affiliates/links';
 import { getAffiliateStatsForPartners } from '@/lib/affiliates/stats';
+import { getLinkAnalyticsForPartners, formatConversionRate } from '@/lib/affiliates/link-analytics';
 import { listCommissionsForPartner } from '@/lib/affiliates/commissions';
 import { getPayableBalanceCentsForPartners } from '@/lib/affiliates/payouts';
 import { PLATFORM_FEE_PERCENT } from '@/lib/affiliates/fees';
@@ -111,11 +112,12 @@ export default async function AffiliateDashboardPage() {
 
   // approved — aggregate across every program this creator has joined
   const approvedIds = allPartners.filter((p) => p.status === 'approved').map((p) => p.id);
-  const [stats, links, commissions, payableCents] = await Promise.all([
+  const [stats, links, commissions, payableCents, analytics] = await Promise.all([
     getAffiliateStatsForPartners(approvedIds),
     listLinksForPartners(approvedIds),
     listCommissionsForPartner(partner.id, 10),
     getPayableBalanceCentsForPartners(approvedIds),
+    getLinkAnalyticsForPartners(approvedIds),
   ]);
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
@@ -212,6 +214,18 @@ export default async function AffiliateDashboardPage() {
                       {link.productName ? `${link.productName} · ` : ''}
                       {link.isVanity ? 'code · ' : ''}
                       {link.clicks} {link.clicks === 1 ? 'click' : 'clicks'}
+                      {(() => {
+                        const a = analytics.get(link.id);
+                        if (!a || a.clicks === 0) return null;
+                        return (
+                          <>
+                            {' · '}
+                            {formatConversionRate(a.conversionRate)} conv
+                            {' · '}
+                            {formatCurrency(a.epcCents / 100)} EPC
+                          </>
+                        );
+                      })()}
                     </p>
                   </div>
                   <CopyLinkButton url={url} />
