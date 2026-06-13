@@ -68,6 +68,7 @@ export function ProductForm({ initial = {}, onCancel, onSubmit, submitting, subm
       commissionValue: v.commissionValue != null && v.commissionValue !== ('' as unknown)
         ? Number(v.commissionValue)
         : null,
+      featured: Boolean(v.featured),
     });
   }
 
@@ -217,6 +218,17 @@ export function ProductForm({ initial = {}, onCancel, onSubmit, submitting, subm
           />
         </Field>
       </div>
+
+      <label className="flex items-center gap-2.5 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={Boolean(v.featured)}
+          onChange={(e) => set('featured', e.target.checked)}
+          className="h-4 w-4 rounded border-border accent-[var(--primary)]"
+        />
+        <span className="text-sm text-foreground">Feature on the marketplace</span>
+        <span className="text-xs text-muted-foreground">(surfaces first with a badge)</span>
+      </label>
 
       <Field label="Description">
         <Textarea

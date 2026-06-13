@@ -114,6 +114,11 @@ function sanitiseBody(body: Record<string, unknown>, mode: 'create' | 'update') 
 
   numberField('priceCents', { min: 0, max: 100_000_000_00, integer: true });
 
+  if ('featured' in body) {
+    if (typeof body.featured === 'boolean') out.featured = body.featured;
+    else errors.push('featured must be a boolean');
+  }
+
   // Per-product commission override (null = inherit the program default).
   if ('commissionType' in body) {
     if (body.commissionType === null || body.commissionType === '') out.commissionType = null;

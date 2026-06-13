@@ -17,6 +17,7 @@ export interface MarketplaceProduct {
   logoUrl: string | null;
   websiteUrl: string | null;
   marketplaceSlug: string;
+  featured: boolean;
 }
 
 export const MARKETPLACE_CATEGORIES: { value: string; label: string }[] = [
@@ -52,7 +53,7 @@ export function formatPrice(p: {
 }
 
 const PRODUCT_COLUMNS =
-  'id, spaceId, name, address, tagline, longDescription, category, pricingModel, priceCents, currency, billingPeriod, features, logoUrl, websiteUrl, marketplaceSlug, published';
+  'id, spaceId, name, address, tagline, longDescription, category, pricingModel, priceCents, currency, billingPeriod, features, logoUrl, websiteUrl, marketplaceSlug, published, featured';
 
 interface ProductRow {
   id: string;
@@ -71,6 +72,7 @@ interface ProductRow {
   websiteUrl: string | null;
   marketplaceSlug: string | null;
   published: boolean | null;
+  featured: boolean | null;
 }
 
 function parseFeatures(value: unknown): string[] {
@@ -107,6 +109,7 @@ async function decorate(rows: ProductRow[]): Promise<MarketplaceProduct[]> {
       logoUrl: r.logoUrl,
       websiteUrl: r.websiteUrl,
       marketplaceSlug: r.marketplaceSlug as string,
+      featured: Boolean(r.featured),
     }));
 }
 
@@ -119,6 +122,7 @@ export async function getPublishedProducts(filter?: {
     .select(PRODUCT_COLUMNS)
     .eq('published', true)
     .not('marketplaceSlug', 'is', null)
+    .order('featured', { ascending: false })
     .order('updatedAt', { ascending: false })
     .limit(60);
 

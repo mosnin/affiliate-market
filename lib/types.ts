@@ -414,6 +414,8 @@ export interface Product {
   /** Visible on the public marketplace. */
   published: boolean;
   marketplaceSlug: string | null;
+  /** Curated: surfaces first on the marketplace with a badge. */
+  featured: boolean;
   /** Per-product affiliate commission override (null = inherit program default). */
   commissionType: 'percent' | 'flat' | null;
   commissionValue: number | null;

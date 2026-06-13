@@ -32,11 +32,18 @@ export function ProductCard({ product }: { product: MarketplaceProduct }) {
         <p className="text-sm font-semibold text-foreground group-hover:underline group-hover:underline-offset-2">
           {product.name}
         </p>
-        {product.category && (
-          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-            {product.category}
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {product.featured && (
+            <span className="rounded-full bg-brand-subtle px-2 py-0.5 text-[11px] font-medium text-primary">
+              Featured
+            </span>
+          )}
+          {product.category && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              {product.category}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Tagline */}

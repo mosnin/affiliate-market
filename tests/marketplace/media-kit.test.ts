@@ -7,7 +7,7 @@ const base: MarketplaceProduct = {
   name: 'Acme Analytics', tagline: 'Dashboards your team reads', longDescription: 'Beautiful analytics.',
   category: 'saas', pricingModel: 'subscription', priceCents: 4900, currency: 'usd', billingPeriod: 'monthly',
   features: ['SSO', 'Slack alerts'], logoUrl: 'https://cdn/logo.png', websiteUrl: 'https://acme.dev',
-  marketplaceSlug: 'acme-analytics',
+  marketplaceSlug: 'acme-analytics', featured: false,
 };
 
 describe('buildPromoCopy', () => {
