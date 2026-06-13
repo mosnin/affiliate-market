@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/logger';
 import { getStripe } from '@/lib/stripe';
+import { sendSettlementInvoiceEmail } from '@/lib/affiliates/emails';
 
 /**
  * Bridge settlement — collecting what sellers owe.
@@ -69,7 +70,7 @@ export async function runBridgeSettlement(spaceId: string): Promise<SettlementRe
 
   const { data: space } = await supabase
     .from('Space')
-    .select('stripeCustomerId, name')
+    .select('stripeCustomerId, name, ownerId')
     .eq('id', spaceId)
     .maybeSingle();
   if (!space?.stripeCustomerId) {
@@ -102,6 +103,21 @@ export async function runBridgeSettlement(spaceId: string): Promise<SettlementRe
         spaceId,
         invoiceId: invoice.id,
         error: error.message,
+      });
+    }
+
+    // Tell the seller their card was charged — surprise invoices breed churn.
+    const { data: owner } = await supabase
+      .from('User')
+      .select('email')
+      .eq('id', space.ownerId)
+      .maybeSingle();
+    if (owner?.email) {
+      void sendSettlementInvoiceEmail({
+        to: owner.email,
+        spaceName: space.name ?? 'your workspace',
+        totalCents,
+        commissionCount: commissions.length,
       });
     }
 

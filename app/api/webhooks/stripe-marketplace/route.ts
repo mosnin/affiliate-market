@@ -3,11 +3,15 @@ import type Stripe from 'stripe';
 import { getStripe } from '@/lib/stripe';
 import {
   markOrderPaid,
+  markOrderRefunded,
   getOrderByStripeSession,
   getOrderByStripeSubscription,
+  getOrderByStripePaymentIntent,
   attachStripeSubscription,
+  attachStripePaymentIntent,
 } from '@/lib/marketplace/orders';
 import { recordPaymentCommission } from '@/lib/affiliates/recurring';
+import { reverseCommissionsForInvoice } from '@/lib/affiliates/reversals';
 import { logger } from '@/lib/logger';
 
 /**
@@ -67,13 +71,21 @@ export async function POST(req: NextRequest) {
           return bySession ? markOrderPaid(bySession.id) : null;
         })();
 
-    // Remember the subscription so renewals can find their order.
+    // Remember the subscription so renewals can find their order, and the
+    // payment intent so refunds can.
     const subscriptionId =
       typeof session.subscription === 'string'
         ? session.subscription
         : session.subscription?.id ?? null;
     if (order && subscriptionId) {
       await attachStripeSubscription(order.id, subscriptionId);
+    }
+    const paymentIntentId =
+      typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id ?? null;
+    if (order && paymentIntentId) {
+      await attachStripePaymentIntent(order.id, paymentIntentId);
     }
   }
 
@@ -95,6 +107,34 @@ export async function POST(req: NextRequest) {
           orderId: order.id,
         });
       }
+    }
+  }
+
+  // The unhappy paths: money that came back claws its commission back.
+  if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
+    const obj = event.data.object as Stripe.Charge | Stripe.Dispute;
+    const reason = event.type === 'charge.refunded' ? 'Charge refunded' : 'Charge disputed';
+    const charge = (
+      event.type === 'charge.dispute.created' ? (obj as Stripe.Dispute) : obj
+    ) as unknown as Record<string, unknown>;
+
+    // Subscription invoices carry the invoice id; one-time payments are
+    // found via the payment intent we stored at checkout completion.
+    const invoiceId =
+      typeof charge.invoice === 'string'
+        ? charge.invoice
+        : ((charge.invoice as { id?: string } | null)?.id ?? null);
+    if (invoiceId) {
+      await reverseCommissionsForInvoice(invoiceId, reason);
+    }
+
+    const paymentIntentId =
+      typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
+        : ((charge.payment_intent as { id?: string } | null)?.id ?? null);
+    if (paymentIntentId) {
+      const order = await getOrderByStripePaymentIntent(paymentIntentId);
+      if (order) await markOrderRefunded(order.id, reason);
     }
   }
 

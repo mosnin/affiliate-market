@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/logger';
 import { encrypt, decrypt } from '@/lib/crypto';
 import { recordPaymentCommission } from '@/lib/affiliates/recurring';
+import { reverseCommissionsForInvoice } from '@/lib/affiliates/reversals';
 
 /**
  * The seller Stripe bridge — how a software company's OWN billing reaches
@@ -157,6 +158,24 @@ export async function processBridgeEvent(
       source: 'stripe_bridge',
     });
     return result != null;
+  }
+
+  // Money that came back in the seller's app claws its commission back.
+  if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
+    const charge = asRecord(event.data.object);
+    const reason =
+      event.type === 'charge.refunded'
+        ? 'Charge refunded in seller app'
+        : 'Charge disputed in seller app';
+    const invoiceId =
+      typeof charge.invoice === 'string'
+        ? charge.invoice
+        : ((asRecord(charge.invoice).id as string | undefined) ?? null);
+    if (invoiceId) {
+      const result = await reverseCommissionsForInvoice(invoiceId, reason);
+      return result.reversed > 0;
+    }
+    return false;
   }
 
   if (event.type === 'checkout.session.completed') {

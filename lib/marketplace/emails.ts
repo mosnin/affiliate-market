@@ -25,6 +25,31 @@ function dollars(cents: number): string {
   );
 }
 
+export async function sendOrderRefundedEmail(params: {
+  to: string;
+  productName: string;
+  amountCents: number;
+  orderId: string;
+}): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return;
+  try {
+    const resend = new Resend(apiKey);
+    await resend.emails.send({
+      from: getFromAddress(),
+      to: params.to,
+      subject: `Your ${params.productName} purchase was refunded`,
+      html: `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#111827;line-height:1.6">
+        <p>Your purchase of <strong>${esc(params.productName)}</strong> (${dollars(params.amountCents)}) has been refunded.
+        The associated license has been deactivated.</p>
+        <p style="color:#6b7280;font-size:12px">Order ${esc(params.orderId)} · Cola marketplace.</p>
+      </div>`,
+    });
+  } catch (err) {
+    logger.warn('[marketplace] refund email failed', { orderId: params.orderId, err: String(err) });
+  }
+}
+
 export async function sendOrderReceiptEmail(params: {
   to: string;
   productName: string;

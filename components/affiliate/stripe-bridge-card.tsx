@@ -105,7 +105,9 @@ export function StripeBridgeCard({ initial }: { initial: BridgeState | null }) {
             </div>
             <p className={cn(META, 'text-muted-foreground')}>
               Developers → Webhooks → Add endpoint. Select events: <span className="font-mono">invoice.paid</span>,{' '}
-              <span className="font-mono">checkout.session.completed</span>.
+              <span className="font-mono">checkout.session.completed</span>,{' '}
+              <span className="font-mono">charge.refunded</span>,{' '}
+              <span className="font-mono">charge.dispute.created</span>.
             </p>
           </div>
 

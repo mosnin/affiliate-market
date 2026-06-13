@@ -60,6 +60,47 @@ export async function sendPartnerApprovedEmail(params: {
   );
 }
 
+export async function sendPayoutCompletedEmail(params: {
+  to: string;
+  partnerName: string;
+  amountCents: number;
+  method: string | null;
+}): Promise<void> {
+  const dashboard = `${appUrl()}/affiliate/payouts`;
+  const methodLine =
+    params.method === 'stripe'
+      ? 'It was transferred to your connected Stripe account.'
+      : 'It will be settled to your payout method.';
+  await send(
+    params.to,
+    `You've been paid ${dollars(params.amountCents)}`,
+    `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#111827;line-height:1.6">
+      <p>Hi ${esc(params.partnerName)},</p>
+      <p>Your payout of <strong>${dollars(params.amountCents)}</strong> is on its way. ${methodLine}</p>
+      <p><a href="${dashboard}" style="color:#111827;font-weight:600">See your payout history →</a></p>
+      <p style="color:#6b7280;font-size:12px">Cola — the agentic sales OS for software companies.</p>
+    </div>`,
+  );
+}
+
+export async function sendSettlementInvoiceEmail(params: {
+  to: string;
+  spaceName: string;
+  totalCents: number;
+  commissionCount: number;
+}): Promise<void> {
+  await send(
+    params.to,
+    `Commission settlement for ${params.spaceName}: ${dollars(params.totalCents)}`,
+    `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#111827;line-height:1.6">
+      <p>Sales in your own app earned your creators commissions. We've invoiced your
+      payment method on file for <strong>${dollars(params.totalCents)}</strong>
+      (${params.commissionCount} conversion${params.commissionCount === 1 ? '' : 's'}) — this funds their payouts.</p>
+      <p style="color:#6b7280;font-size:12px">Cola — settlement runs on the 1st of each month; you can also settle any time from your affiliates page.</p>
+    </div>`,
+  );
+}
+
 export async function sendCommissionEarnedEmail(params: {
   to: string;
   partnerName: string;

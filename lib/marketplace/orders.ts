@@ -2,8 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/logger';
 import { recordConversion } from '@/lib/affiliates/conversions';
+import { reverseCommissionsForOrder } from '@/lib/affiliates/reversals';
 import { transferSellerProceeds } from '@/lib/marketplace/sellers';
-import { sendOrderReceiptEmail } from '@/lib/marketplace/emails';
+import { sendOrderReceiptEmail, sendOrderRefundedEmail } from '@/lib/marketplace/emails';
 
 export type OrderStatus = 'pending' | 'paid' | 'refunded' | 'canceled';
 export type LicenseStatus = 'active' | 'revoked' | 'expired';
@@ -213,6 +214,30 @@ export async function attachStripeSession(orderId: string, sessionId: string): P
     .eq('id', orderId);
 }
 
+/** Recorded at payment so charge.refunded events can find their order. */
+export async function attachStripePaymentIntent(
+  orderId: string,
+  paymentIntentId: string,
+): Promise<void> {
+  await supabase
+    .from('MarketplaceOrder')
+    .update({ stripePaymentIntentId: paymentIntentId })
+    .eq('id', orderId);
+}
+
+export async function getOrderByStripePaymentIntent(
+  paymentIntentId: string,
+): Promise<OrderWithProduct | null> {
+  const { data } = await supabase
+    .from('MarketplaceOrder')
+    .select('*')
+    .eq('stripePaymentIntentId', paymentIntentId)
+    .maybeSingle();
+  if (!data) return null;
+  const [order] = await decorateOrders([data as OrderRow]);
+  return order ?? null;
+}
+
 /** Recorded when a subscription checkout completes — renewals look it up. */
 export async function attachStripeSubscription(
   orderId: string,
@@ -333,6 +358,48 @@ export async function markOrderPaid(orderId: string): Promise<OrderWithProduct |
       amountCents: order.amountCents,
       licenseKey,
       orderId: order.id,
+    });
+  }
+  return decorated;
+}
+
+/**
+ * The unhappy path, in one place: a refunded (or disputed) order revokes
+ * its license and claws back its commissions. Idempotent — a second call
+ * on an already-refunded order does nothing.
+ */
+export async function markOrderRefunded(
+  orderId: string,
+  reason: string,
+): Promise<OrderWithProduct | null> {
+  const { data: updated, error } = await supabase
+    .from('MarketplaceOrder')
+    .update({ status: 'refunded', refundedAt: new Date().toISOString() })
+    .eq('id', orderId)
+    .eq('status', 'paid')
+    .select('id, buyerEmail')
+    .maybeSingle();
+  if (error) {
+    logger.warn('[marketplace] markOrderRefunded failed', { orderId, error: error.message });
+    return null;
+  }
+  if (!updated) return getOrderById(orderId); // already refunded or never paid
+
+  await supabase
+    .from('License')
+    .update({ status: 'revoked' })
+    .eq('orderId', orderId)
+    .eq('status', 'active');
+
+  await reverseCommissionsForOrder(orderId, reason);
+
+  const decorated = await getOrderById(orderId);
+  if (decorated) {
+    void sendOrderRefundedEmail({
+      to: decorated.buyerEmail,
+      productName: decorated.productName,
+      amountCents: decorated.amountCents,
+      orderId,
     });
   }
   return decorated;
