@@ -11,7 +11,7 @@
 - **API endpoints:** 340
 - **Cron jobs:** 11
 - **DB tables:** 112  ·  **RPCs:** 23  ·  **migrations:** 169
-- **Agent tools — TS (lib/ai-tools):** 56 declared, 55 wired into `ALL_TOOLS`
+- **Agent tools — TS (lib/ai-tools):** 58 declared, 57 wired into `ALL_TOOLS`
 - **Agent tools — Python (agent/):** 53 declared
 
 ## Page routes (Surfaces)
@@ -894,7 +894,7 @@ the runtimes diverge — this table makes the drift visible.
 
 - **In both runtimes (7):** `add_product`, `create_deal`, `create_plan`, `find_stuck_deals`, `read_attachment`, `request_deal_review`, `send_product_packet`
 
-- **TS only (49):** `add_checklist_item`, `add_person`, `analyze_seller`, `archive_person`, `assign_lead_to_seller`, `attach_file_to_product`, `attach_product_to_deal`, `block_time`, `cancel_demo`, `check_availability`, `clear_followup`, `delegate_task`, `draft_email`, `draft_sms`, `find_comparable_products`, `find_deal`, `find_demos`, `find_overdue_followups`, `find_person`, `find_product`, `find_quiet_hot_persons`, `list_files`, `log_call`, `log_email_sent`, `log_meeting`, `log_sms_sent`, `mark_deal_lost`, `mark_deal_won`, `mark_person_cold`, `mark_person_hot`, `merge_persons`, `move_deal_stage`, `note_on_deal`, `note_on_person`, `note_on_product`, `pipeline_summary`, `propose_demo_times`, `read_file`, `recall_history`, `reschedule_demo`, `schedule_demo`, `send_email`, `send_sms`, `set_followup`, `summarize_seller`, `update_deal_close_date`, `update_deal_probability`, `update_deal_value`, `update_product_status`
+- **TS only (51):** `add_checklist_item`, `add_person`, `analyze_seller`, `archive_person`, `assign_lead_to_seller`, `attach_file_to_product`, `attach_product_to_deal`, `block_time`, `cancel_demo`, `check_availability`, `clear_followup`, `delegate_task`, `draft_email`, `draft_sms`, `find_comparable_products`, `find_creators`, `find_deal`, `find_demos`, `find_overdue_followups`, `find_person`, `find_product`, `find_quiet_hot_persons`, `invite_creator`, `list_files`, `log_call`, `log_email_sent`, `log_meeting`, `log_sms_sent`, `mark_deal_lost`, `mark_deal_won`, `mark_person_cold`, `mark_person_hot`, `merge_persons`, `move_deal_stage`, `note_on_deal`, `note_on_person`, `note_on_product`, `pipeline_summary`, `propose_demo_times`, `read_file`, `recall_history`, `reschedule_demo`, `schedule_demo`, `send_email`, `send_sms`, `set_followup`, `summarize_seller`, `update_deal_close_date`, `update_deal_probability`, `update_deal_value`, `update_product_status`
 
 - **Python only (46):** `add_intake_question`, `advance_deal_stage`, `analyze_portfolio`, `ask_seller`, `audit_response_times`, `book_demo`, `call_integration_tool`, `change_member_role`, `commission_report`, `create_contact`, `draft_message`, `edit_studio_image`, `find_at_risk_agents`, `find_breached_leads`, `find_contacts`, `find_deals`, `find_integration_tool`, `find_unassigned_leads`, `flag_deal_for_manager_review`, `generate_priority_list`, `generate_studio_image`, `get_contact_activity`, `get_intake_form`, `log_activity_run`, `manage_goal`, `manage_routines`, `offboard_member`, `outcome`, `process_inbound_message`, `read_seller_morning_story`, `reassign_lead`, `recall_docs`, `recall_memory`, `remove_intake_question`, `route_lead`, `save_intake_form`, `seller_performance`, `send_email_now`, `send_sms_now`, `send_team_announcement`, `set_routing_rule`, `store_memory`, `team_health`, `update_contact`, `update_deal`, `update_intake_question`
 

@@ -88,6 +88,10 @@ import { sendProductPacketTool } from './send-product-packet';
 import { logEmailSentTool } from './log-email-sent';
 import { logSmsSentTool } from './log-sms-sent';
 
+// Affiliates — recruit creators to distribute the seller's software
+import { findCreatorsTool } from './find-creators';
+import { inviteCreatorTool } from './invite-creator';
+
 // Company — manager-role gated
 import { summarizeSellerTool } from './summarize-seller';
 import { analyzeSellerTool } from './analyze-seller';
@@ -173,6 +177,10 @@ export const ALL_TOOLS: ToolDefinition[] = [
   sendProductPacketTool as ToolDefinition,
   logEmailSentTool as ToolDefinition,
   logSmsSentTool as ToolDefinition,
+
+  // ── Affiliates ─────────────────────────────────────────────────────────
+  findCreatorsTool as ToolDefinition,
+  inviteCreatorTool as ToolDefinition,
 
   // ── Company ──────────────────────────────────────────────────────────
   summarizeSellerTool as ToolDefinition,
