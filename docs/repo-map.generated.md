@@ -8,7 +8,7 @@
 ## At a glance
 
 - **Page routes:** 204
-- **API endpoints:** 341
+- **API endpoints:** 342
 - **Cron jobs:** 11
 - **DB tables:** 112  ·  **RPCs:** 23  ·  **migrations:** 170
 - **Agent tools — TS (lib/ai-tools):** 58 declared, 57 wired into `ALL_TOOLS`
@@ -835,9 +835,10 @@
 
 - `/api/sync`
 
-**/api/track** (1)
+**/api/track** (2)
 
 - `/api/track/click`
+- `/api/track/cola.js`
 
 **/api/upload** (2)
 

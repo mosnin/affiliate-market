@@ -13,6 +13,7 @@ import { getOrCreateDefaultProgram } from '@/lib/affiliates/programs';
 import { getBridgeForSpace, bridgeWebhookUrl } from '@/lib/affiliates/stripe-bridge';
 import { ProgramSettingsForm } from '@/components/affiliate/program-settings-form';
 import { StripeBridgeCard } from '@/components/affiliate/stripe-bridge-card';
+import { TrackingSnippetCard } from '@/components/affiliate/tracking-snippet-card';
 
 const AFFILIATE_TABS = [
   { label: 'Overview', href: '' },
@@ -106,6 +107,11 @@ export default async function AffiliateProgramPage({
               : null
           }
         />
+      </section>
+
+      {/* Zero-code tracking snippet for the seller's own site */}
+      <section className={cn(SECTION_RHYTHM)}>
+        <TrackingSnippetCard appUrl={appUrl} />
       </section>
     </div>
   );
