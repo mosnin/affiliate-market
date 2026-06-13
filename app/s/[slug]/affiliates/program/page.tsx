@@ -89,6 +89,8 @@ export default async function AffiliateProgramPage({
             autoApproveCommissions: program.autoApproveCommissions,
             recurring: program.recurring,
             recurringMonths: program.recurringMonths,
+            tier2Enabled: program.tier2Enabled,
+            tier2Percent: program.tier2Percent,
           }}
         />
       </section>

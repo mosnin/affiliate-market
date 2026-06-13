@@ -41,6 +41,12 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.recurring === 'boolean') {
     patch.recurring = body.recurring;
   }
+  if (typeof body.tier2Enabled === 'boolean') {
+    patch.tier2Enabled = body.tier2Enabled;
+  }
+  if (typeof body.tier2Percent === 'number' && Number.isFinite(body.tier2Percent)) {
+    patch.tier2Percent = body.tier2Percent;
+  }
   if (body.recurringMonths === null) {
     patch.recurringMonths = null;
   } else if (typeof body.recurringMonths === 'number' && Number.isFinite(body.recurringMonths)) {

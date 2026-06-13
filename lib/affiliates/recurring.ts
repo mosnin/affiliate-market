@@ -5,6 +5,7 @@ import { getPartnerById, type AffiliatePartnerRow } from '@/lib/affiliates/partn
 import { calculateCommissionCents } from '@/lib/affiliates/commissions';
 import { splitCommissionCents } from '@/lib/affiliates/fees';
 import { sendCommissionEarnedEmail } from '@/lib/affiliates/emails';
+import { maybeCreateTierTwoCommission } from '@/lib/affiliates/tier2';
 import type { AffiliateProgramRow } from '@/lib/affiliates/programs';
 
 /**
@@ -234,6 +235,18 @@ export async function recordPaymentCommission(
       partnerName: partner.name,
       amountCents: netCents,
       pendingApproval: status === 'pending',
+    });
+
+    // Sub-affiliate override for whoever recruited this creator (level-2
+    // piggybacks on this level-1's invoice idempotency — see tier2.ts).
+    await maybeCreateTierTwoCommission({
+      spaceId: input.spaceId,
+      childPartnerId: partner.id,
+      childGrossCents: grossCents,
+      referralId,
+      orderId: input.orderId ?? null,
+      currency: input.currency,
+      autoApprove: program.autoApproveCommissions,
     });
 
     return { commissionCents: grossCents, periodNumber };

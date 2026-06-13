@@ -236,6 +236,28 @@ export default async function AffiliateDashboardPage() {
         )}
       </section>
 
+      {/* Recruit other creators (sub-affiliate) */}
+      {links.length > 0 && (
+        <section className={cn(SECTION_RHYTHM)}>
+          <div className="space-y-1">
+            <h2 className={cn(H2)}>Recruit creators</h2>
+            <p className={cn(BODY_MUTED)}>
+              Share this link. When creators you recruit make sales, you earn an override —
+              if the seller has sub-affiliates enabled.
+            </p>
+          </div>
+          {(() => {
+            const recruitUrl = `${appUrl.replace(/\/$/, '')}/affiliate?recruiter=${encodeURIComponent(links[0].code)}`;
+            return (
+              <div className={cn(CARD, 'px-4 py-3 flex items-center gap-3')}>
+                <p className="flex-1 min-w-0 text-sm text-foreground truncate font-mono">{recruitUrl}</p>
+                <CopyLinkButton url={recruitUrl} />
+              </div>
+            );
+          })()}
+        </section>
+      )}
+
       {/* Recent commissions */}
       <section className={cn(SECTION_RHYTHM)}>
         <h2 className={cn(H2)}>Recent commissions</h2>

@@ -88,7 +88,30 @@ export async function POST(req: NextRequest) {
     clerkUserId = null;
   }
 
-  const result = await createPartner({ spaceId, name, email, clerkUserId });
+  // Sub-affiliate: a recruiter code (another creator's referral link) sets the
+  // parent, but only when it belongs to an approved partner of THIS space.
+  let parentPartnerId: string | null = null;
+  const recruiterCode = typeof body.recruiterCode === 'string' ? body.recruiterCode.trim() : '';
+  if (recruiterCode) {
+    const link = await getLinkByCode(recruiterCode);
+    if (link) {
+      const { data: recruiter } = await supabase
+        .from('AffiliatePartner')
+        .select('id, spaceId, status, email')
+        .eq('id', link.partnerId)
+        .maybeSingle();
+      if (
+        recruiter &&
+        recruiter.spaceId === spaceId &&
+        recruiter.status === 'approved' &&
+        recruiter.email?.toLowerCase() !== email
+      ) {
+        parentPartnerId = recruiter.id;
+      }
+    }
+  }
+
+  const result = await createPartner({ spaceId, name, email, clerkUserId, parentPartnerId });
   if (!result) {
     return NextResponse.json({ error: 'Could not submit your application.' }, { status: 500 });
   }

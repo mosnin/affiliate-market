@@ -25,6 +25,8 @@ interface ProgramSettingsFormProps {
     autoApproveCommissions: boolean;
     recurring: boolean;
     recurringMonths: number | null;
+    tier2Enabled: boolean;
+    tier2Percent: number;
   };
 }
 
@@ -44,6 +46,8 @@ export function ProgramSettingsForm({ slug, initial }: ProgramSettingsFormProps)
   const [recurringMonths, setRecurringMonths] = useState(
     initial.recurringMonths ? String(initial.recurringMonths) : '',
   );
+  const [tier2Enabled, setTier2Enabled] = useState(initial.tier2Enabled);
+  const [tier2Percent, setTier2Percent] = useState(String(initial.tier2Percent ?? 10));
   const [saving, setSaving] = useState(false);
 
   async function handleSave(e: React.FormEvent) {
@@ -82,6 +86,8 @@ export function ProgramSettingsForm({ slug, initial }: ProgramSettingsFormProps)
           recurringMonths: recurring && recurringMonths.trim()
             ? parseInt(recurringMonths, 10)
             : null,
+          tier2Enabled,
+          tier2Percent: tier2Percent.trim() ? parseFloat(tier2Percent) : 0,
         }),
       });
 
@@ -225,6 +231,41 @@ export function ProgramSettingsForm({ slug, initial }: ProgramSettingsFormProps)
             </div>
             <p className="text-xs text-muted-foreground">
               Leave blank to pay for as long as the subscription lasts.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Sub-affiliates (tier 2) */}
+      <div className="space-y-3 pt-1">
+        <div className="flex items-center justify-between max-w-sm">
+          <div className="space-y-0.5">
+            <p className={cn(BODY, 'font-medium')}>Sub-affiliates</p>
+            <p className="text-xs text-muted-foreground">
+              Creators earn an override when creators they recruit make sales.
+            </p>
+          </div>
+          <Switch checked={tier2Enabled} onCheckedChange={setTier2Enabled} />
+        </div>
+        {tier2Enabled && (
+          <div className="space-y-1.5">
+            <Label htmlFor="prog-tier2" className={cn(BODY, 'font-medium')}>
+              Recruiter override (% of the recruit&apos;s commission)
+            </Label>
+            <div className="flex items-center gap-2 max-w-[200px]">
+              <Input
+                id="prog-tier2"
+                type="number"
+                min="0"
+                max="50"
+                step="1"
+                value={tier2Percent}
+                onChange={(e) => setTier2Percent(e.target.value)}
+              />
+              <span className={cn(BODY_MUTED, 'shrink-0')}>%</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              e.g. 10 = the recruiter earns 10% of each commission their recruit earns.
             </p>
           </div>
         )}

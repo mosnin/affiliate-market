@@ -18,6 +18,8 @@ export interface AffiliatePartnerRow {
   payoutDetails: Record<string, unknown> | null;
   /** Stripe Connect (Express) account that receives this creator's payouts. */
   stripeAccountId: string | null;
+  /** Recruiter (sub-affiliate tier-2), if this creator joined via a recruit link. */
+  parentPartnerId: string | null;
   createdAt: string;
 }
 
@@ -39,6 +41,8 @@ export interface CreatePartnerInput {
   clerkUserId?: string | null;
   /** True when a seller invites a creator from the directory (vs. a creator joining). */
   invitedBySeller?: boolean;
+  /** The partner who recruited this creator (sub-affiliate tier-2). */
+  parentPartnerId?: string | null;
 }
 
 /**
@@ -76,6 +80,7 @@ export async function createPartner(
       clerkUserId: input.clerkUserId ?? null,
       status,
       invitedBySeller: Boolean(input.invitedBySeller),
+      parentPartnerId: input.parentPartnerId ?? null,
     })
     .select('*')
     .single();

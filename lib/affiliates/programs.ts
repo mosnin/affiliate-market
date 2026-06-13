@@ -12,6 +12,8 @@ export interface AffiliateProgramRow {
   cookieWindowDays: number;
   autoApproveAffiliates: boolean;
   autoApproveCommissions: boolean;
+  tier2Enabled: boolean;
+  tier2Percent: number;
   createdAt: string;
 }
 
@@ -58,6 +60,9 @@ export interface ProgramPatch {
   cookieWindowDays?: number;
   autoApproveAffiliates?: boolean;
   autoApproveCommissions?: boolean;
+  /** Sub-affiliate tier-2: recruiters earn an override on their recruits' sales. */
+  tier2Enabled?: boolean;
+  tier2Percent?: number;
   /** Pay creators on subscription renewals too. */
   recurring?: boolean;
   /** Cap on commissioned periods (1 = first month only); null/0 = lifetime. */
@@ -79,6 +84,8 @@ export async function updateProgram(
   }
   if (patch.autoApproveAffiliates !== undefined) update.autoApproveAffiliates = patch.autoApproveAffiliates;
   if (patch.autoApproveCommissions !== undefined) update.autoApproveCommissions = patch.autoApproveCommissions;
+  if (patch.tier2Enabled !== undefined) update.tier2Enabled = patch.tier2Enabled;
+  if (patch.tier2Percent !== undefined) update.tier2Percent = Math.min(50, Math.max(0, patch.tier2Percent));
   if (patch.recurring !== undefined) update.recurring = patch.recurring;
   if (patch.recurringMonths !== undefined) {
     update.recurringMonths =

@@ -5,6 +5,7 @@ import { getPartnerById } from '@/lib/affiliates/partners';
 import { calculateCommissionCents, resolveCommissionPlan } from '@/lib/affiliates/commissions';
 import { splitCommissionCents } from '@/lib/affiliates/fees';
 import { sendCommissionEarnedEmail } from '@/lib/affiliates/emails';
+import { maybeCreateTierTwoCommission } from '@/lib/affiliates/tier2';
 import type { AffiliateProgramRow } from '@/lib/affiliates/programs';
 
 export interface RecordConversionInput {
@@ -178,6 +179,17 @@ export async function recordConversion(
       partnerName: partner.name,
       amountCents: netCents,
       pendingApproval: status === 'pending',
+    });
+
+    // Sub-affiliate override for whoever recruited this creator.
+    await maybeCreateTierTwoCommission({
+      spaceId: input.spaceId,
+      childPartnerId: partner.id,
+      childGrossCents: commissionCents,
+      referralId,
+      orderId: input.orderId,
+      currency: input.currency,
+      autoApprove: program.autoApproveCommissions,
     });
 
     return { referralId, commissionCentsTotal: commissionCents };

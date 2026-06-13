@@ -71,6 +71,13 @@ export default function AffiliateLandingPage() {
         body.spaceSlug = trimmed;
         body.code = trimmed;
       }
+      // Sub-affiliate: a recruiter's code arrives via ?recruiter= in the URL.
+      const recruiter = new URLSearchParams(window.location.search).get('recruiter');
+      if (recruiter) {
+        body.recruiterCode = recruiter;
+        // Default the program to the recruiter's via the same code.
+        if (!body.code) body.code = recruiter;
+      }
 
       const res = await fetch('/api/affiliates/join', {
         method: 'POST',
