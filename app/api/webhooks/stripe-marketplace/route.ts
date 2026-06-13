@@ -9,6 +9,7 @@ import {
   getOrderByStripePaymentIntent,
   attachStripeSubscription,
   attachStripePaymentIntent,
+  attachStripeCustomer,
 } from '@/lib/marketplace/orders';
 import { recordPaymentCommission } from '@/lib/affiliates/recurring';
 import { reverseCommissionsForInvoice } from '@/lib/affiliates/reversals';
@@ -86,6 +87,12 @@ export async function POST(req: NextRequest) {
         : session.payment_intent?.id ?? null;
     if (order && paymentIntentId) {
       await attachStripePaymentIntent(order.id, paymentIntentId);
+    }
+    // Customer id powers the buyer billing portal (manage/cancel subscription).
+    const customerId =
+      typeof session.customer === 'string' ? session.customer : session.customer?.id ?? null;
+    if (order && customerId) {
+      await attachStripeCustomer(order.id, customerId);
     }
   }
 

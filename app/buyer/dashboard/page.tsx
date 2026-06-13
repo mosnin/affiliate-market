@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ShoppingBag, Key, ChevronRight, Store } from 'lucide-react';
 import { getClientUser } from '@/lib/client-auth';
-import { getOrdersForBuyerEmail, getLicensesForBuyerEmail } from '@/lib/marketplace/orders';
+import { getOrdersForBuyerEmail, getLicensesForBuyerEmail, getStripeCustomerForBuyer } from '@/lib/marketplace/orders';
+import { ManageSubscriptionButton } from '@/components/buyer/manage-subscription-button';
 import { centsToDisplay } from '@/components/marketplace/price-format';
 import { CopyButton } from '@/components/marketplace/copy-button';
 import { TITLE_FONT } from '@/lib/typography';
@@ -57,13 +58,15 @@ export default async function BuyerDashboardPage() {
   if (!user) redirect('/buyer/login');
   if (!user.emailVerifiedAt) redirect('/buyer/verify');
 
-  const [orders, licenses] = await Promise.all([
+  const [orders, licenses, subscriptionCustomerId] = await Promise.all([
     getOrdersForBuyerEmail(user.email),
     getLicensesForBuyerEmail(user.email),
+    getStripeCustomerForBuyer(user.email),
   ]);
 
   const firstName = (user.name ?? '').trim().split(/\s+/)[0] || null;
   const hasActivity = orders.length > 0 || licenses.length > 0;
+  const canManageSubscription = Boolean(subscriptionCustomerId);
 
   return (
     <main className="mx-auto max-w-3xl space-y-12 px-4 py-10 pb-16 sm:px-6">
@@ -80,7 +83,10 @@ export default async function BuyerDashboardPage() {
               : "No purchases yet — they'll show up here the moment you buy."}
           </p>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-2">
+          {canManageSubscription && <ManageSubscriptionButton />}
+          <LogoutButton />
+        </div>
       </header>
 
       {/* Empty state */}

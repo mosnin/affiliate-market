@@ -240,6 +240,26 @@ export async function getOrderByStripePaymentIntent(
   return order ?? null;
 }
 
+export async function attachStripeCustomer(orderId: string, customerId: string): Promise<void> {
+  await supabase
+    .from('MarketplaceOrder')
+    .update({ stripeCustomerId: customerId })
+    .eq('id', orderId);
+}
+
+/** Most recent Stripe customer id for a buyer's subscription purchase, if any. */
+export async function getStripeCustomerForBuyer(email: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('MarketplaceOrder')
+    .select('stripeCustomerId')
+    .ilike('buyerEmail', email.trim().toLowerCase())
+    .not('stripeCustomerId', 'is', null)
+    .order('createdAt', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data?.stripeCustomerId as string | null) ?? null;
+}
+
 /** Recorded when a subscription checkout completes — renewals look it up. */
 export async function attachStripeSubscription(
   orderId: string,
