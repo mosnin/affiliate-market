@@ -31,6 +31,31 @@ export async function getSpaceByOwnerId(ownerId: string): Promise<Space | null> 
 }
 
 /**
+ * The Space owner's notification address plus the bits needed to deep-link them
+ * back into their workspace. One place for the Space.ownerId → User.email hop
+ * that the new-sale email and the new-affiliate email both need. Null when the
+ * space has no owner or the owner has no email on file — callers treat the
+ * result as best-effort and never block fulfilment on it.
+ */
+export async function getSpaceOwnerEmail(
+  spaceId: string,
+): Promise<{ email: string; name: string; slug: string } | null> {
+  const { data: space } = await supabase
+    .from('Space')
+    .select('name, slug, ownerId')
+    .eq('id', spaceId)
+    .maybeSingle();
+  if (!space?.ownerId) return null;
+  const { data: owner } = await supabase
+    .from('User')
+    .select('email')
+    .eq('id', space.ownerId)
+    .maybeSingle();
+  if (!owner?.email) return null;
+  return { email: owner.email, name: (space.name as string) ?? '', slug: space.slug as string };
+}
+
+/**
  * True when the Clerk user owns the given Space. Space.ownerId is UNIQUE, so
  * ownership is the precise (spaceId, userId) binding. Used by the internal
  * integration routes to reject a mismatched pair — the AGENT_INTERNAL_SECRET

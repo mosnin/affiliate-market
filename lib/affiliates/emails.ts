@@ -1,5 +1,10 @@
 import { Resend } from 'resend';
 import { logger } from '@/lib/logger';
+import {
+  isEmailSuppressed,
+  unsubscribeFooterHtml,
+  unsubscribeHeaders,
+} from '@/lib/email/suppression';
 
 /**
  * Affiliate lifecycle emails. Same conventions as lib/email.ts: silently
@@ -32,12 +37,23 @@ function dollars(cents: number): string {
   );
 }
 
-async function send(to: string, subject: string, html: string): Promise<void> {
+async function send(
+  to: string,
+  subject: string,
+  html: string,
+  headers?: Record<string, string>,
+): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return;
   try {
     const resend = new Resend(apiKey);
-    await resend.emails.send({ from: getFromAddress(), to, subject, html });
+    await resend.emails.send({
+      from: getFromAddress(),
+      to,
+      subject,
+      html,
+      ...(headers ? { headers } : {}),
+    });
   } catch (err) {
     logger.warn('[affiliates] email send failed', { subject, err: String(err) });
   }
@@ -109,6 +125,7 @@ export async function sendCreatorWeeklyDigest(params: {
   earnedNetCents: number;
 }): Promise<void> {
   // Quiet weeks aren't worth an email — the cron skips zero-activity creators.
+  if (await isEmailSuppressed(params.to, 'creator_digest')) return;
   const dashboard = `${appUrl()}/affiliate/dashboard`;
   await send(
     params.to,
@@ -122,7 +139,9 @@ export async function sendCreatorWeeklyDigest(params: {
       </table>
       <p><a href="${dashboard}" style="color:#111827;font-weight:600">Open your dashboard →</a></p>
       <p style="color:#6b7280;font-size:12px">Cola — net of the platform fee, yours to keep.</p>
+      ${unsubscribeFooterHtml(params.to, 'creator_digest')}
     </div>`,
+    unsubscribeHeaders(params.to, 'creator_digest'),
   );
 }
 
@@ -134,6 +153,7 @@ export async function sendSellerWeeklyDigest(params: {
   newPartners: number;
   pendingPartners: number;
 }): Promise<void> {
+  if (await isEmailSuppressed(params.to, 'seller_digest')) return;
   const base = appUrl();
   await send(
     params.to,
@@ -147,7 +167,9 @@ export async function sendSellerWeeklyDigest(params: {
         <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Awaiting approval</td><td><strong>${params.pendingPartners.toLocaleString()}</strong></td></tr>
       </table>
       <p style="color:#6b7280;font-size:12px">Cola — the agentic sales OS for software companies.</p>
+      ${unsubscribeFooterHtml(params.to, 'seller_digest')}
     </div>`,
+    unsubscribeHeaders(params.to, 'seller_digest'),
   );
 }
 
@@ -187,6 +209,36 @@ export async function sendCommissionEarnedEmail(params: {
       <p>Hi ${esc(params.partnerName)},</p>
       <p>A purchase just came through your referral link — you earned <strong>${dollars(params.amountCents)}</strong>. ${statusLine}</p>
       <p><a href="${dashboard}" style="color:#111827;font-weight:600">See your earnings →</a></p>
+      <p style="color:#6b7280;font-size:12px">Cola — the agentic sales OS for software companies.</p>
+    </div>`,
+  );
+}
+
+/**
+ * Seller-facing: a creator requested to join your program and is waiting on your
+ * decision. Transactional (it's activity on the seller's own account, and it
+ * needs an action), so no unsubscribe. Only sent for joins that require manual
+ * approval — auto-approved joins are covered by the weekly digest, so this stays
+ * quiet unless there's actually a decision to make.
+ */
+export async function sendNewAffiliateEmail(params: {
+  to: string;
+  spaceName: string;
+  partnerName: string;
+  partnerEmail: string;
+  manageUrl: string;
+}): Promise<void> {
+  await send(
+    params.to,
+    `${params.partnerName} wants to promote ${params.spaceName}`,
+    `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#111827;line-height:1.6">
+      <p>A creator just asked to join your affiliate program:</p>
+      <table style="border-collapse:collapse;margin:12px 0">
+        <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Name</td><td><strong>${esc(params.partnerName)}</strong></td></tr>
+        <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Email</td><td>${esc(params.partnerEmail)}</td></tr>
+      </table>
+      <p>They can't share a referral link until you approve them.</p>
+      <p><a href="${params.manageUrl}" style="color:#111827;font-weight:600">Review and approve →</a></p>
       <p style="color:#6b7280;font-size:12px">Cola — the agentic sales OS for software companies.</p>
     </div>`,
   );

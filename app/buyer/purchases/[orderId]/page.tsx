@@ -3,8 +3,10 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { getClientUser } from '@/lib/client-auth';
 import { getOrderById, getLicenseForOrder } from '@/lib/marketplace/orders';
+import { getRefundRequestForOrder } from '@/lib/marketplace/refunds';
 import { centsToDisplay } from '@/components/marketplace/price-format';
 import { CopyButton } from '@/components/marketplace/copy-button';
+import { RefundRequestForm } from '@/components/buyer/refund-request-form';
 import { TITLE_FONT } from '@/lib/typography';
 
 export const dynamic = 'force-dynamic';
@@ -58,9 +60,10 @@ export default async function OrderReceiptPage({
   if (!user.emailVerifiedAt) redirect('/buyer/verify');
 
   const { orderId } = await params;
-  const [order, license] = await Promise.all([
+  const [order, license, refundRequest] = await Promise.all([
     getOrderById(orderId),
     getLicenseForOrder(orderId),
+    getRefundRequestForOrder(orderId),
   ]);
 
   if (!order) notFound();
@@ -139,6 +142,16 @@ export default async function OrderReceiptPage({
               <span>Expires: {formatDate(license.expiresAt)}</span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Refund — offered on a paid order, or showing the status of a prior ask. */}
+      {(order.status === 'paid' || refundRequest) && (
+        <div className="mt-4 rounded-xl border border-border/70 bg-card p-5">
+          <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Refund
+          </h2>
+          <RefundRequestForm orderId={order.id} existingStatus={refundRequest?.status ?? null} />
         </div>
       )}
     </main>

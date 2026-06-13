@@ -2,7 +2,12 @@ import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/logger';
 import { getOrCreateDefaultProgram } from '@/lib/affiliates/programs';
 import { createLink } from '@/lib/affiliates/links';
-import { sendPartnerApprovedEmail, sendPartnerInvitedEmail } from '@/lib/affiliates/emails';
+import {
+  sendPartnerApprovedEmail,
+  sendPartnerInvitedEmail,
+  sendNewAffiliateEmail,
+} from '@/lib/affiliates/emails';
+import { getSpaceOwnerEmail } from '@/lib/space';
 
 export type PartnerStatus = 'pending' | 'approved' | 'suspended';
 
@@ -106,6 +111,22 @@ export async function createPartner(
     } else {
       void sendPartnerApprovedEmail({ to: email, partnerName: name });
     }
+  } else {
+    // Pending: a creator is waiting on the seller's approval — the one join
+    // that needs their action (auto-approved joins ride the weekly digest).
+    // Best-effort; never blocks the join.
+    void (async () => {
+      const owner = await getSpaceOwnerEmail(input.spaceId);
+      if (!owner) return;
+      const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+      await sendNewAffiliateEmail({
+        to: owner.email,
+        spaceName: owner.name || 'your workspace',
+        partnerName: name,
+        partnerEmail: email,
+        manageUrl: `${base}/s/${owner.slug}/affiliates`,
+      });
+    })();
   }
 
   return { partner: partner as AffiliatePartnerRow, created: true };

@@ -6,7 +6,9 @@ import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { getSellerConnectAccountId } from '@/lib/marketplace/sellers';
 import { ConnectPayoutsButton } from '@/components/marketplace/connect-payouts-button';
 import { getOrdersForSpace } from '@/lib/marketplace/orders';
-import { H1, TITLE_FONT, BODY_MUTED, PAGE_MAX, CARD, SECTION_LABEL, HERO_PANEL, PRIMARY_PILL, HERO_GHOST_PILL } from '@/lib/typography';
+import { getRefundRequestsForSpace } from '@/lib/marketplace/refunds';
+import { RefundRequestActions } from '@/components/seller/refund-request-actions';
+import { H1, TITLE_FONT, BODY_MUTED, PAGE_MAX, CARD, SECTION_LABEL, HERO_PANEL, PRIMARY_PILL, HERO_GHOST_PILL, CHIP_NEUTRAL } from '@/lib/typography';
 import { cn } from '@/lib/utils';
 
 const STATUS_CONFIG: Record<string, { label: string; chip: string }> = {
@@ -66,6 +68,11 @@ export default async function OrdersPage({
       </div>
     );
   }
+
+  // Open refund requests for this space → map orderId to the request id so each
+  // order row can badge itself and offer Approve/Decline. One query, no N+1.
+  const openRefundRequests = await getRefundRequestsForSpace(space.id);
+  const openRefundByOrderId = new Map(openRefundRequests.map((r) => [r.orderId, r.id]));
 
   const totalRevenue = orders
     .filter((o) => o.status === 'paid')
@@ -134,12 +141,14 @@ export default async function OrdersPage({
                   <th className={cn(SECTION_LABEL, 'text-right px-4 py-3')}>Amount</th>
                   <th className={cn(SECTION_LABEL, 'text-left px-4 py-3')}>Status</th>
                   <th className={cn(SECTION_LABEL, 'text-left px-4 py-3 hidden md:table-cell')}>Referral</th>
+                  <th className={cn(SECTION_LABEL, 'text-left px-4 py-3')}>Refund</th>
                   <th className="w-8 px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-card">
                 {orders.map((order) => {
                   const statusConf = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.pending;
+                  const refundRequestId = openRefundByOrderId.get(order.id) ?? null;
                   const date = new Date(order.createdAt).toLocaleDateString([], {
                     month: 'short',
                     day: 'numeric',
@@ -175,6 +184,18 @@ export default async function OrdersPage({
                           <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
                             {order.referralCode}
                           </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {refundRequestId ? (
+                          <div className="flex flex-col gap-2">
+                            <span className={cn(CHIP_NEUTRAL, 'w-fit whitespace-nowrap')}>
+                              Refund requested
+                            </span>
+                            <RefundRequestActions requestId={refundRequestId} />
+                          </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}

@@ -1,11 +1,11 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
-import { Package, Plus } from 'lucide-react';
+import { BarChart3, Package, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { formatCurrency } from '@/lib/formatting';
-import { H1, TITLE_FONT, BODY_MUTED, PAGE_MAX, PRIMARY_PILL } from '@/lib/typography';
+import { H1, TITLE_FONT, BODY_MUTED, PAGE_MAX, PRIMARY_PILL, GHOST_PILL } from '@/lib/typography';
 import type { Product } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { ProductStatusBadge } from '@/components/products/product-status-badge';
@@ -111,13 +111,22 @@ export default async function ProductsPage({
               : `${products.length} ${products.length === 1 ? 'product' : 'products'}`}
           </p>
         </div>
-        <Link
-          href={`/s/${slug}/products/new`}
-          className={cn(PRIMARY_PILL, 'inline-flex items-center gap-1.5 flex-shrink-0')}
-        >
-          <Plus size={14} aria-hidden />
-          Add product
-        </Link>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Link
+            href={`/s/${slug}/products/analytics`}
+            className={cn(GHOST_PILL, 'inline-flex items-center gap-1.5')}
+          >
+            <BarChart3 size={14} aria-hidden />
+            Analytics
+          </Link>
+          <Link
+            href={`/s/${slug}/products/new`}
+            className={cn(PRIMARY_PILL, 'inline-flex items-center gap-1.5')}
+          >
+            <Plus size={14} aria-hidden />
+            Add product
+          </Link>
+        </div>
       </header>
 
       {/* Empty state */}

@@ -1,4 +1,8 @@
 import type { MetadataRoute } from 'next';
+import {
+  getPublishedProducts,
+  MARKETPLACE_CATEGORIES,
+} from '@/lib/marketplace/products';
 
 /**
  * Marketing-site base URL. Prefer NEXT_PUBLIC_SITE_URL; fall back to the
@@ -38,12 +42,43 @@ const ROUTES: ReadonlyArray<{
   { path: '/buyer', changeFrequency: 'monthly', priority: 0.7 },
 ];
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const lastModified = new Date();
-  return ROUTES.map(({ path, changeFrequency, priority }) => ({
-    url: `${BASE_URL}${path}`,
-    lastModified,
-    changeFrequency,
-    priority,
-  }));
+
+  const staticEntries: MetadataRoute.Sitemap = ROUTES.map(
+    ({ path, changeFrequency, priority }) => ({
+      url: `${BASE_URL}${path}`,
+      lastModified,
+      changeFrequency,
+      priority,
+    }),
+  );
+
+  // Category landing pages — static in-memory list, can't throw.
+  const categoryEntries: MetadataRoute.Sitemap = MARKETPLACE_CATEGORIES.map(
+    (c) => ({
+      url: `${BASE_URL}/marketplace/c/${c.value}`,
+      lastModified,
+      changeFrequency: 'weekly',
+      priority: 0.6,
+    }),
+  );
+
+  // Published product detail pages — DB-backed, so guard it. If the fetch
+  // fails for any reason, fall back to the static + category routes rather
+  // than letting the whole sitemap throw at build/runtime.
+  let productEntries: MetadataRoute.Sitemap = [];
+  try {
+    const products = await getPublishedProducts();
+    productEntries = products.map((product) => ({
+      url: `${BASE_URL}/marketplace/p/${product.marketplaceSlug}`,
+      lastModified,
+      changeFrequency: 'weekly',
+      priority: 0.7,
+    }));
+  } catch {
+    productEntries = [];
+  }
+
+  return [...staticEntries, ...categoryEntries, ...productEntries];
 }

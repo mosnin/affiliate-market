@@ -5,7 +5,12 @@ import { recordConversion } from '@/lib/affiliates/conversions';
 import { reverseCommissionsForOrder } from '@/lib/affiliates/reversals';
 import { transferSellerProceeds } from '@/lib/marketplace/sellers';
 import { getMarketplaceFeeBps, gmvFeeCents } from '@/lib/marketplace/fees';
-import { sendOrderReceiptEmail, sendOrderRefundedEmail } from '@/lib/marketplace/emails';
+import {
+  sendOrderReceiptEmail,
+  sendOrderRefundedEmail,
+  sendSellerNewSaleEmail,
+} from '@/lib/marketplace/emails';
+import { getSpaceOwnerEmail } from '@/lib/space';
 
 export type OrderStatus = 'pending' | 'paid' | 'refunded' | 'canceled';
 export type LicenseStatus = 'active' | 'revoked' | 'expired';
@@ -388,6 +393,24 @@ export async function markOrderPaid(orderId: string): Promise<OrderWithProduct |
       licenseKey,
       orderId: order.id,
     });
+
+    // Tell the seller they made a sale (transactional). The owner lookup + send
+    // are fire-and-forget — fulfilment already happened above.
+    const productName = decorated.productName;
+    void (async () => {
+      const owner = await getSpaceOwnerEmail(order.spaceId);
+      if (!owner) return;
+      const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+      await sendSellerNewSaleEmail({
+        to: owner.email,
+        productName,
+        buyerEmail: order.buyerEmail,
+        amountCents: order.amountCents,
+        proceedsCents: sellerPayoutCents,
+        orderId: order.id,
+        dashboardUrl: `${base}/s/${owner.slug}/orders`,
+      });
+    })();
   }
   return decorated;
 }

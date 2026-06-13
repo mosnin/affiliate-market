@@ -9,6 +9,7 @@ import { buildPromoCopy, mediaKitImages } from '@/lib/marketplace/media-kit';
 import { BuyButton } from '@/components/marketplace/buy-button';
 import { MediaKit } from '@/components/marketplace/media-kit';
 import { OutboundLink } from '@/components/marketplace/outbound-link';
+import { ViewBeacon } from '@/components/marketplace/view-beacon';
 import { formatPriceCents } from '@/components/marketplace/price-format';
 import { ReviewsSection, VerifiedBadge } from '@/components/marketplace/reviews-section';
 import { getInitials } from '@/lib/formatting';
@@ -50,6 +51,9 @@ export default async function ProductDetailPage({
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 pb-16 sm:px-6">
+      {/* Funnel top: record one view per product per session. Renders null. */}
+      <ViewBeacon productId={product.id} />
+
       {/* Back */}
       <Link
         href="/marketplace"

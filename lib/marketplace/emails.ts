@@ -88,3 +88,43 @@ export async function sendOrderReceiptEmail(params: {
     logger.warn('[marketplace] receipt email failed', { orderId: params.orderId, err: String(err) });
   }
 }
+
+/**
+ * Seller-facing: you made a sale. Transactional (the seller's own business
+ * activity), so no unsubscribe. Shows the gross sale and the seller's net
+ * proceeds — proceeds are already net of any affiliate commission and the
+ * marketplace fee, computed by the caller.
+ */
+export async function sendSellerNewSaleEmail(params: {
+  to: string;
+  productName: string;
+  buyerEmail: string;
+  amountCents: number;
+  proceedsCents: number;
+  orderId: string;
+  dashboardUrl: string;
+}): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return;
+  try {
+    const resend = new Resend(apiKey);
+    await resend.emails.send({
+      from: getFromAddress(),
+      to: params.to,
+      subject: `You made a sale — ${params.productName}`,
+      html: `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#111827;line-height:1.6">
+        <p>Someone just bought <strong>${esc(params.productName)}</strong> on the Cola marketplace.</p>
+        <table style="border-collapse:collapse;margin:12px 0">
+          <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Sale</td><td><strong>${dollars(params.amountCents)}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Your proceeds</td><td><strong>${dollars(params.proceedsCents)}</strong></td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Buyer</td><td>${esc(params.buyerEmail)}</td></tr>
+          <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Order</td><td>${esc(params.orderId)}</td></tr>
+        </table>
+        <p><a href="${params.dashboardUrl}" style="color:#111827;font-weight:600">View your orders →</a></p>
+        <p style="color:#6b7280;font-size:12px">Proceeds are net of any affiliate commission and the Cola marketplace fee.</p>
+      </div>`,
+    });
+  } catch (err) {
+    logger.warn('[marketplace] new-sale email failed', { orderId: params.orderId, err: String(err) });
+  }
+}
