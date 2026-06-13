@@ -4,7 +4,9 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeft, Check, ExternalLink } from 'lucide-react';
 import { getProductBySlug } from '@/lib/marketplace/products';
+import { buildPromoCopy, mediaKitImages } from '@/lib/marketplace/media-kit';
 import { BuyButton } from '@/components/marketplace/buy-button';
+import { MediaKit } from '@/components/marketplace/media-kit';
 import { OutboundLink } from '@/components/marketplace/outbound-link';
 import { formatPriceCents } from '@/components/marketplace/price-format';
 import { getInitials } from '@/lib/formatting';
@@ -132,6 +134,9 @@ export default async function ProductDetailPage({
               </ul>
             </section>
           )}
+
+          {/* Media kit for creators */}
+          <MediaKit copy={buildPromoCopy(product)} images={mediaKitImages(product)} />
 
           {/* Vendor card */}
           <section className="space-y-3">
