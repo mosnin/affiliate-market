@@ -184,6 +184,7 @@ export async function createPendingOrder(input: {
   amountCents: number;
   currency: string;
   referralCode: string | null;
+  discountCents?: number;
   clientUserId?: string | null;
 }): Promise<OrderRow | null> {
   const { data, error } = await supabase
@@ -197,6 +198,7 @@ export async function createPendingOrder(input: {
       currency: input.currency || 'usd',
       status: 'pending',
       referralCode: input.referralCode,
+      discountCents: input.discountCents ?? 0,
     })
     .select('*')
     .single();

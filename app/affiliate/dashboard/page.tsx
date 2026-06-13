@@ -33,6 +33,7 @@ import { getPayableBalanceCentsForPartners } from '@/lib/affiliates/payouts';
 import { PLATFORM_FEE_PERCENT } from '@/lib/affiliates/fees';
 import { CopyLinkButton } from '@/components/affiliate/copy-link-button';
 import { NewLinkButton } from '@/components/affiliate/new-link-button';
+import { VanityCodeButton } from '@/components/affiliate/vanity-code-button';
 
 export default async function AffiliateDashboardPage() {
   const { userId } = await auth();
@@ -176,8 +177,11 @@ export default async function AffiliateDashboardPage() {
       {/* Links section */}
       <section className={cn(SECTION_RHYTHM)}>
         <div className="flex items-center justify-between gap-4">
-          <h2 className={cn(H2)}>Referral links</h2>
-          <NewLinkButton />
+          <h2 className={cn(H2)}>Referral links & codes</h2>
+          <div className="flex items-center gap-2">
+            <VanityCodeButton />
+            <NewLinkButton />
+          </div>
         </div>
 
         {links.length === 0 ? (
@@ -194,9 +198,19 @@ export default async function AffiliateDashboardPage() {
                   className={cn(CARD, 'px-4 py-3 flex items-center gap-3')}
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-foreground truncate font-mono">{url}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-foreground truncate font-mono">
+                        {link.isVanity ? link.code.toUpperCase() : url}
+                      </p>
+                      {link.discountPercent > 0 && (
+                        <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-medium bg-brand-subtle text-primary">
+                          {link.discountPercent}% off
+                        </span>
+                      )}
+                    </div>
                     <p className={cn(META, 'mt-0.5')}>
                       {link.productName ? `${link.productName} · ` : ''}
+                      {link.isVanity ? 'code · ' : ''}
                       {link.clicks} {link.clicks === 1 ? 'click' : 'clicks'}
                     </p>
                   </div>

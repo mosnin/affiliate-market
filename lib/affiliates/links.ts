@@ -9,7 +9,16 @@ export interface ReferralLinkRow {
   code: string;
   destinationUrl: string | null;
   productId: string | null;
+  discountPercent: number;
+  isVanity: boolean;
   createdAt: string;
+}
+
+/** Vanity codes are typed by humans: letters/digits, 3–24 chars, case-folded. */
+export function normalizeVanityCode(raw: string): string | null {
+  const code = raw.trim().toLowerCase().replace(/\s+/g, '');
+  if (!/^[a-z0-9][a-z0-9_-]{2,23}$/.test(code)) return null;
+  return code;
 }
 
 export interface ReferralLinkWithClicks {
@@ -18,6 +27,8 @@ export interface ReferralLinkWithClicks {
   destinationUrl: string | null;
   productId: string | null;
   productName: string | null;
+  discountPercent: number;
+  isVanity: boolean;
   clicks: number;
 }
 
@@ -106,6 +117,52 @@ export async function createLink(
   return null;
 }
 
+/**
+ * Create a vanity code: a human-chosen code with an optional discount.
+ * Returns { error } when the code is malformed or already taken so the
+ * caller can tell the creator why.
+ */
+export async function createVanityLink(
+  partnerId: string,
+  rawCode: string,
+  opts?: { discountPercent?: number; productId?: string | null; destinationUrl?: string | null },
+): Promise<{ link: ReferralLinkRow } | { error: string }> {
+  const code = normalizeVanityCode(rawCode);
+  if (!code) return { error: 'Codes are 3–24 letters, numbers, - or _.' };
+
+  const discountPercent = Math.max(0, Math.min(90, Math.round(opts?.discountPercent ?? 0)));
+
+  const { data: partner } = await supabase
+    .from('AffiliatePartner')
+    .select('id, programId')
+    .eq('id', partnerId)
+    .maybeSingle();
+  if (!partner) return { error: 'Partner not found.' };
+
+  const { data, error } = await supabase
+    .from('ReferralLink')
+    .insert({
+      partnerId: partner.id,
+      programId: partner.programId,
+      code,
+      discountPercent,
+      isVanity: true,
+      productId: opts?.productId ?? null,
+      destinationUrl: opts?.destinationUrl ?? null,
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    if (`${error.message}`.toLowerCase().includes('duplicate')) {
+      return { error: 'That code is taken. Try another.' };
+    }
+    logger.warn('[affiliates] createVanityLink failed', { error: error.message });
+    return { error: 'Could not create that code.' };
+  }
+  return { link: data as ReferralLinkRow };
+}
+
 /** Existing product link for a partner, if they already generated one. */
 export async function getLinkForProduct(
   partnerId: string,
@@ -133,7 +190,7 @@ export async function listLinksForPartners(
   if (partnerIds.length === 0) return [];
   const { data: links } = await supabase
     .from('ReferralLink')
-    .select('id, code, destinationUrl, productId')
+    .select('id, code, destinationUrl, productId, discountPercent, isVanity')
     .in('partnerId', partnerIds)
     .order('createdAt', { ascending: true });
   if (!links || links.length === 0) return [];
@@ -162,6 +219,8 @@ export async function listLinksForPartners(
     destinationUrl: l.destinationUrl ?? null,
     productId: l.productId ?? null,
     productName: l.productId ? (productNames.get(l.productId) ?? null) : null,
+    discountPercent: l.discountPercent ?? 0,
+    isVanity: Boolean(l.isVanity),
     clicks: counts.get(l.id) ?? 0,
   }));
 }

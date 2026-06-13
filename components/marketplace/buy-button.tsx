@@ -12,6 +12,7 @@ interface BuyButtonProps {
 export function BuyButton({ productId, productName }: BuyButtonProps) {
   const [stage, setStage] = useState<'idle' | 'email' | 'pending'>('idle');
   const [email, setEmail] = useState('');
+  const [coupon, setCoupon] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   async function handleBuy(e: React.FormEvent) {
@@ -24,7 +25,7 @@ export function BuyButton({ productId, productName }: BuyButtonProps) {
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, email }),
+        body: JSON.stringify({ productId, email, couponCode: coupon.trim() || undefined }),
       });
       const data = (await res.json()) as { url?: string; error?: string };
 
@@ -73,6 +74,21 @@ export function BuyButton({ productId, productName }: BuyButtonProps) {
           placeholder="you@email.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          disabled={stage === 'pending'}
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm placeholder:text-muted-foreground/70 outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:opacity-50"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label htmlFor="buy-coupon" className="text-xs font-medium text-foreground">
+          Discount or creator code <span className="font-normal text-muted-foreground">(optional)</span>
+        </label>
+        <input
+          id="buy-coupon"
+          type="text"
+          autoComplete="off"
+          placeholder="e.g. CASEY20"
+          value={coupon}
+          onChange={(e) => setCoupon(e.target.value)}
           disabled={stage === 'pending'}
           className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm placeholder:text-muted-foreground/70 outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:opacity-50"
         />

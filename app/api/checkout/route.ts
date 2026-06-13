@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { supabase } from '@/lib/supabase';
 import { getStripe } from '@/lib/stripe';
 import { REF_COOKIE } from '@/lib/affiliates/tracking';
+import { getLinkByCode, normalizeVanityCode } from '@/lib/affiliates/links';
 import {
   createPendingOrder,
   attachStripeSession,
@@ -57,16 +58,41 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Attribution: an explicit typed coupon code wins over the cookie (the
+  // buyer chose it, and it carries the discount). Fall back to the cookie.
   const cookieStore = await cookies();
-  const referralCode = cookieStore.get(REF_COOKIE)?.value ?? null;
+  const typedCode = typeof body.couponCode === 'string' ? normalizeVanityCode(body.couponCode) : null;
+  const cookieCode = cookieStore.get(REF_COOKIE)?.value ?? null;
+
+  // Resolve the discount from whichever code we end up using.
+  let referralCode = typedCode ?? cookieCode;
+  let discountCents = 0;
+  if (referralCode) {
+    const link = await getLinkByCode(referralCode);
+    if (!link) {
+      // A typed code that doesn't resolve is a buyer error worth surfacing;
+      // a stale cookie code is just ignored.
+      if (typedCode) {
+        return NextResponse.json({ error: 'That code isn’t valid.' }, { status: 400 });
+      }
+      referralCode = null;
+    } else if (link.discountPercent > 0) {
+      discountCents = Math.floor((product.priceCents * link.discountPercent) / 100);
+    }
+  }
+  const chargeCents = Math.max(0, product.priceCents - discountCents);
+  if (chargeCents <= 0) {
+    return NextResponse.json({ error: 'That code can’t be applied to this product.' }, { status: 400 });
+  }
 
   const order = await createPendingOrder({
     spaceId: product.spaceId,
     productId: product.id,
     buyerEmail: email,
-    amountCents: product.priceCents,
+    amountCents: chargeCents,
     currency: product.currency ?? 'usd',
     referralCode,
+    discountCents,
   });
   if (!order) {
     return NextResponse.json({ error: 'Could not start checkout.' }, { status: 500 });
@@ -94,7 +120,7 @@ export async function POST(req: NextRequest) {
           quantity: 1,
           price_data: {
             currency: product.currency ?? 'usd',
-            unit_amount: product.priceCents,
+            unit_amount: chargeCents,
             product_data: { name: productName },
             ...(isSubscription
               ? {
