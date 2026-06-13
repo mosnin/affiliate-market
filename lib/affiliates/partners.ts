@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/logger';
 import { getOrCreateDefaultProgram } from '@/lib/affiliates/programs';
 import { createLink } from '@/lib/affiliates/links';
-import { sendPartnerApprovedEmail } from '@/lib/affiliates/emails';
+import { sendPartnerApprovedEmail, sendPartnerInvitedEmail } from '@/lib/affiliates/emails';
 
 export type PartnerStatus = 'pending' | 'approved' | 'suspended';
 
@@ -37,12 +37,15 @@ export interface CreatePartnerInput {
   name: string;
   email: string;
   clerkUserId?: string | null;
+  /** True when a seller invites a creator from the directory (vs. a creator joining). */
+  invitedBySeller?: boolean;
 }
 
 /**
  * Join flow. Idempotent on (space, email): re-joining returns the existing
  * partner. Auto-approval follows the program setting; approved partners get
- * their first referral link immediately.
+ * their first referral link immediately. Seller invites are always approved
+ * (the seller chose them) and get an invite email instead of an approval one.
  */
 export async function createPartner(
   input: CreatePartnerInput,
@@ -61,7 +64,8 @@ export async function createPartner(
     .maybeSingle();
   if (existing) return { partner: existing as AffiliatePartnerRow, created: false };
 
-  const status: PartnerStatus = program.autoApproveAffiliates ? 'approved' : 'pending';
+  const status: PartnerStatus =
+    input.invitedBySeller || program.autoApproveAffiliates ? 'approved' : 'pending';
   const { data: partner, error } = await supabase
     .from('AffiliatePartner')
     .insert({
@@ -71,6 +75,7 @@ export async function createPartner(
       email,
       clerkUserId: input.clerkUserId ?? null,
       status,
+      invitedBySeller: Boolean(input.invitedBySeller),
     })
     .select('*')
     .single();
@@ -82,7 +87,20 @@ export async function createPartner(
 
   if (status === 'approved') {
     await createLink(partner.id);
-    void sendPartnerApprovedEmail({ to: email, partnerName: name });
+    if (input.invitedBySeller) {
+      const { data: space } = await supabase
+        .from('Space')
+        .select('name')
+        .eq('id', input.spaceId)
+        .maybeSingle();
+      void sendPartnerInvitedEmail({
+        to: email,
+        partnerName: name,
+        sellerName: space?.name ?? 'A software company',
+      });
+    } else {
+      void sendPartnerApprovedEmail({ to: email, partnerName: name });
+    }
   }
 
   return { partner: partner as AffiliatePartnerRow, created: true };

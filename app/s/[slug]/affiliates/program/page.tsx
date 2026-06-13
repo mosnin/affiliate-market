@@ -17,6 +17,7 @@ import { StripeBridgeCard } from '@/components/affiliate/stripe-bridge-card';
 const AFFILIATE_TABS = [
   { label: 'Overview', href: '' },
   { label: 'Program', href: '/program' },
+  { label: 'Creators', href: '/creators' },
   { label: 'Commissions', href: '/commissions' },
   { label: 'Payouts', href: '/payouts' },
 ];

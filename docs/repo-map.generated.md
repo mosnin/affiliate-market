@@ -7,10 +7,10 @@
 
 ## At a glance
 
-- **Page routes:** 201
-- **API endpoints:** 338
+- **Page routes:** 204
+- **API endpoints:** 340
 - **Cron jobs:** 11
-- **DB tables:** 111  ·  **RPCs:** 23  ·  **migrations:** 168
+- **DB tables:** 112  ·  **RPCs:** 23  ·  **migrations:** 169
 - **Agent tools — TS (lib/ai-tools):** 56 declared, 55 wired into `ALL_TOOLS`
 - **Agent tools — Python (agent/):** 53 declared
 
@@ -41,12 +41,13 @@
 - `/admin/users`
 - `/admin/users/[userId]`
 
-**affiliate** (4)
+**affiliate** (5)
 
 - `/affiliate`
 - `/affiliate/dashboard`
 - `/affiliate/explore`
 - `/affiliate/payouts`
+- `/affiliate/profile`
 
 **apply** (5)
 
@@ -185,6 +186,10 @@
 
 - `/packet/[token]`
 
+**partners** (1)
+
+- `/partners/[slug]`
+
 **pricing** (1)
 
 - `/pricing`
@@ -193,11 +198,12 @@
 
 - `/privacy`
 
-**s** (91)
+**s** (92)
 
 - `/s/[slug]`
 - `/s/[slug]/affiliates`
 - `/s/[slug]/affiliates/commissions`
+- `/s/[slug]/affiliates/creators`
 - `/s/[slug]/affiliates/payouts`
 - `/s/[slug]/affiliates/program`
 - `/s/[slug]/agent`
@@ -348,7 +354,7 @@
 - `/api/admin/triggers/backfill`
 - `/api/admin/triggers/test-fire`
 
-**/api/affiliates** (17)
+**/api/affiliates** (19)
 
 - `/api/affiliates/bridge`
 - `/api/affiliates/commissions`
@@ -358,10 +364,12 @@
 - `/api/affiliates/join`
 - `/api/affiliates/me`
 - `/api/affiliates/me/links`
+- `/api/affiliates/me/profile`
 - `/api/affiliates/me/stripe-connect`
 - `/api/affiliates/partners`
 - `/api/affiliates/partners/[id]/approve`
 - `/api/affiliates/partners/[id]/suspend`
+- `/api/affiliates/partners/invite`
 - `/api/affiliates/payouts`
 - `/api/affiliates/payouts/run`
 - `/api/affiliates/program`
@@ -892,11 +900,11 @@ the runtimes diverge — this table makes the drift visible.
 
 ## Data model (supabase/schema.sql)
 
-**Tables (111):** `AIUserProfile`, `AffiliateAccount`, `AffiliateCommission`, `AffiliatePartner`, `AffiliatePayout`, `AffiliateProgram`, `AgentActivityLog`, `AgentDraft`, `AgentGoal`, `AgentMemory`, `AgentPausedRun`, `AgentQuestion`, `AgentSettings`, `AgentTask`, `AgentTrajectory`, `Announcement`, `AnnouncementDismissal`, `AppKnowledgeDoc`, `ApplicationMessage`, `ApplicationStatusUpdate`, `Artifact`, `ArtifactVersion`, `Attachment`, `AuditLog`, `Brief`, `BriefTipHistory`, `CalendarEvent`, `CalendarEventMirror`, `CalendarNote`, `CallLog`, `ChatUsage`, `ClientAuthCode`, `ClientDocument`, `ClientInfoRequest`, `ClientMessage`, `ClientUser`, `CmaReport`, `CommissionLedger`, `CommissionSplit`, `Company`, `CompanyIntegrationConnection`, `CompanyMembership`, `CompanyRemoval`, `CompanyTemplate`, `Contact`, `ContactDocument`, `Conversation`, `CreditLot`, `CreditTxn`, `CustomAgent`, `DeadLetterEvent`, `Deal`, `DealActivity`, `DealChecklistItem`, `DealContact`, `DealDocument`, `DealReviewComment`, `DealReviewRequest`, `DealRoutingRule`, `DealStage`, `Demo`, `DemoAvailabilityOverride`, `DemoFeedback`, `DemoProductProfile`, `DemoWaitlist`, `DisabledSpace`, `DocumentEmbedding`, `EmailBroadcast`, `ExecutionStep`, `File`, `FormAnalyticsEvent`, `FormDraft`, `GoalDecomposition`, `GoogleCalendarToken`, `IntegrationConnection`, `IntegrationTrigger`, `Invitation`, `License`, `ManagerConversation`, `ManagerMessage`, `ManagerNotification`, `MarketplaceOrder`, `McpApiKey`, `McpAuthCode`, `Message`, `MessageTemplate`, `Note`, `Pipeline`, `Product`, `ProductPacket`, `ProfilePage`, `PushSubscription`, `Referral`, `ReferralClick`, `ReferralLink`, `Routine`, `SignatureRequest`, `Space`, `SpaceSetting`, `StripeBridge`, `StudioBrand`, `StudioGeneration`, `StudioPost`, `SupportTicket`, `SwarmEvent`, `SwarmMember`, `SwarmRun`, `TaskCheckpoint`, `TaskDependency`, `TelemetryEvent`, `User`
+**Tables (112):** `AIUserProfile`, `AffiliateAccount`, `AffiliateCommission`, `AffiliatePartner`, `AffiliatePayout`, `AffiliateProgram`, `AgentActivityLog`, `AgentDraft`, `AgentGoal`, `AgentMemory`, `AgentPausedRun`, `AgentQuestion`, `AgentSettings`, `AgentTask`, `AgentTrajectory`, `Announcement`, `AnnouncementDismissal`, `AppKnowledgeDoc`, `ApplicationMessage`, `ApplicationStatusUpdate`, `Artifact`, `ArtifactVersion`, `Attachment`, `AuditLog`, `Brief`, `BriefTipHistory`, `CalendarEvent`, `CalendarEventMirror`, `CalendarNote`, `CallLog`, `ChatUsage`, `ClientAuthCode`, `ClientDocument`, `ClientInfoRequest`, `ClientMessage`, `ClientUser`, `CmaReport`, `CommissionLedger`, `CommissionSplit`, `Company`, `CompanyIntegrationConnection`, `CompanyMembership`, `CompanyRemoval`, `CompanyTemplate`, `Contact`, `ContactDocument`, `Conversation`, `CreatorProfile`, `CreditLot`, `CreditTxn`, `CustomAgent`, `DeadLetterEvent`, `Deal`, `DealActivity`, `DealChecklistItem`, `DealContact`, `DealDocument`, `DealReviewComment`, `DealReviewRequest`, `DealRoutingRule`, `DealStage`, `Demo`, `DemoAvailabilityOverride`, `DemoFeedback`, `DemoProductProfile`, `DemoWaitlist`, `DisabledSpace`, `DocumentEmbedding`, `EmailBroadcast`, `ExecutionStep`, `File`, `FormAnalyticsEvent`, `FormDraft`, `GoalDecomposition`, `GoogleCalendarToken`, `IntegrationConnection`, `IntegrationTrigger`, `Invitation`, `License`, `ManagerConversation`, `ManagerMessage`, `ManagerNotification`, `MarketplaceOrder`, `McpApiKey`, `McpAuthCode`, `Message`, `MessageTemplate`, `Note`, `Pipeline`, `Product`, `ProductPacket`, `ProfilePage`, `PushSubscription`, `Referral`, `ReferralClick`, `ReferralLink`, `Routine`, `SignatureRequest`, `Space`, `SpaceSetting`, `StripeBridge`, `StudioBrand`, `StudioGeneration`, `StudioPost`, `SupportTicket`, `SwarmEvent`, `SwarmMember`, `SwarmRun`, `TaskCheckpoint`, `TaskDependency`, `TelemetryEvent`, `User`
 
 **RPCs (23):** `book_demo_atomic`, `charge_credits_for_chat_usage`, `cleanup_agent_data`, `create_company_with_owner`, `create_space_with_defaults`, `current_user_internal_id`, `ensure_agent_settings_for_space`, `grant_credits`, `match_agent_memory`, `match_documents`, `match_documents_hybrid`, `offboard_company_member`, `purge_credit_rows_for_account`, `refund_credit_txn`, `reorder_deal`, `resolve_billing_account_for_space`, `routine_next_run_at`, `routine_set_next_run`, `search_knowledge_docs`, `spend_credits`, `stamp_brief_enabled_at`, `sync_commission_ledger`, `update_updated_at_column`
 
-**Migrations:** 168 (latest: `20260702000000_enable_rls_on_unprotected_tables.sql`)
+**Migrations:** 169 (latest: `20260702000000_enable_rls_on_unprotected_tables.sql`)
 
 ## External services
 

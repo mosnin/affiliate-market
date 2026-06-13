@@ -25,6 +25,7 @@ import { SettleBridgeButton } from '@/components/affiliate/settle-bridge-button'
 const AFFILIATE_TABS = [
   { label: 'Overview', href: '' },
   { label: 'Program', href: '/program' },
+  { label: 'Creators', href: '/creators' },
   { label: 'Commissions', href: '/commissions' },
   { label: 'Payouts', href: '/payouts' },
 ];

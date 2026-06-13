@@ -101,6 +101,25 @@ export async function sendSettlementInvoiceEmail(params: {
   );
 }
 
+export async function sendPartnerInvitedEmail(params: {
+  to: string;
+  partnerName: string;
+  sellerName: string;
+}): Promise<void> {
+  const dashboard = `${appUrl()}/affiliate/dashboard`;
+  await send(
+    params.to,
+    `${params.sellerName} invited you to promote their software`,
+    `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#111827;line-height:1.6">
+      <p>Hi ${esc(params.partnerName)},</p>
+      <p><strong>${esc(params.sellerName)}</strong> wants you to promote their product on Cola.
+      Your referral link is ready — share it and earn a commission on every sale it drives.</p>
+      <p><a href="${dashboard}" style="color:#111827;font-weight:600">Open your affiliate dashboard →</a></p>
+      <p style="color:#6b7280;font-size:12px">Cola — the agentic sales OS for software companies.</p>
+    </div>`,
+  );
+}
+
 export async function sendCommissionEarnedEmail(params: {
   to: string;
   partnerName: string;

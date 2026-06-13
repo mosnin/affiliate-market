@@ -63,6 +63,8 @@ const isFullyPublicRoute = createRouteMatcher([
   '/api/checkout',
   '/api/track/(.*)',
   '/api/affiliates/join',
+  // Branded public program pages — sellers share these to recruit creators.
+  '/partners/(.*)',
   // Buyer portal — its own magic-code session (ClientUser), like /clients.
   '/buyer',
   '/buyer/(.*)',

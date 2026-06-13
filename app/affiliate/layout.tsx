@@ -40,6 +40,12 @@ export default function AffiliateLayout({
             >
               Payouts
             </Link>
+            <Link
+              href="/affiliate/profile"
+              className="px-3 h-8 inline-flex items-center rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+            >
+              Profile
+            </Link>
           </nav>
 
           {/* Auth */}
