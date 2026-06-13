@@ -3,7 +3,7 @@ import {
   getPublishedProducts,
   type MarketplaceProduct,
 } from '@/lib/marketplace/products';
-import { calculateCommissionCents } from '@/lib/affiliates/commissions';
+import { calculateCommissionCents, resolveCommissionPlan } from '@/lib/affiliates/commissions';
 import { splitCommissionCents } from '@/lib/affiliates/fees';
 
 /**
@@ -77,8 +77,19 @@ export async function getExploreProducts(filter?: {
     }
   }
 
+  // Per-product commission overrides (null = inherit program).
+  const { data: overrides } = await supabase
+    .from('Product')
+    .select('id, commissionType, commissionValue')
+    .in('id', products.map((p) => p.id));
+  const overrideById = new Map(
+    (overrides ?? []).map((o) => [o.id, o as { commissionType: string | null; commissionValue: number | null }]),
+  );
+
   return products.map((product) => {
-    const terms = termsBySpace.get(product.spaceId) ?? { spaceId: product.spaceId, ...DEFAULT_TERMS };
+    const programTerms = termsBySpace.get(product.spaceId) ?? { spaceId: product.spaceId, ...DEFAULT_TERMS };
+    const effective = resolveCommissionPlan(programTerms, overrideById.get(product.id));
+    const terms = { ...effective, recurring: programTerms.recurring };
     const grossPerSale =
       product.priceCents != null
         ? calculateCommissionCents(terms, product.priceCents)

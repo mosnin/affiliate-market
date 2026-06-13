@@ -114,6 +114,22 @@ function sanitiseBody(body: Record<string, unknown>, mode: 'create' | 'update') 
 
   numberField('priceCents', { min: 0, max: 100_000_000_00, integer: true });
 
+  // Per-product commission override (null = inherit the program default).
+  if ('commissionType' in body) {
+    if (body.commissionType === null || body.commissionType === '') out.commissionType = null;
+    else if (body.commissionType === 'percent' || body.commissionType === 'flat') {
+      out.commissionType = body.commissionType;
+    } else errors.push('Invalid commissionType');
+  }
+  if ('commissionValue' in body) {
+    if (body.commissionValue === null || body.commissionValue === '') out.commissionValue = null;
+    else {
+      const v = Number(body.commissionValue);
+      if (!Number.isFinite(v) || v < 0) errors.push('commissionValue must be ≥ 0');
+      else out.commissionValue = v;
+    }
+  }
+
   if ('features' in body) {
     if (!Array.isArray(body.features)) errors.push('features must be an array');
     else {

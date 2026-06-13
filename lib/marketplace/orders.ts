@@ -324,6 +324,7 @@ export async function markOrderPaid(orderId: string): Promise<OrderWithProduct |
       amountCents: order.amountCents,
       currency: order.currency,
       referralCode: order.referralCode,
+      productId: order.productId,
     });
     grossCommissionCents = conversion?.commissionCentsTotal ?? 0;
   } catch (err) {

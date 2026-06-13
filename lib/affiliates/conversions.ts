@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/logger';
 import { getLinkByCode } from '@/lib/affiliates/links';
 import { getPartnerById } from '@/lib/affiliates/partners';
-import { calculateCommissionCents } from '@/lib/affiliates/commissions';
+import { calculateCommissionCents, resolveCommissionPlan } from '@/lib/affiliates/commissions';
 import { splitCommissionCents } from '@/lib/affiliates/fees';
 import { sendCommissionEarnedEmail } from '@/lib/affiliates/emails';
 import type { AffiliateProgramRow } from '@/lib/affiliates/programs';
@@ -14,6 +14,8 @@ export interface RecordConversionInput {
   amountCents: number;
   currency: string;
   referralCode: string | null;
+  /** When set, the product's commission override (if any) applies. */
+  productId?: string | null;
 }
 
 export interface ConversionResult {
@@ -128,7 +130,18 @@ export async function recordConversion(
       referralId = referral.id;
     }
 
-    const commissionCents = calculateCommissionCents(program, input.amountCents);
+    // Per-product override beats the program default when set.
+    let productOverride: { commissionType: string | null; commissionValue: number | null } | null = null;
+    if (input.productId) {
+      const { data: product } = await supabase
+        .from('Product')
+        .select('commissionType, commissionValue')
+        .eq('id', input.productId)
+        .maybeSingle();
+      productOverride = (product as typeof productOverride) ?? null;
+    }
+    const plan = resolveCommissionPlan(program, productOverride);
+    const commissionCents = calculateCommissionCents(plan, input.amountCents);
     const { platformFeeCents, netCents } = splitCommissionCents(commissionCents);
     const status = selfReferral
       ? 'rejected'

@@ -8,6 +8,26 @@ export interface CommissionPlan {
   commissionValue: number;
 }
 
+/**
+ * The effective commission plan: a product's override wins over the program
+ * default when both override fields are set; otherwise the program applies.
+ * One place so every caller (conversion, recurring, explore estimate) agrees.
+ */
+export function resolveCommissionPlan(
+  program: { commissionType: 'percent' | 'flat'; commissionValue: number },
+  product?: { commissionType?: string | null; commissionValue?: number | null } | null,
+): CommissionPlan {
+  if (
+    product &&
+    (product.commissionType === 'percent' || product.commissionType === 'flat') &&
+    product.commissionValue != null &&
+    Number(product.commissionValue) > 0
+  ) {
+    return { commissionType: product.commissionType, commissionValue: Number(product.commissionValue) };
+  }
+  return { commissionType: program.commissionType, commissionValue: program.commissionValue };
+}
+
 export interface CommissionRow {
   id: string;
   partnerId: string;

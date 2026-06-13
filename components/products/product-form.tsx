@@ -64,6 +64,10 @@ export function ProductForm({ initial = {}, onCancel, onSubmit, submitting, subm
       listingStatus: (v.listingStatus ?? 'draft') as ProductListingStatus,
       notes: v.notes?.toString() || null,
       photos: Array.isArray(v.photos) ? v.photos : [],
+      commissionType: (v.commissionType ?? null) as Product['commissionType'],
+      commissionValue: v.commissionValue != null && v.commissionValue !== ('' as unknown)
+        ? Number(v.commissionValue)
+        : null,
     });
   }
 
@@ -186,6 +190,31 @@ export function ProductForm({ initial = {}, onCancel, onSubmit, submitting, subm
             <option value="monthly">Monthly</option>
             <option value="yearly">Yearly</option>
           </select>
+        </Field>
+      </div>
+
+      {/* Per-product affiliate commission override. Blank = use the program default. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Affiliate commission type">
+          <select
+            value={v.commissionType ?? ''}
+            onChange={(e) => set('commissionType', (e.target.value || null) as Product['commissionType'])}
+            className={selectClasses}
+          >
+            <option value="">Use program default</option>
+            <option value="percent">Percentage (%)</option>
+            <option value="flat">Flat amount (cents)</option>
+          </select>
+        </Field>
+        <Field label="Commission value">
+          <Input
+            type="number"
+            min={0}
+            value={v.commissionValue ?? ''}
+            onChange={(e) => set('commissionValue', e.target.value === '' ? null : Number(e.target.value))}
+            placeholder={v.commissionType === 'flat' ? 'cents per sale' : v.commissionType === 'percent' ? 'e.g. 30' : 'inherits program'}
+            disabled={!v.commissionType}
+          />
         </Field>
       </div>
 

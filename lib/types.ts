@@ -414,6 +414,9 @@ export interface Product {
   /** Visible on the public marketplace. */
   published: boolean;
   marketplaceSlug: string | null;
+  /** Per-product affiliate commission override (null = inherit program default). */
+  commissionType: 'percent' | 'flat' | null;
+  commissionValue: number | null;
   listPrice: number | null; // kept for backward compat / CMA calcs
   listingStatus: ProductListingStatus;
   photos: string[];
