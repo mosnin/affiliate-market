@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
-import { Search, Globe } from 'lucide-react';
+import { Search, Globe, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   H1,
@@ -11,6 +11,7 @@ import {
   PAGE_RHYTHM,
   CARD,
   CHIP_NEUTRAL,
+  GHOST_PILL,
 } from '@/lib/typography';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { listCreatorsForSeller, CREATOR_CHANNELS, channelLabel, formatAudience } from '@/lib/affiliates/creators';
@@ -47,12 +48,17 @@ export default async function CreatorDirectoryPage({
 
   return (
     <div className={cn(PAGE_RHYTHM)}>
-      <header className="space-y-1">
-        <p className={cn(SECTION_LABEL)}>Affiliates</p>
-        <h1 className={cn(H1)}>Find creators</h1>
-        <p className={cn(BODY_MUTED)}>
-          Browse creators who promote software and invite them into your program.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <p className={cn(SECTION_LABEL)}>Affiliates</p>
+          <h1 className={cn(H1)}>Find creators</h1>
+          <p className={cn(BODY_MUTED)}>
+            Browse creators who promote software and invite them into your program.
+          </p>
+        </div>
+        <Link href={`/s/${slug}/affiliates/import`} className={cn(GHOST_PILL, 'shrink-0')}>
+          <Upload size={15} aria-hidden /> Import
+        </Link>
       </header>
 
       {/* Tab strip */}

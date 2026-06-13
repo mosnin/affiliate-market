@@ -3,6 +3,8 @@ import { BrandLogo } from '@/components/brand-logo';
 
 const legalPages = [
   { href: '/legal/terms', label: 'Terms of Service' },
+  { href: '/legal/marketplace-terms', label: 'Marketplace Terms' },
+  { href: '/legal/creator-agreement', label: 'Creator Agreement' },
   { href: '/legal/privacy', label: 'Privacy Policy' },
   { href: '/legal/cookies', label: 'Cookie Policy' },
   { href: '/legal/acceptable-use', label: 'Acceptable Use Policy' },

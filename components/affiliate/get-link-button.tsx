@@ -43,7 +43,9 @@ export function GetLinkButton({ productId }: { productId: string }) {
       }
 
       await navigator.clipboard.writeText(data.url).catch(() => {});
-      toast.success('Link copied. Share it anywhere.');
+      toast.success('Link copied. Share it anywhere.', {
+        description: "Disclose that it's an affiliate link (FTC requires it).",
+      });
       setState('copied');
     } catch {
       toast.error('Something went wrong. Try again.');

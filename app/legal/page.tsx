@@ -31,6 +31,16 @@ const DOCUMENTS: { href: string; label: string; description: string }[] = [
     description: 'The agreement that governs your use of Cola.',
   },
   {
+    href: '/legal/marketplace-terms',
+    label: 'Marketplace terms',
+    description: 'For sellers: listing, fees, payouts, refunds, and commission disputes.',
+  },
+  {
+    href: '/legal/creator-agreement',
+    label: 'Creator agreement',
+    description: 'For creators: how commissions are earned, paid net, and the FTC disclosure rule.',
+  },
+  {
     href: '/legal/cookies',
     label: 'Cookie policy',
     description: 'The cookies we set and how to manage them.',

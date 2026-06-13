@@ -7,10 +7,10 @@
 
 ## At a glance
 
-- **Page routes:** 205
-- **API endpoints:** 344
+- **Page routes:** 210
+- **API endpoints:** 349
 - **Cron jobs:** 12
-- **DB tables:** 112  ·  **RPCs:** 23  ·  **migrations:** 174
+- **DB tables:** 113  ·  **RPCs:** 23  ·  **migrations:** 177
 - **Agent tools — TS (lib/ai-tools):** 58 declared, 57 wired into `ALL_TOOLS`
 - **Agent tools — Python (agent/):** 53 declared
 
@@ -20,7 +20,7 @@
 
 - `/`
 
-**admin** (18)
+**admin** (20)
 
 - `/admin`
 - `/admin/affiliate-finance`
@@ -29,11 +29,13 @@
 - `/admin/audit-log`
 - `/admin/billing`
 - `/admin/broadcast`
+- `/admin/business`
 - `/admin/cohorts`
 - `/admin/companies`
 - `/admin/companies/[id]`
 - `/admin/form-analytics`
 - `/admin/invitations`
+- `/admin/moderation`
 - `/admin/observability`
 - `/admin/scoring-health`
 - `/admin/spaces`
@@ -122,12 +124,14 @@
 
 - `/join/[code]`
 
-**legal** (6)
+**legal** (8)
 
 - `/legal`
 - `/legal/acceptable-use`
 - `/legal/cookies`
+- `/legal/creator-agreement`
 - `/legal/dpa`
+- `/legal/marketplace-terms`
 - `/legal/privacy`
 - `/legal/terms`
 
@@ -199,12 +203,13 @@
 
 - `/privacy`
 
-**s** (92)
+**s** (93)
 
 - `/s/[slug]`
 - `/s/[slug]/affiliates`
 - `/s/[slug]/affiliates/commissions`
 - `/s/[slug]/affiliates/creators`
+- `/s/[slug]/affiliates/import`
 - `/s/[slug]/affiliates/payouts`
 - `/s/[slug]/affiliates/program`
 - `/s/[slug]/agent`
@@ -333,7 +338,7 @@
 - `/api/account/delete`
 - `/api/account/export`
 
-**/api/admin** (19)
+**/api/admin** (21)
 
 - `/api/admin/actions`
 - `/api/admin/affiliates/tax-export`
@@ -350,18 +355,21 @@
 - `/api/admin/invitations/[id]`
 - `/api/admin/memberships/[id]`
 - `/api/admin/observability`
+- `/api/admin/products/[id]/verify`
+- `/api/admin/reviews/[id]`
 - `/api/admin/scoring/retry`
 - `/api/admin/support`
 - `/api/admin/triggers/backfill`
 - `/api/admin/triggers/test-fire`
 
-**/api/affiliates** (20)
+**/api/affiliates** (21)
 
 - `/api/affiliates/bridge`
 - `/api/affiliates/commissions`
 - `/api/affiliates/commissions/[id]/approve`
 - `/api/affiliates/commissions/[id]/reject`
 - `/api/affiliates/explore/link`
+- `/api/affiliates/import`
 - `/api/affiliates/join`
 - `/api/affiliates/me`
 - `/api/affiliates/me/links`
@@ -766,12 +774,13 @@
 - `/api/platform/announcements`
 - `/api/platform/announcements/dismiss`
 
-**/api/products** (4)
+**/api/products** (5)
 
 - `/api/products`
 - `/api/products/[id]`
 - `/api/products/[id]/packets`
 - `/api/products/[id]/packets/[packetId]`
+- `/api/products/import`
 
 **/api/profile-page** (3)
 
@@ -788,6 +797,10 @@
 **/api/push** (1)
 
 - `/api/push/subscribe`
+
+**/api/reviews** (1)
+
+- `/api/reviews`
 
 **/api/routines** (2)
 
@@ -909,11 +922,11 @@ the runtimes diverge — this table makes the drift visible.
 
 ## Data model (supabase/schema.sql)
 
-**Tables (112):** `AIUserProfile`, `AffiliateAccount`, `AffiliateCommission`, `AffiliatePartner`, `AffiliatePayout`, `AffiliateProgram`, `AgentActivityLog`, `AgentDraft`, `AgentGoal`, `AgentMemory`, `AgentPausedRun`, `AgentQuestion`, `AgentSettings`, `AgentTask`, `AgentTrajectory`, `Announcement`, `AnnouncementDismissal`, `AppKnowledgeDoc`, `ApplicationMessage`, `ApplicationStatusUpdate`, `Artifact`, `ArtifactVersion`, `Attachment`, `AuditLog`, `Brief`, `BriefTipHistory`, `CalendarEvent`, `CalendarEventMirror`, `CalendarNote`, `CallLog`, `ChatUsage`, `ClientAuthCode`, `ClientDocument`, `ClientInfoRequest`, `ClientMessage`, `ClientUser`, `CmaReport`, `CommissionLedger`, `CommissionSplit`, `Company`, `CompanyIntegrationConnection`, `CompanyMembership`, `CompanyRemoval`, `CompanyTemplate`, `Contact`, `ContactDocument`, `Conversation`, `CreatorProfile`, `CreditLot`, `CreditTxn`, `CustomAgent`, `DeadLetterEvent`, `Deal`, `DealActivity`, `DealChecklistItem`, `DealContact`, `DealDocument`, `DealReviewComment`, `DealReviewRequest`, `DealRoutingRule`, `DealStage`, `Demo`, `DemoAvailabilityOverride`, `DemoFeedback`, `DemoProductProfile`, `DemoWaitlist`, `DisabledSpace`, `DocumentEmbedding`, `EmailBroadcast`, `ExecutionStep`, `File`, `FormAnalyticsEvent`, `FormDraft`, `GoalDecomposition`, `GoogleCalendarToken`, `IntegrationConnection`, `IntegrationTrigger`, `Invitation`, `License`, `ManagerConversation`, `ManagerMessage`, `ManagerNotification`, `MarketplaceOrder`, `McpApiKey`, `McpAuthCode`, `Message`, `MessageTemplate`, `Note`, `Pipeline`, `Product`, `ProductPacket`, `ProfilePage`, `PushSubscription`, `Referral`, `ReferralClick`, `ReferralLink`, `Routine`, `SignatureRequest`, `Space`, `SpaceSetting`, `StripeBridge`, `StudioBrand`, `StudioGeneration`, `StudioPost`, `SupportTicket`, `SwarmEvent`, `SwarmMember`, `SwarmRun`, `TaskCheckpoint`, `TaskDependency`, `TelemetryEvent`, `User`
+**Tables (113):** `AIUserProfile`, `AffiliateAccount`, `AffiliateCommission`, `AffiliatePartner`, `AffiliatePayout`, `AffiliateProgram`, `AgentActivityLog`, `AgentDraft`, `AgentGoal`, `AgentMemory`, `AgentPausedRun`, `AgentQuestion`, `AgentSettings`, `AgentTask`, `AgentTrajectory`, `Announcement`, `AnnouncementDismissal`, `AppKnowledgeDoc`, `ApplicationMessage`, `ApplicationStatusUpdate`, `Artifact`, `ArtifactVersion`, `Attachment`, `AuditLog`, `Brief`, `BriefTipHistory`, `CalendarEvent`, `CalendarEventMirror`, `CalendarNote`, `CallLog`, `ChatUsage`, `ClientAuthCode`, `ClientDocument`, `ClientInfoRequest`, `ClientMessage`, `ClientUser`, `CmaReport`, `CommissionLedger`, `CommissionSplit`, `Company`, `CompanyIntegrationConnection`, `CompanyMembership`, `CompanyRemoval`, `CompanyTemplate`, `Contact`, `ContactDocument`, `Conversation`, `CreatorProfile`, `CreditLot`, `CreditTxn`, `CustomAgent`, `DeadLetterEvent`, `Deal`, `DealActivity`, `DealChecklistItem`, `DealContact`, `DealDocument`, `DealReviewComment`, `DealReviewRequest`, `DealRoutingRule`, `DealStage`, `Demo`, `DemoAvailabilityOverride`, `DemoFeedback`, `DemoProductProfile`, `DemoWaitlist`, `DisabledSpace`, `DocumentEmbedding`, `EmailBroadcast`, `ExecutionStep`, `File`, `FormAnalyticsEvent`, `FormDraft`, `GoalDecomposition`, `GoogleCalendarToken`, `IntegrationConnection`, `IntegrationTrigger`, `Invitation`, `License`, `ManagerConversation`, `ManagerMessage`, `ManagerNotification`, `MarketplaceOrder`, `McpApiKey`, `McpAuthCode`, `Message`, `MessageTemplate`, `Note`, `Pipeline`, `Product`, `ProductPacket`, `ProfilePage`, `PushSubscription`, `Referral`, `ReferralClick`, `ReferralLink`, `Review`, `Routine`, `SignatureRequest`, `Space`, `SpaceSetting`, `StripeBridge`, `StudioBrand`, `StudioGeneration`, `StudioPost`, `SupportTicket`, `SwarmEvent`, `SwarmMember`, `SwarmRun`, `TaskCheckpoint`, `TaskDependency`, `TelemetryEvent`, `User`
 
 **RPCs (23):** `book_demo_atomic`, `charge_credits_for_chat_usage`, `cleanup_agent_data`, `create_company_with_owner`, `create_space_with_defaults`, `current_user_internal_id`, `ensure_agent_settings_for_space`, `grant_credits`, `match_agent_memory`, `match_documents`, `match_documents_hybrid`, `offboard_company_member`, `purge_credit_rows_for_account`, `refund_credit_txn`, `reorder_deal`, `resolve_billing_account_for_space`, `routine_next_run_at`, `routine_set_next_run`, `search_knowledge_docs`, `spend_credits`, `stamp_brief_enabled_at`, `sync_commission_ledger`, `update_updated_at_column`
 
-**Migrations:** 174 (latest: `20260702000000_enable_rls_on_unprotected_tables.sql`)
+**Migrations:** 177 (latest: `20260702000000_enable_rls_on_unprotected_tables.sql`)
 
 ## External services
 

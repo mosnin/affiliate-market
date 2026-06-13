@@ -6,6 +6,7 @@ import { getOrdersForBuyerEmail, getLicensesForBuyerEmail, getStripeCustomerForB
 import { ManageSubscriptionButton } from '@/components/buyer/manage-subscription-button';
 import { centsToDisplay } from '@/components/marketplace/price-format';
 import { CopyButton } from '@/components/marketplace/copy-button';
+import { ReviewDisclosure } from '@/components/marketplace/review-disclosure';
 import { TITLE_FONT } from '@/lib/typography';
 import { LogoutButton } from '../auth-ui';
 
@@ -68,6 +69,17 @@ export default async function BuyerDashboardPage() {
   const hasActivity = orders.length > 0 || licenses.length > 0;
   const canManageSubscription = Boolean(subscriptionCustomerId);
 
+  // A buyer can review a product they paid for, once. Offer the review entry on
+  // the first paid order per product so the same product doesn't show two forms.
+  const reviewableSeen = new Set<string>();
+  const reviewableOrderIds = new Set<string>();
+  for (const o of orders) {
+    if (o.status === 'paid' && !reviewableSeen.has(o.productId)) {
+      reviewableSeen.add(o.productId);
+      reviewableOrderIds.add(o.id);
+    }
+  }
+
   return (
     <main className="mx-auto max-w-3xl space-y-12 px-4 py-10 pb-16 sm:px-6">
       {/* Header */}
@@ -117,7 +129,7 @@ export default async function BuyerDashboardPage() {
               <li key={order.id}>
                 <Link
                   href={`/buyer/purchases/${order.id}`}
-                  className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-foreground/[0.04]"
+                  className="flex items-center gap-3 px-4 pt-3.5 transition-colors hover:bg-foreground/[0.04]"
                 >
                   <ShoppingBag size={15} className="shrink-0 text-muted-foreground" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
@@ -136,6 +148,12 @@ export default async function BuyerDashboardPage() {
                   />
                   <ChevronRight size={15} className="shrink-0 text-muted-foreground" />
                 </Link>
+                {/* Review entry — only for a paid product, once per product. */}
+                <div className="px-4 pb-3.5 pl-[42px]">
+                  {reviewableOrderIds.has(order.id) ? (
+                    <ReviewDisclosure productId={order.productId} productName={order.productName} />
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>

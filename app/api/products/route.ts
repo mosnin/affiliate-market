@@ -119,6 +119,16 @@ function sanitiseBody(body: Record<string, unknown>, mode: 'create' | 'update') 
     else errors.push('featured must be a boolean');
   }
 
+  // `verified` is a TRUST flag — a platform-admin signal that the listing was
+  // vetted (see app/api/admin/products/[id]/verify). It is validated here so a
+  // bad type is a clear 400, but DELIBERATELY NOT written to `out`: every
+  // consumer of this sanitiser is a seller/manager route, and letting a seller
+  // self-verify their own (possibly scam) listing would defeat the entire
+  // feature. Only the admin route writes Product.verified.
+  if ('verified' in body && typeof body.verified !== 'boolean') {
+    errors.push('verified must be a boolean');
+  }
+
   // Per-product commission override (null = inherit the program default).
   if ('commissionType' in body) {
     if (body.commissionType === null || body.commissionType === '') out.commissionType = null;

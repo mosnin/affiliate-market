@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { getRatingForProducts } from '@/lib/marketplace/reviews';
 
 export interface MarketplaceProduct {
   id: string;
@@ -18,6 +19,12 @@ export interface MarketplaceProduct {
   websiteUrl: string | null;
   marketplaceSlug: string;
   featured: boolean;
+  /** Platform-admin trust flag (set in admin moderation, never by the seller). */
+  verified: boolean;
+  /** Average published rating, one decimal, or null when there are no reviews. */
+  avgRating: number | null;
+  /** Count of published reviews. */
+  reviewCount: number;
 }
 
 export const MARKETPLACE_CATEGORIES: { value: string; label: string }[] = [
@@ -53,7 +60,7 @@ export function formatPrice(p: {
 }
 
 const PRODUCT_COLUMNS =
-  'id, spaceId, name, address, tagline, longDescription, category, pricingModel, priceCents, currency, billingPeriod, features, logoUrl, websiteUrl, marketplaceSlug, published, featured';
+  'id, spaceId, name, address, tagline, longDescription, category, pricingModel, priceCents, currency, billingPeriod, features, logoUrl, websiteUrl, marketplaceSlug, published, featured, verified';
 
 interface ProductRow {
   id: string;
@@ -73,6 +80,7 @@ interface ProductRow {
   marketplaceSlug: string | null;
   published: boolean | null;
   featured: boolean | null;
+  verified: boolean | null;
 }
 
 function parseFeatures(value: unknown): string[] {
@@ -82,16 +90,19 @@ function parseFeatures(value: unknown): string[] {
 
 async function decorate(rows: ProductRow[]): Promise<MarketplaceProduct[]> {
   if (rows.length === 0) return [];
-  const spaceIds = [...new Set(rows.map((r) => r.spaceId))];
-  const { data: spaces } = await supabase
-    .from('Space')
-    .select('id, slug, name')
-    .in('id', spaceIds);
+  const visible = rows.filter((r) => r.marketplaceSlug);
+  const spaceIds = [...new Set(visible.map((r) => r.spaceId))];
+  // Batch the seller lookup and the rating aggregate together — one round trip
+  // each, no N+1 as the list grows.
+  const [{ data: spaces }, ratings] = await Promise.all([
+    supabase.from('Space').select('id, slug, name').in('id', spaceIds),
+    getRatingForProducts(visible.map((r) => r.id)),
+  ]);
   const byId = new Map((spaces ?? []).map((s) => [s.id, s]));
 
-  return rows
-    .filter((r) => r.marketplaceSlug)
-    .map((r) => ({
+  return visible.map((r) => {
+    const rating = ratings.get(r.id);
+    return {
       id: r.id,
       spaceId: r.spaceId,
       sellerSlug: byId.get(r.spaceId)?.slug ?? '',
@@ -110,7 +121,11 @@ async function decorate(rows: ProductRow[]): Promise<MarketplaceProduct[]> {
       websiteUrl: r.websiteUrl,
       marketplaceSlug: r.marketplaceSlug as string,
       featured: Boolean(r.featured),
-    }));
+      verified: Boolean(r.verified),
+      avgRating: rating?.avg ?? null,
+      reviewCount: rating?.count ?? 0,
+    };
+  });
 }
 
 export async function getPublishedProducts(filter?: {

@@ -63,12 +63,18 @@ export async function getPayableBalanceCentsForPartners(
   partnerIds: string[],
 ): Promise<number> {
   if (partnerIds.length === 0) return 0;
+  const nowIso = new Date().toISOString();
   const [commissionsRes, partnersRes] = await Promise.all([
     supabase
       .from('AffiliateCommission')
       .select('amountCents, netCents')
       .in('partnerId', partnerIds)
-      .eq('status', 'approved'),
+      .eq('status', 'approved')
+      // Refund window passed…
+      .lte('matureAt', nowIso)
+      // …and (marketplace, where the platform holds the money) OR
+      // (bridge, only once the seller has settled — never front a bridge payout).
+      .or('source.eq.marketplace,settledAt.not.is.null'),
     supabase
       .from('AffiliatePartner')
       .select('balanceAdjustmentCents')
@@ -96,12 +102,18 @@ export async function createPayout(
   spaceId: string,
   partnerId: string,
 ): Promise<AffiliatePayoutRow | null> {
+  const nowIso = new Date().toISOString();
+  // Only MATURED commissions (refund window passed) that are payable: a
+  // marketplace commission (platform holds the money) or a bridge commission
+  // the seller has SETTLED. The platform never fronts a bridge payout.
   const { data: commissions } = await supabase
     .from('AffiliateCommission')
     .select('id, amountCents, netCents, platformFeeCents, createdAt')
     .eq('spaceId', spaceId)
     .eq('partnerId', partnerId)
-    .eq('status', 'approved');
+    .eq('status', 'approved')
+    .lte('matureAt', nowIso)
+    .or('source.eq.marketplace,settledAt.not.is.null');
 
   if (!commissions || commissions.length === 0) return null;
   const approvedNet = commissions.reduce((sum, c) => sum + (c.netCents ?? c.amountCents ?? 0), 0);
@@ -109,7 +121,7 @@ export async function createPayout(
 
   const { data: partner } = await supabase
     .from('AffiliatePartner')
-    .select('payoutMethod, stripeAccountId, balanceAdjustmentCents')
+    .select('payoutMethod, stripeAccountId, balanceAdjustmentCents, programId')
     .eq('id', partnerId)
     .maybeSingle();
 
@@ -135,6 +147,21 @@ export async function createPayout(
       });
     }
     return null;
+  }
+
+  // Minimum payout floor — don't cut a tiny transfer (Stripe fees + ops).
+  // The balance stays approved and rolls into the next run once it clears.
+  if (partner?.programId) {
+    const { data: prog } = await supabase
+      .from('AffiliateProgram')
+      .select('minPayoutCents')
+      .eq('id', partner.programId)
+      .maybeSingle();
+    const min = typeof prog?.minPayoutCents === 'number' ? prog.minPayoutCents : 2000;
+    if (netTotal < min) {
+      logger.info('[affiliates] payout below minimum — held', { partnerId, netTotal, min });
+      return null;
+    }
   }
 
   const dates = commissions.map((c) => new Date(c.createdAt).getTime());

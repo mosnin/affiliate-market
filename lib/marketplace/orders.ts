@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { recordConversion } from '@/lib/affiliates/conversions';
 import { reverseCommissionsForOrder } from '@/lib/affiliates/reversals';
 import { transferSellerProceeds } from '@/lib/marketplace/sellers';
+import { getMarketplaceFeeBps, gmvFeeCents } from '@/lib/marketplace/fees';
 import { sendOrderReceiptEmail, sendOrderRefundedEmail } from '@/lib/marketplace/emails';
 
 export type OrderStatus = 'pending' | 'paid' | 'refunded' | 'canceled';
@@ -351,10 +352,15 @@ export async function markOrderPaid(orderId: string): Promise<OrderWithProduct |
     logger.warn('[marketplace] recordConversion threw', { orderId: order.id, err: String(err) });
   }
 
-  // Seller proceeds: the sale minus what the seller owes the creator.
-  // Transfers immediately when the seller has Connect; otherwise the amount
-  // is recorded and the platform balance holds it for manual settlement.
-  const sellerPayoutCents = Math.max(0, order.amountCents - grossCommissionCents);
+  // Platform GMV fee — Cola's cut of every marketplace sale, on top of the
+  // 20% it takes from the creator commission. Comes out of the seller's side.
+  const feeBps = await getMarketplaceFeeBps(order.spaceId);
+  const platformGmvFeeCents = gmvFeeCents(order.amountCents, feeBps);
+
+  // Seller proceeds: the sale minus what the seller owes the creator minus
+  // the platform GMV fee. Transfers immediately when the seller has Connect;
+  // otherwise the amount is recorded and the platform balance holds it.
+  const sellerPayoutCents = Math.max(0, order.amountCents - grossCommissionCents - platformGmvFeeCents);
   const sellerTransferId = await transferSellerProceeds({
     orderId: order.id,
     spaceId: order.spaceId,
@@ -363,7 +369,7 @@ export async function markOrderPaid(orderId: string): Promise<OrderWithProduct |
   });
   const { error: payoutErr } = await supabase
     .from('MarketplaceOrder')
-    .update({ sellerPayoutCents, ...(sellerTransferId ? { sellerTransferId } : {}) })
+    .update({ sellerPayoutCents, platformGmvFeeCents, ...(sellerTransferId ? { sellerTransferId } : {}) })
     .eq('id', order.id);
   if (payoutErr) {
     logger.error('[marketplace] failed to record seller proceeds', {

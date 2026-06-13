@@ -6,7 +6,7 @@ import { calculateCommissionCents, resolveCommissionPlan } from '@/lib/affiliate
 import { splitCommissionCents } from '@/lib/affiliates/fees';
 import { sendCommissionEarnedEmail } from '@/lib/affiliates/emails';
 import { maybeCreateTierTwoCommission } from '@/lib/affiliates/tier2';
-import type { AffiliateProgramRow } from '@/lib/affiliates/programs';
+import { matureAtFor, type AffiliateProgramRow } from '@/lib/affiliates/programs';
 
 export interface RecordConversionInput {
   orderId: string;
@@ -161,6 +161,7 @@ export async function recordConversion(
       currency: input.currency || 'usd',
       status,
       level: 1,
+      matureAt: matureAtFor(program),
       note: selfReferral ? 'Self-referral — automatically rejected' : null,
       ...(status === 'approved' ? { approvedAt: convertedAt } : {}),
     });

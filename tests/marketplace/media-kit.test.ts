@@ -8,6 +8,7 @@ const base: MarketplaceProduct = {
   category: 'saas', pricingModel: 'subscription', priceCents: 4900, currency: 'usd', billingPeriod: 'monthly',
   features: ['SSO', 'Slack alerts'], logoUrl: 'https://cdn/logo.png', websiteUrl: 'https://acme.dev',
   marketplaceSlug: 'acme-analytics', featured: false,
+  verified: false, avgRating: null, reviewCount: 0,
 };
 
 describe('buildPromoCopy', () => {

@@ -6,7 +6,7 @@ import { calculateCommissionCents } from '@/lib/affiliates/commissions';
 import { splitCommissionCents } from '@/lib/affiliates/fees';
 import { sendCommissionEarnedEmail } from '@/lib/affiliates/emails';
 import { maybeCreateTierTwoCommission } from '@/lib/affiliates/tier2';
-import type { AffiliateProgramRow } from '@/lib/affiliates/programs';
+import { matureAtFor, type AffiliateProgramRow } from '@/lib/affiliates/programs';
 
 /**
  * Recurring commission engine — turns verified Stripe payment events into
@@ -213,6 +213,7 @@ export async function recordPaymentCommission(
       currency: input.currency || 'usd',
       status,
       level: 1,
+      matureAt: matureAtFor(program),
       source: input.source,
       periodNumber,
       stripeInvoiceId: input.stripeInvoiceId,

@@ -32,13 +32,24 @@ import { toast } from 'sonner';
 import { normalizeSlug, isValidSlug } from '@/lib/intake';
 import { rootDomain, cn } from '@/lib/utils';
 import { OnboardingShell } from './onboarding-shell';
+import {
+  type ListingDraft,
+  emptyListingDraft,
+  publishProduct,
+  ListingForm,
+  LivePayoff,
+  ListLaterNudge,
+} from './onboarding-listing';
 
 interface Props {
   defaultName: string;
 }
 
-type Stage = 'welcome' | 'who-you-are' | 'who-you-serve' | 'voice' | 'sources' | 'plan';
-const STAGE_ORDER: Stage[] = ['welcome', 'who-you-are', 'who-you-serve', 'voice', 'sources', 'plan'];
+// `listing` is the activation stage — publish one product so the marketplace +
+// affiliate loop goes live. `live` is the payoff before the dashboard. A seller
+// can skip `listing`; `live` adapts to a list-later nudge.
+type Stage = 'welcome' | 'who-you-are' | 'who-you-serve' | 'voice' | 'sources' | 'plan' | 'listing' | 'live';
+const STAGE_ORDER: Stage[] = ['welcome', 'who-you-are', 'who-you-serve', 'voice', 'sources', 'plan', 'listing', 'live'];
 
 type Role = 'solo' | 'team_lead' | 'company_owner';
 type Tenure = 'lt1' | '1-3' | '4-10' | '10plus';
@@ -99,6 +110,12 @@ export function OnboardingSeller({ defaultName }: Props) {
 
   // Stage 5 — lead sources.
   const [leadSources, setLeadSources] = useState<string[]>([]);
+
+  // Activation stage — first published product. `listedSlug` is the marketplace
+  // slug the server actually stored (the only slug the payoff link trusts).
+  const [listingDraft, setListingDraft] = useState<ListingDraft>(emptyListingDraft);
+  const [listed, setListed] = useState(false);
+  const [listedSlug, setListedSlug] = useState('');
 
   // Submission state.
   const [submitting, setSubmitting] = useState(false);
@@ -253,6 +270,32 @@ export function OnboardingSeller({ defaultName }: Props) {
     }
   }, [role, tenure, zipCode, businessName, slug, slugState, name, goNext]);
 
+  // Listing stage → publish ONE live product via the existing, protected
+  // POST /api/products (workspace slug for ownership + published:true +
+  // marketplaceSlug from the name), then advance to the payoff.
+  const publishListing = useCallback(async () => {
+    if (!listingDraft.name.trim() || submitting || listed) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { marketplaceSlug } = await publishProduct(listingDraft, slug);
+      setListedSlug(marketplaceSlug);
+      setListed(true);
+      setSubmitting(false);
+      goNext();
+    } catch {
+      setError("Couldn't publish that — usually temporary. Try again.");
+      setSubmitting(false);
+    }
+  }, [listingDraft, slug, submitting, listed, goNext]);
+
+  // "Skip for now" → no listing, onboarding still completes via the payoff.
+  const skipListing = useCallback(() => {
+    setListed(false);
+    setError(null);
+    goNext();
+  }, [goNext]);
+
   // Stage 6 → final save + complete.
   //
   // Company owners take a different terminal step. The quick path had been
@@ -386,10 +429,56 @@ export function OnboardingSeller({ defaultName }: Props) {
           clientTypes={clientTypes}
           leadSources={leadSources}
           tone={tone}
-          submitting={submitting}
-          error={error}
-          onFinish={handleFinish}
+          onContinue={goNext}
         />
+      )}
+
+      {stage === 'listing' && (
+        <div className="space-y-8">
+          <div className="space-y-2 text-center">
+            <h2 className="text-[21px] font-semibold leading-snug tracking-tight text-foreground">
+              List your first product.
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Publish one product and it goes live on the marketplace — that&apos;s what creators promote.
+              Just the name to start; polish the rest later.
+            </p>
+          </div>
+          <ListingForm
+            draft={listingDraft}
+            onChange={setListingDraft}
+            submitting={submitting}
+            error={error}
+            onSubmit={publishListing}
+            onSkip={skipListing}
+          />
+        </div>
+      )}
+
+      {stage === 'live' && (
+        <div className="space-y-8">
+          <div className="space-y-2 text-center">
+            <h2 className="text-[21px] font-semibold leading-snug tracking-tight text-foreground">
+              {listed ? "You're live." : "You're all set."}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {listed
+                ? 'Creators can find your product and start promoting it right now.'
+                : 'You can list your first product any time from your dashboard.'}
+            </p>
+          </div>
+          {listed ? (
+            <LivePayoff
+              productName={listingDraft.name}
+              marketplaceSlug={listedSlug}
+              workspaceSlug={slug}
+              submitting={submitting}
+              onFinish={handleFinish}
+            />
+          ) : (
+            <ListLaterNudge submitting={submitting} onFinish={handleFinish} />
+          )}
+        </div>
       )}
     </OnboardingShell>
   );
@@ -767,18 +856,14 @@ function StagePlan({
   clientTypes,
   leadSources,
   tone,
-  submitting,
-  error,
-  onFinish,
+  onContinue,
 }: {
   name: string;
   businessName: string;
   clientTypes: string[];
   leadSources: string[];
   tone: Tone | null;
-  submitting: boolean;
-  error: string | null;
-  onFinish: () => void;
+  onContinue: () => void;
 }) {
   const firstName = (name.trim().split(/\s+/)[0]) || 'there';
   const audience = clientTypes.length > 0
@@ -792,7 +877,7 @@ function StagePlan({
         <h2 className="text-[21px] leading-snug tracking-tight font-semibold text-foreground">
           Here&apos;s what I&apos;m starting on, {firstName}.
         </h2>
-        <p className="text-sm text-muted-foreground">Take me in when this looks right — you can change anything later.</p>
+        <p className="text-sm text-muted-foreground">One more step and you&apos;re in — you can change anything later.</p>
       </div>
 
       <div className="space-y-3">
@@ -820,16 +905,13 @@ function StagePlan({
         />
       </div>
 
-      {error && <ErrorLine message={error} />}
-
       <div className="flex justify-end">
         <button
           type="button"
-          onClick={onFinish}
-          disabled={submitting}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand text-brand-foreground px-6 h-10 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98] disabled:opacity-40"
+          onClick={onContinue}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand text-brand-foreground px-6 h-10 text-sm font-semibold transition-all duration-150 hover:bg-brand/85 active:scale-[0.98]"
         >
-          {submitting ? <Loader2 size={14} className="animate-spin" /> : <>Looks good, take me in <ArrowRight size={14} /></>}
+          Looks good <ArrowRight size={14} />
         </button>
       </div>
     </div>

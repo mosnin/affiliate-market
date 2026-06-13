@@ -1,8 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Copy, Megaphone } from 'lucide-react';
+import { Check, Copy, Megaphone, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+/** The ready-to-paste FTC disclosure line creators must include when they post. */
+const DISCLOSURE_LINE = 'I may earn a commission if you buy through my link. #ad';
 
 interface MediaKitProps {
   copy: { short: string; tweet: string; long: string };
@@ -55,6 +58,27 @@ export function MediaKit({ copy, images }: MediaKitProps) {
             <p className="text-sm text-foreground whitespace-pre-wrap">{b.text}</p>
           </div>
         ))}
+      </div>
+
+      {/* Required FTC disclosure — a ready-to-paste line, not optional. */}
+      <div className="rounded-2xl border border-border bg-brand-subtle/40 p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-foreground">
+            <ShieldCheck size={12} className="text-primary" aria-hidden />
+            Required disclosure
+          </span>
+          <button
+            onClick={() => grab(DISCLOSURE_LINE, 'disclosure')}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {copied === 'disclosure' ? <Check size={12} /> : <Copy size={12} />}
+            {copied === 'disclosure' ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+        <p className="text-sm text-foreground whitespace-pre-wrap">{DISCLOSURE_LINE}</p>
+        <p className="text-[11px] text-muted-foreground leading-snug">
+          You must include a clear disclosure like this whenever you share your link — the FTC requires it.
+        </p>
       </div>
 
       {images.length > 0 && (

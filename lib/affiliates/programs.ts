@@ -14,7 +14,22 @@ export interface AffiliateProgramRow {
   autoApproveCommissions: boolean;
   tier2Enabled: boolean;
   tier2Percent: number;
+  /** Refund-hold window: commissions aren't payable until createdAt + holdDays. */
+  holdDays: number;
+  /** Don't cut a payout below this (Stripe fees + ops overhead). */
+  minPayoutCents: number;
   createdAt: string;
+}
+
+/** Days a commission is held before it's payable (refund window). */
+export function holdDaysFor(program: { holdDays?: number | null }): number {
+  const d = program.holdDays;
+  return typeof d === 'number' && d >= 0 ? d : 14;
+}
+
+/** matureAt for a commission created now under this program. */
+export function matureAtFor(program: { holdDays?: number | null }): string {
+  return new Date(Date.now() + holdDaysFor(program) * 24 * 60 * 60 * 1000).toISOString();
 }
 
 /**

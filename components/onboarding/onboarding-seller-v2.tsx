@@ -45,6 +45,14 @@ import {
   PickerButton,
   CLIENT_TYPE_OPTIONS, LEAD_SOURCE_OPTIONS,
 } from './onboarding-seller-shared';
+import {
+  type ListingDraft,
+  emptyListingDraft,
+  publishProduct,
+  ListingForm,
+  LivePayoff,
+  ListLaterNudge,
+} from './onboarding-listing';
 
 interface Props {
   defaultName: string;
@@ -52,14 +60,21 @@ interface Props {
 
 type Phase = 'intro' | 'chat' | 'ready';
 
-/** Conversation steps, in order. Bookended by the cinematics, not in here. */
+/** Conversation steps, in order. Bookended by the cinematics, not in here.
+ *
+ *  `reveal` shows Cola working (the first-touch draft). `product` is the
+ *  activation step — list one product so the marketplace + affiliate loop goes
+ *  live. `live` is the payoff, then "take me in" finishes onboarding. A seller
+ *  can skip `product`; `live` adapts to a gentle nudge in that case. */
 type Step =
   | 'greet' | 'name' | 'role' | 'business' | 'where'
-  | 'promise' | 'serve' | 'voice' | 'sources' | 'reveal';
+  | 'promise' | 'serve' | 'voice' | 'sources' | 'reveal'
+  | 'product' | 'live';
 
 const ORDER: Step[] = [
   'greet', 'name', 'role', 'business', 'where',
   'promise', 'serve', 'voice', 'sources', 'reveal',
+  'product', 'live',
 ];
 
 const TENURE_OPTIONS: { value: Tenure; label: string }[] = [
@@ -100,6 +115,14 @@ export function OnboardingSellerV2({ defaultName }: Props) {
   const [voiceGuidance, setVoiceGuidance] = useState('');
   const [tone, setTone] = useState<Tone | null>(null);
   const [leadSources, setLeadSources] = useState<string[]>([]);
+
+  // First product (the activation step). `listed` flips true once the product
+  // is published; `listedSlug` is the marketplace slug the server stored (the
+  // only slug the payoff link trusts); `skipped` records "list later".
+  const [listingDraft, setListingDraft] = useState<ListingDraft>(emptyListingDraft);
+  const [listed, setListed] = useState(false);
+  const [listedSlug, setListedSlug] = useState('');
+  const [listingSkipped, setListingSkipped] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -241,7 +264,38 @@ export function OnboardingSellerV2({ defaultName }: Props) {
     }
   }, [role, tenure, zipCode, businessName, slug, slugState, name, advance, goToStep]);
 
-  // reveal "take me in" → complete, then hand off to the closing preloader,
+  // product step → publish ONE live listing, then advance to the payoff.
+  // Uses the existing, protected POST /api/products. The body carries the
+  // workspace `slug` (auth/ownership) plus published:true + a marketplaceSlug
+  // minted from the name, so the product is on the marketplace the instant it
+  // lands and creators can grab a referral link for it.
+  const publishListing = useCallback(async () => {
+    if (!listingDraft.name.trim() || submitting || listed) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { marketplaceSlug } = await publishProduct(listingDraft, slug);
+      setListedSlug(marketplaceSlug);
+      setListed(true);
+      setListingSkipped(false);
+      setSubmitting(false);
+      advance();
+    } catch {
+      setError("Couldn't publish that. Usually temporary — try again.");
+      setSubmitting(false);
+    }
+  }, [listingDraft, slug, submitting, listed, advance]);
+
+  // "Skip for now" → no listing, but onboarding still completes. The payoff
+  // step reads `listingSkipped` and shows the list-later nudge instead.
+  const skipListing = useCallback(() => {
+    setListed(false);
+    setListingSkipped(true);
+    setError(null);
+    advance();
+  }, [advance]);
+
+  // live step "take me in" → complete, then hand off to the closing preloader,
   // which redirects when it finishes. (manager branch for owners.)
   const handleFinish = useCallback(async () => {
     setSubmitting(true);
@@ -301,9 +355,13 @@ export function OnboardingSellerV2({ defaultName }: Props) {
       case 'serve': return "Who do you work with most? Pick up to three and I'll tune everything to them.";
       case 'voice': return 'A new lead just asked about a listing. Which reply sounds like you?';
       case 'sources': return "Where do most of your leads come from? Pick your top one or two. That's where I'll watch first.";
-      case 'reveal': return `That's everything I need, ${firstName}. Now watch. Here's the first note I'd send a new lead.`;
+      case 'reveal': return `Watch this, ${firstName}. Here's the first note I'd send a new lead — in your voice.`;
+      case 'product': return "Now the part that pays. List one product and it goes live on the marketplace — that's what creators promote, and how you get distribution. Just the name to start; you can polish the rest later.";
+      case 'live': return listed
+        ? "Done. It's published — creators can find it and start promoting it right now."
+        : "All set. You can list your first product any time from your dashboard.";
     }
-  }, [firstName]);
+  }, [firstName, listed]);
 
   // The seller's answer bubble for a completed step. null = no bubble.
   const answerFor = useCallback((s: Step): string | null => {
@@ -328,9 +386,14 @@ export function OnboardingSellerV2({ defaultName }: Props) {
           .filter(Boolean);
         return labels.length ? labels.join(', ') : "We'll set this up later.";
       }
+      case 'product': {
+        if (listingSkipped) return "I'll list one later.";
+        if (listed) return `${listingDraft.name.trim() || 'My product'} — published.`;
+        return null;
+      }
       default: return null;
     }
-  }, [name, role, businessName, slug, zipCode, tenure, clientTypes, tone, leadSources]);
+  }, [name, role, businessName, slug, zipCode, tenure, clientTypes, tone, leadSources, listed, listingSkipped, listingDraft.name]);
 
   // ── Cinematics ──────────────────────────────────────────────────────────────
 
@@ -490,10 +553,33 @@ export function OnboardingSellerV2({ defaultName }: Props) {
             tone={tone ?? 'warm'}
             clientTypes={clientTypes}
             leadSources={leadSources}
+            onContinue={advance}
+          />
+        );
+
+      case 'product':
+        return (
+          <ListingForm
+            draft={listingDraft}
+            onChange={setListingDraft}
             submitting={submitting}
             error={error}
+            onSubmit={publishListing}
+            onSkip={skipListing}
+          />
+        );
+
+      case 'live':
+        return listed ? (
+          <LivePayoff
+            productName={listingDraft.name}
+            marketplaceSlug={listedSlug}
+            workspaceSlug={slug}
+            submitting={submitting}
             onFinish={handleFinish}
           />
+        ) : (
+          <ListLaterNudge submitting={submitting} onFinish={handleFinish} />
         );
 
       default:
@@ -801,16 +887,14 @@ function SourcesAffordance({
 }
 
 function RevealAffordance({
-  name, businessName, tone, clientTypes, leadSources, submitting, error, onFinish,
+  name, businessName, tone, clientTypes, leadSources, onContinue,
 }: {
   name: string;
   businessName: string;
   tone: Tone;
   clientTypes: string[];
   leadSources: string[];
-  submitting: boolean;
-  error: string | null;
-  onFinish: () => void;
+  onContinue: () => void;
 }) {
   const draft = composeOnboardingDraft({ name, businessName, tone, clientTypes, leadSources });
   const [typed, setTyped] = useState(false);
@@ -824,10 +908,9 @@ function RevealAffordance({
           <TypingText text={draft.body} onDone={() => setTyped(true)} />
         </p>
       </div>
-      {error && <ErrorLine message={error} />}
       <div className={cn('flex justify-end transition-opacity duration-500', typed ? 'opacity-100' : 'pointer-events-none opacity-0')}>
-        <button type="button" onClick={onFinish} disabled={submitting} className={COLA_PILL}>
-          {submitting ? <Loader2 size={14} className="animate-spin" /> : <>Looks good, take me in <ArrowRight size={14} /></>}
+        <button type="button" onClick={onContinue} className={COLA_PILL}>
+          One last thing <ArrowRight size={14} />
         </button>
       </div>
     </div>

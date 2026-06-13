@@ -4,11 +4,13 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeft, Check, ExternalLink } from 'lucide-react';
 import { getProductBySlug } from '@/lib/marketplace/products';
+import { getReviewsForProduct } from '@/lib/marketplace/reviews';
 import { buildPromoCopy, mediaKitImages } from '@/lib/marketplace/media-kit';
 import { BuyButton } from '@/components/marketplace/buy-button';
 import { MediaKit } from '@/components/marketplace/media-kit';
 import { OutboundLink } from '@/components/marketplace/outbound-link';
 import { formatPriceCents } from '@/components/marketplace/price-format';
+import { ReviewsSection, VerifiedBadge } from '@/components/marketplace/reviews-section';
 import { getInitials } from '@/lib/formatting';
 import { TITLE_FONT } from '@/lib/typography';
 
@@ -42,6 +44,7 @@ export default async function ProductDetailPage({
   const product = await getProductBySlug(slug);
   if (!product) notFound();
 
+  const reviews = await getReviewsForProduct(product.id);
   const initials = getInitials(product.name);
   const price = formatPriceCents(product);
 
@@ -82,6 +85,7 @@ export default async function ProductDetailPage({
                 <p className="text-sm text-muted-foreground">{product.tagline}</p>
               )}
               <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                {product.verified && <VerifiedBadge />}
                 {product.category && (
                   <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                     {product.category}
@@ -169,6 +173,14 @@ export default async function ProductDetailPage({
               </div>
             </div>
           </section>
+
+          {/* Reviews */}
+          <ReviewsSection
+            avgRating={product.avgRating}
+            reviewCount={product.reviewCount}
+            verified={product.verified}
+            reviews={reviews}
+          />
         </div>
 
         {/* Right: price box */}

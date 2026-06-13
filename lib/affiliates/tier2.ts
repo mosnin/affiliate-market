@@ -37,7 +37,7 @@ export async function maybeCreateTierTwoCommission(input: {
 
     const { data: program } = await supabase
       .from('AffiliateProgram')
-      .select('tier2Enabled, tier2Percent')
+      .select('tier2Enabled, tier2Percent, holdDays')
       .eq('id', child!.programId)
       .maybeSingle();
     if (!program?.tier2Enabled) return;
