@@ -8,8 +8,8 @@
 ## At a glance
 
 - **Page routes:** 204
-- **API endpoints:** 343
-- **Cron jobs:** 11
+- **API endpoints:** 344
+- **Cron jobs:** 12
 - **DB tables:** 112  ·  **RPCs:** 23  ·  **migrations:** 172
 - **Agent tools — TS (lib/ai-tools):** 58 declared, 57 wired into `ALL_TOOLS`
 - **Agent tools — Python (agent/):** 53 declared
@@ -546,8 +546,9 @@
 - `/api/contacts/import`
 - `/api/contacts/parse`
 
-**/api/cron** (11)
+**/api/cron** (12)
 
+- `/api/cron/affiliate-digests`
 - `/api/cron/affiliate-settlement`
 - `/api/cron/agent-sweep`
 - `/api/cron/cleanup`
@@ -872,6 +873,7 @@
 
 | Path | Schedule |
 |------|----------|
+| `/api/cron/affiliate-digests` | `0 9 * * 1` |
 | `/api/cron/affiliate-settlement` | `0 6 1 * *` |
 | `/api/cron/agent-sweep` | `0 */4 * * *` |
 | `/api/cron/cleanup` | `0 3 * * *` |

@@ -101,6 +101,56 @@ export async function sendSettlementInvoiceEmail(params: {
   );
 }
 
+export async function sendCreatorWeeklyDigest(params: {
+  to: string;
+  partnerName: string;
+  clicks: number;
+  customers: number;
+  earnedNetCents: number;
+}): Promise<void> {
+  // Quiet weeks aren't worth an email — the cron skips zero-activity creators.
+  const dashboard = `${appUrl()}/affiliate/dashboard`;
+  await send(
+    params.to,
+    `Your week on Cola: ${dollars(params.earnedNetCents)} earned`,
+    `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#111827;line-height:1.6">
+      <p>Hi ${esc(params.partnerName)}, here's your week:</p>
+      <table style="border-collapse:collapse;margin:12px 0">
+        <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Clicks</td><td><strong>${params.clicks.toLocaleString()}</strong></td></tr>
+        <tr><td style="padding:4px 16px 4px 0;color:#6b7280">New customers</td><td><strong>${params.customers.toLocaleString()}</strong></td></tr>
+        <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Earned (net)</td><td><strong>${dollars(params.earnedNetCents)}</strong></td></tr>
+      </table>
+      <p><a href="${dashboard}" style="color:#111827;font-weight:600">Open your dashboard →</a></p>
+      <p style="color:#6b7280;font-size:12px">Cola — net of the platform fee, yours to keep.</p>
+    </div>`,
+  );
+}
+
+export async function sendSellerWeeklyDigest(params: {
+  to: string;
+  spaceName: string;
+  sales: number;
+  revenueCents: number;
+  newPartners: number;
+  pendingPartners: number;
+}): Promise<void> {
+  const base = appUrl();
+  await send(
+    params.to,
+    `${params.spaceName}: your affiliate week`,
+    `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#111827;line-height:1.6">
+      <p>Here's how your affiliate program did this week:</p>
+      <table style="border-collapse:collapse;margin:12px 0">
+        <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Sales</td><td><strong>${params.sales.toLocaleString()}</strong></td></tr>
+        <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Revenue</td><td><strong>${dollars(params.revenueCents)}</strong></td></tr>
+        <tr><td style="padding:4px 16px 4px 0;color:#6b7280">New creators</td><td><strong>${params.newPartners.toLocaleString()}</strong></td></tr>
+        <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Awaiting approval</td><td><strong>${params.pendingPartners.toLocaleString()}</strong></td></tr>
+      </table>
+      <p style="color:#6b7280;font-size:12px">Cola — the agentic sales OS for software companies.</p>
+    </div>`,
+  );
+}
+
 export async function sendPartnerInvitedEmail(params: {
   to: string;
   partnerName: string;
