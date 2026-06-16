@@ -1,6 +1,5 @@
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
-import { logger } from '@/lib/logger';
+import { convex, api } from '@/lib/convex-server';
 
 /**
  * Email opt-out: signed unsubscribe tokens + a suppression check.
@@ -85,24 +84,14 @@ export function verifyUnsubscribeToken(
 export async function suppressEmail(email: string, listType: EmailListType): Promise<void> {
   const e = normalizeEmail(email);
   if (!e) return;
-  const { error } = await supabase
-    .from('EmailSuppression')
-    .upsert({ email: e, listType }, { onConflict: 'email,listType', ignoreDuplicates: true });
-  if (error) logger.warn('[email] suppressEmail failed', { listType, error: error.message });
+  await convex().mutation(api.email.suppression.suppress, { email: e, listType });
 }
 
-/** True if this address has opted out of this list. Fail-open (false) on error. */
+/** True if this address has opted out of this list. */
 export async function isEmailSuppressed(email: string, listType: EmailListType): Promise<boolean> {
   const e = normalizeEmail(email);
   if (!e) return false;
-  const { data } = await supabase
-    .from('EmailSuppression')
-    .select('id')
-    .eq('email', e)
-    .eq('listType', listType)
-    .limit(1)
-    .maybeSingle();
-  return Boolean(data);
+  return convex().query(api.email.suppression.isSuppressed, { email: e, listType });
 }
 
 function appUrl(): string {
