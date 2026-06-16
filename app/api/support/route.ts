@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { clerkClient } from '@clerk/nextjs/server';
 import { requireSpaceOwner } from '@/lib/api-auth';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 
@@ -24,9 +24,6 @@ type Category = (typeof CATEGORIES)[number];
 const SUBJECT_MAX = 200;
 const MESSAGE_MAX = 5000;
 
-const TICKET_COLUMNS =
-  'id, spaceId, userId, email, name, subject, message, category, status, priority, createdAt, updatedAt';
-
 // ── GET — the caller's own tickets ──────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
@@ -37,19 +34,18 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { userId } = auth;
 
-  const { data, error } = await supabase
-    .from('SupportTicket')
-    .select(TICKET_COLUMNS)
-    .eq('userId', userId)
-    .order('createdAt', { ascending: false })
-    .limit(100);
-
-  if (error) {
-    logger.error('[support] list failed', { userId, err: error.message });
+  let tickets;
+  try {
+    tickets = await convex().query(api.support.tickets.listByUser, { userId });
+  } catch (err) {
+    logger.error('[support] list failed', {
+      userId,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'Could not load your tickets.' }, { status: 500 });
   }
 
-  return NextResponse.json({ tickets: data ?? [] });
+  return NextResponse.json({ tickets });
 }
 
 // ── POST — create a ticket ───────────────────────────────────────────────────
@@ -114,10 +110,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('SupportTicket')
-    .insert({
+  let ticket;
+  try {
+    ticket = await convex().mutation(api.support.tickets.create, {
       spaceId: space.id,
       userId,
       email,
@@ -125,18 +120,14 @@ export async function POST(req: NextRequest) {
       subject,
       message,
       category,
-      status: 'open',
-      priority: 'normal',
-      createdAt: now,
-      updatedAt: now,
-    })
-    .select(TICKET_COLUMNS)
-    .single();
-
-  if (error || !data) {
-    logger.error('[support] create failed', { userId, err: error?.message });
+    });
+  } catch (err) {
+    logger.error('[support] create failed', {
+      userId,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'Could not submit your request. Try again.' }, { status: 500 });
   }
 
-  return NextResponse.json({ ticket: data });
+  return NextResponse.json({ ticket });
 }

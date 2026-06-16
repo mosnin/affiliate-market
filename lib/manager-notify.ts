@@ -3,7 +3,7 @@
  * Non-blocking — failures are logged but never throw.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 export type ManagerNotificationType =
@@ -26,14 +26,12 @@ export async function notifyManager(params: NotifyManagerParams): Promise<void> 
   const { companyId, type, title, body, metadata } = params;
 
   try {
-    await supabase.from('ManagerNotification').insert({
-      id: crypto.randomUUID(),
+    await convex().mutation(api.notifications.manager.create, {
       companyId,
       type,
       title,
-      body: body ?? null,
-      metadata: metadata ?? null,
-      read: false,
+      ...(body !== undefined ? { body } : {}),
+      ...(metadata !== undefined ? { metadata } : {}),
     });
   } catch (err) {
     logger.error('[manager-notify] failed to create notification', { type, companyId }, err);

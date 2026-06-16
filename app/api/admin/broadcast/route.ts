@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAdmin, logAdminAction } from '@/lib/admin';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -230,18 +231,19 @@ export async function POST(req: NextRequest) {
   }
 
   const broadcastId = crypto.randomUUID();
-  const { error: insertErr } = await supabase.from('EmailBroadcast').insert({
-    id: broadcastId,
-    subject,
-    body: emailBody,
-    segment,
-    recipientCount,
-    sentCount,
-    failedCount,
-    sentBy: admin.userId,
-    createdAt: new Date().toISOString(),
-  });
-  if (insertErr) {
+  try {
+    await convex().mutation(api.support.broadcasts.create, {
+      id: broadcastId,
+      subject,
+      body: emailBody,
+      segment,
+      recipientCount,
+      sentCount,
+      failedCount,
+      sentBy: admin.userId,
+      createdAt: new Date().toISOString(),
+    });
+  } catch (insertErr) {
     console.error('[broadcast] failed to log EmailBroadcast', insertErr);
   }
 

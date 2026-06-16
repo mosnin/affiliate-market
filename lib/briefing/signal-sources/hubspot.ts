@@ -36,6 +36,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { listTriggersForConnection } from '@/lib/integrations/triggers';
 import type { Signal, SignalGatherer } from '../types';
@@ -407,14 +408,17 @@ async function findActiveConnection(spaceId: string): Promise<{
   id: string;
   userId: string;
 } | null> {
-  const { data } = await supabase
-    .from('IntegrationConnection')
-    .select('id, userId')
-    .eq('spaceId', spaceId)
-    .eq('toolkit', 'hubspot')
-    .eq('status', 'active')
-    .maybeSingle();
-  return (data ?? null) as { id: string; userId: string } | null;
+  let rows: Array<{ id: string; userId: string }>;
+  try {
+    rows = await convex().query(api.integrations.connections.activeForSpace, {
+      spaceId,
+      toolkits: ['hubspot'],
+    });
+  } catch {
+    return null;
+  }
+  const data = rows[0];
+  return data ? { id: data.id, userId: data.userId } : null;
 }
 
 async function loadColaDeals(spaceId: string): Promise<ColaDealRow[]> {

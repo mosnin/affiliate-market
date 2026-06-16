@@ -25,7 +25,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import {
   CURATED_TRIGGERS,
   listTriggersForConnection,
@@ -76,15 +76,18 @@ export async function POST(req: NextRequest) {
   // Only ACTIVE connections — expired/revoked rows mean the seller
   // can't be helped until they reconnect, so registering triggers for
   // them would just stack failed rows.
-  const { data: rows, error } = await supabase
-    .from('IntegrationConnection')
-    .select('*')
-    .eq('status', 'active');
-  if (error) {
-    return NextResponse.json({ error: 'DB query failed', detail: error.message }, { status: 500 });
+  let connections: IntegrationConnectionRow[];
+  try {
+    connections = (await convex().query(
+      api.integrations.connections.listAllActive,
+      {},
+    )) as IntegrationConnectionRow[];
+  } catch (err) {
+    return NextResponse.json(
+      { error: 'DB query failed', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
   }
-
-  const connections = (rows ?? []) as IntegrationConnectionRow[];
   const startedAt = Date.now();
   let scanned = 0;
   let registered = 0;

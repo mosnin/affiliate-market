@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { SupportClient, type SupportTicket } from './support-client';
 
 export const metadata = { title: 'Support — Admin — Cola' };
@@ -9,17 +10,9 @@ export default async function AdminSupportPage() {
   const ok = await isPlatformAdmin();
   if (!ok) redirect('/');
 
-  const { data, error } = await supabase
-    .from('SupportTicket')
-    .select(
-      'id, spaceId, userId, email, name, subject, message, category, status, priority, adminNote, createdAt, updatedAt',
-    )
-    .order('createdAt', { ascending: false })
-    .limit(500);
-
-  if (error) throw error;
-
-  const tickets = (data ?? []) as SupportTicket[];
+  // SupportTicket moved to Convex; Space (slug/name resolution below) stays on
+  // Supabase — this page is a hybrid read during the cutover.
+  const tickets = (await convex().query(api.support.tickets.listAll, {})) as SupportTicket[];
 
   // Resolve space slugs/names so the admin sees which workspace a ticket came
   // from without a per-row lookup. One query, mapped client-side.

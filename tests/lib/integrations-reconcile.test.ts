@@ -29,39 +29,33 @@ vi.mock('@/lib/integrations/catalog', () => ({
   ),
 }));
 
-// ── Supabase mock — capture per-table behaviour ──────────────────────
+// ── Convex mock — capture the DB hops reconcile now makes ────────────
 //
-// reconcileFromComposio calls:
-//   findByComposioId(itemId)  → may return null (new) or a row (already tracked)
-//   insertConnection(args)    → inserts a fresh row
+// reconcileFromComposio calls (all via the Convex client now):
+//   findByComposioId(itemId)  → query, returns null (new) or a row (already tracked)
+//   setStatus({...})          → mutation, used to promote a pending row
+//   insertConnection(args)    → mutation (api.integrations.connections.insert),
+//                               inserts a fresh row and returns it
 //
-// We mock at the `supabase.from(table)` level. The chain methods used
-// here are .select().eq().maybeSingle() and .insert(...).select().single().
-// Behaviour per table is controlled by tableBehavior.
+// `api` is a path proxy so any api.<domain>.<module>.<fn> access stringifies
+// to its dotted path. We branch the query mock on that path so a single mock
+// serves both findByComposioId reads; the mutation mock returns the inserted
+// row (insert) or undefined (setStatus).
 
-type Behavior = {
-  /** maybeSingle return value for IntegrationConnection lookups */
-  maybeSingle?: { data: unknown; error: unknown };
-  /** single return value for IntegrationConnection.insert */
-  single?: { data: unknown; error: unknown };
-};
-
-const tableBehavior: Record<string, Behavior> = {};
-
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    from: vi.fn((table: string) => {
-      const chain: Record<string, unknown> = {};
-      const passthrough = ['select', 'eq', 'is', 'in', 'order', 'limit', 'insert', 'update', 'upsert', 'delete'];
-      for (const m of passthrough) chain[m] = vi.fn(() => chain);
-      chain.maybeSingle = vi.fn(() => Promise.resolve(tableBehavior[table]?.maybeSingle ?? { data: null, error: null }));
-      chain.single = vi.fn(() => Promise.resolve(tableBehavior[table]?.single ?? { data: null, error: null }));
-      const term = () => Promise.resolve(tableBehavior[table]?.maybeSingle ?? { data: null, error: null });
-      chain.then = (r: (v: unknown) => unknown) => term().then(r);
-      return chain;
-    }),
-  },
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
 }));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
 
 const { warnMock, errorMock, infoMock } = vi.hoisted(() => ({
   warnMock: vi.fn(),
@@ -76,11 +70,10 @@ import { reconcileFromComposio } from '@/lib/integrations/connections';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Default: no existing rows, insert succeeds.
-  tableBehavior.IntegrationConnection = {
-    maybeSingle: { data: null, error: null },
-    single: { data: { id: 'new-row-id' }, error: null },
-  };
+  // Default: findByComposioId finds nothing (new item) → insert path. The
+  // insert mutation returns a row so the "reconciled" info log fires.
+  convexQueryMock.mockResolvedValue(null);
+  convexMutationMock.mockResolvedValue({ id: 'new-row-id' });
 });
 
 describe('reconcileFromComposio', () => {
@@ -90,9 +83,9 @@ describe('reconcileFromComposio', () => {
     await reconcileFromComposio({ spaceId: 'space-1', entityId: 'user-1' });
 
     expect(warnMock).toHaveBeenCalled();
-    const calledTables = (await import('@/lib/supabase')).supabase.from as ReturnType<typeof vi.fn>;
-    // No supabase calls happened (the early-return path).
-    expect(calledTables).not.toHaveBeenCalled();
+    // No DB hops happened (the early-return path).
+    expect(convexQueryMock).not.toHaveBeenCalled();
+    expect(convexMutationMock).not.toHaveBeenCalled();
   });
 
   it('inserts a row for an ACTIVE item we don\'t already track', async () => {
@@ -106,17 +99,20 @@ describe('reconcileFromComposio', () => {
         },
       ],
     });
-    // No existing row → insert path.
-    tableBehavior.IntegrationConnection = {
-      maybeSingle: { data: null, error: null },
-      single: { data: { id: 'fresh-row', composioConnectionId: 'ca_new' }, error: null },
-    };
+    // No existing row → insert path. Insert returns the fresh row.
+    convexQueryMock.mockResolvedValue(null);
+    convexMutationMock.mockResolvedValue({ id: 'fresh-row', composioConnectionId: 'ca_new' });
 
     await reconcileFromComposio({ spaceId: 'space-1', entityId: 'user-1' });
 
     expect(infoMock).toHaveBeenCalledWith(
       '[integrations.connections] reconciled composio connection into DB',
       expect.objectContaining({ composioConnectionId: 'ca_new', toolkit: 'gmail' }),
+    );
+    // The insert mutation carried the item's fields.
+    expect(convexMutationMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ composioConnectionId: 'ca_new', toolkit: 'gmail', spaceId: 'space-1' }),
     );
   });
 
@@ -136,6 +132,8 @@ describe('reconcileFromComposio', () => {
       ([msg]) => typeof msg === 'string' && msg.includes('reconciled composio connection'),
     );
     expect(reconcileLogs).toHaveLength(0);
+    // And nothing was written.
+    expect(convexMutationMock).not.toHaveBeenCalled();
   });
 
   it('skips items for toolkits we don\'t know about (not in catalog)', async () => {
@@ -176,13 +174,45 @@ describe('reconcileFromComposio', () => {
         { id: 'ca_existing', status: 'ACTIVE', alias: 'a', toolkit: { slug: 'gmail' } },
       ],
     });
-    // findByComposioId returns a row → skip path.
-    tableBehavior.IntegrationConnection = {
-      maybeSingle: { data: { id: 'existing-row', composioConnectionId: 'ca_existing' }, error: null },
-    };
+    // findByComposioId returns an already-active row → skip path.
+    convexQueryMock.mockResolvedValue({
+      id: 'existing-row',
+      composioConnectionId: 'ca_existing',
+      status: 'active',
+    });
 
     await reconcileFromComposio({ spaceId: 'space-1', entityId: 'user-1' });
 
+    const reconcileLogs = infoMock.mock.calls.filter(
+      ([msg]) => typeof msg === 'string' && msg.includes('reconciled composio connection'),
+    );
+    expect(reconcileLogs).toHaveLength(0);
+    // Already active → no insert and no setStatus promotion.
+    expect(convexMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('promotes a pending row we already track instead of inserting', async () => {
+    listMock.mockResolvedValueOnce({
+      items: [
+        { id: 'ca_pending', status: 'ACTIVE', alias: 'a', toolkit: { slug: 'gmail' } },
+      ],
+    });
+    // Existing row is 'pending' — Composio says ACTIVE, so reconcile self-heals
+    // by calling setStatus to promote it (no fresh insert).
+    convexQueryMock.mockResolvedValue({
+      id: 'pending-row',
+      composioConnectionId: 'ca_pending',
+      status: 'pending',
+    });
+
+    await reconcileFromComposio({ spaceId: 'space-1', entityId: 'user-1' });
+
+    // setStatus mutation fired to promote it to active.
+    expect(convexMutationMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: 'pending-row', status: 'active' }),
+    );
+    // No "reconciled ... into DB" insert log — this was a promote, not a backfill.
     const reconcileLogs = infoMock.mock.calls.filter(
       ([msg]) => typeof msg === 'string' && msg.includes('reconciled composio connection'),
     );

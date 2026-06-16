@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logAdminAction } from '@/lib/admin';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -46,17 +46,14 @@ export async function GET() {
   const { allowed } = await checkRateLimit(`admin:read:${admin.clerkUserId}`, 60, 60);
   if (!allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
 
-  const { data, error } = await supabase
-    .from('Announcement')
-    .select('*')
-    .order('createdAt', { ascending: false })
-    .limit(100);
-
-  if (error) {
+  let data;
+  try {
+    data = await convex().query(api.notifications.announcements.listAll, { limit: 100 });
+  } catch (error) {
     console.error('[admin/announcements] list failed', error);
     return NextResponse.json({ error: 'Query failed' }, { status: 500 });
   }
-  return NextResponse.json({ announcements: data ?? [] });
+  return NextResponse.json({ announcements: data });
 }
 
 /** POST /api/admin/announcements — create */
@@ -79,24 +76,33 @@ export async function POST(req: Request) {
   const v = validateBody(body);
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
 
-  const now = new Date().toISOString();
-  const id = crypto.randomUUID();
-
-  const { data, error } = await supabase
-    .from('Announcement')
-    .insert({ id, ...v.data, createdBy: admin.clerkUserId, createdAt: now, updatedAt: now })
-    .select()
-    .maybeSingle();
-
-  if (error || !data) {
+  let data;
+  try {
+    data = await convex().mutation(api.notifications.announcements.create, {
+      message: v.data.message,
+      title: v.data.title,
+      severity: v.data.severity,
+      targetSegment: v.data.targetSegment,
+      linkUrl: v.data.linkUrl,
+      linkLabel: v.data.linkLabel,
+      dismissible: v.data.dismissible,
+      active: v.data.active,
+      startsAt: v.data.startsAt,
+      endsAt: v.data.endsAt,
+      createdBy: admin.clerkUserId,
+    });
+  } catch (error) {
     console.error('[admin/announcements] create failed', error);
+    return NextResponse.json({ error: 'Create failed' }, { status: 500 });
+  }
+  if (!data) {
     return NextResponse.json({ error: 'Create failed' }, { status: 500 });
   }
 
   await logAdminAction({
     actor: admin.clerkUserId,
     action: 'create_announcement',
-    target: id,
+    target: data.id,
     details: { severity: v.data.severity, targetSegment: v.data.targetSegment },
   });
 
@@ -120,8 +126,9 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
   }
 
-  const { error } = await supabase.from('Announcement').delete().eq('id', id);
-  if (error) {
+  try {
+    await convex().mutation(api.notifications.announcements.remove, { id });
+  } catch (error) {
     console.error('[admin/announcements] delete failed', error);
     return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
   }

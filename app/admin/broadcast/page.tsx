@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 import { BroadcastClient, type SegmentKey, type PastBroadcast } from './broadcast-client';
@@ -58,13 +59,11 @@ export default async function AdminBroadcastPage() {
     'no_workspace',
   ];
 
-  const [countsArr, pastRes] = await Promise.all([
+  // EmailBroadcast moved to Convex; the per-segment counts (User/Space) stay on
+  // Supabase — this page is a hybrid read during the cutover.
+  const [countsArr, pastRows] = await Promise.all([
     Promise.all(segmentKeys.map((k) => countSegment(k))),
-    supabase
-      .from('EmailBroadcast')
-      .select('id, subject, segment, recipientCount, sentCount, failedCount, sentBy, createdAt')
-      .order('createdAt', { ascending: false })
-      .limit(20),
+    convex().query(api.support.broadcasts.listRecent, { limit: 20 }),
   ]);
 
   const counts: Record<SegmentKey, number> = segmentKeys.reduce(
@@ -75,7 +74,7 @@ export default async function AdminBroadcastPage() {
     {} as Record<SegmentKey, number>,
   );
 
-  const pastBroadcasts = ((pastRes.data ?? []) as PastBroadcast[]).map((b) => ({
+  const pastBroadcasts = (pastRows as PastBroadcast[]).map((b) => ({
     id: b.id,
     subject: b.subject,
     segment: b.segment,

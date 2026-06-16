@@ -1,5 +1,6 @@
 import { getManagerMemberContext } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getCompanyMembers } from '@/lib/company-members';
 import { redirect } from 'next/navigation';
 import {
@@ -334,7 +335,7 @@ export default async function ManagerBriefPage() {
       Date.now() - company.slaFirstResponseMinutes * 60000,
     ).toISOString();
 
-    const [needsRes, escalatedRes] = await Promise.all([
+    const [needsRes, escalatedCount] = await Promise.all([
       // Currently-breaching: routed, never contacted, older than slaFirstResponseMinutes.
       supabase
         .from('Contact')
@@ -344,17 +345,16 @@ export default async function ManagerBriefPage() {
         .is('lastContactedAt', null)
         .lte('createdAt', firstThreshold),
       // Escalated today: ManagerNotification rows Cola created today for this company.
-      supabase
-        .from('ManagerNotification')
-        .select('*', { count: 'exact', head: true })
-        .eq('companyId', company.id)
-        .eq('type', 'review_requested')
-        .gte('createdAt', todayStart)
-        .filter('metadata->>kind', 'eq', 'lead_sla_breach'),
+      convex().query(api.notifications.manager.countEscalatedSince, {
+        companyId: company.id,
+        type: 'review_requested',
+        sinceCreatedAt: todayStart,
+        metadataKind: 'lead_sla_breach',
+      }),
     ]);
 
     needsResponse = needsRes.count ?? 0;
-    escalatedToday = escalatedRes.count ?? 0;
+    escalatedToday = escalatedCount;
   }
 
   const [applicationRows, leadRows] = await Promise.all([

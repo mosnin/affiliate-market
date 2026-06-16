@@ -130,6 +130,31 @@ vi.mock('@/lib/supabase', () => {
   return { supabase: { from: vi.fn((table: string) => makeChain(table)) } };
 });
 
+// ── Convex mock — the publish fan-out's MessageTemplate ops moved off ──────
+// Supabase. The route reads existing copies via
+// api.support.templates.findCopiesBySource (query) and writes via
+// api.support.templates.{createFromSource,updateFromSource} (mutations).
+// CompanyTemplate / CompanyMembership / Space stay on Supabase (above). `api`
+// is a path proxy so any api.<domain>.<module>.<fn> access stringifies to its
+// dotted path, letting the mutation mock branch on String(ref). The query
+// returns the existing MessageTemplate copies a test seeds; the mutations
+// return the create/update result shapes the route expects.
+const convexExistingCopies: Array<Record<string, unknown>> = [];
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
 // ── Auth / permission mocks (per-test override) ───────────────────────────
 type ManagerRole = 'manager_owner' | 'manager_admin' | 'seller_member' | null;
 interface AuthState {
@@ -208,12 +233,41 @@ function deleteReq(url: string): Request {
   return new Request(url, { method: 'DELETE' });
 }
 
+// Per-test capture of the MessageTemplate writes the route fans out, keyed by
+// the Convex fn name (createFromSource / updateFromSource), so the publish
+// assertions can inspect payloads the way the old Supabase insert/update
+// counters did.
+const convexCreateArgs: Array<Record<string, unknown>> = [];
+const convexUpdateArgs: Array<Record<string, unknown>> = [];
+
 beforeEach(() => {
   mockByTable = {};
   for (const key of Object.keys(fromCalls)) delete fromCalls[key];
   for (const key of Object.keys(insertCalls)) delete insertCalls[key];
   for (const key of Object.keys(updateCalls)) delete updateCalls[key];
   for (const key of Object.keys(deleteCalls)) delete deleteCalls[key];
+  convexExistingCopies.length = 0;
+  convexCreateArgs.length = 0;
+  convexUpdateArgs.length = 0;
+  convexQueryMock.mockReset();
+  convexMutationMock.mockReset();
+  // findCopiesBySource → the existing MessageTemplate copies a test seeds.
+  convexQueryMock.mockImplementation(async () => convexExistingCopies);
+  // createFromSource → { id }; updateFromSource → { updated: true }. Branch on
+  // the dotted api path so call order doesn't matter, and record the args. The
+  // path proxy yields its dotted path when CALLED (ref()), not via String().
+  convexMutationMock.mockImplementation(async (ref: unknown, args: Record<string, unknown>) => {
+    const p = typeof ref === 'function' ? String((ref as () => string)()) : String(ref);
+    if (p.includes('createFromSource')) {
+      convexCreateArgs.push(args);
+      return { id: `mt_${convexCreateArgs.length}` };
+    }
+    if (p.includes('updateFromSource')) {
+      convexUpdateArgs.push(args);
+      return { updated: true };
+    }
+    return undefined;
+  });
   authState = {
     clerkId: 'clerk_1',
     dbUserId: 'u_1',
@@ -484,30 +538,14 @@ describe('POST /api/manager/templates/[id]/publish', () => {
       ],
     };
 
-    // MessageTemplate look-up keyed by spaceId. Agent c's copy has
-    // sourceVersion=null (locally edited) — it should be skipped.
-    mockByTable.MessageTemplate = {
-      rows: [
-        {
-          id: 'mt_a',
-          spaceId: 'space_a',
-          sourceTemplateId: 't_1',
-          sourceVersion: 2,
-        },
-        {
-          id: 'mt_b',
-          spaceId: 'space_b',
-          sourceTemplateId: 't_1',
-          sourceVersion: 2,
-        },
-        {
-          id: 'mt_c',
-          spaceId: 'space_c',
-          sourceTemplateId: 't_1',
-          sourceVersion: null,
-        },
-      ],
-    };
+    // Existing MessageTemplate copies (from findCopiesBySource), keyed by
+    // spaceId. Agent c's copy has sourceVersion=null (locally edited) — it
+    // should be skipped; a and b update.
+    convexExistingCopies.push(
+      { id: 'mt_a', spaceId: 'space_a', sourceTemplateId: 't_1', sourceVersion: 2 },
+      { id: 'mt_b', spaceId: 'space_b', sourceTemplateId: 't_1', sourceVersion: 2 },
+      { id: 'mt_c', spaceId: 'space_c', sourceTemplateId: 't_1', sourceVersion: null },
+    );
 
     const res = await invoke('t_1');
     expect(res.status).toBe(200);
@@ -515,6 +553,9 @@ describe('POST /api/manager/templates/[id]/publish', () => {
     expect(json.pushed).toBe(2);
     expect(json.skipped).toBe(1);
     expect(typeof json.publishedAt).toBe('string');
+    // a and b were unedited → updateFromSource fired for each; none inserted.
+    expect(convexUpdateArgs).toHaveLength(2);
+    expect(convexCreateArgs).toHaveLength(0);
 
     // CompanyTemplate should have been updated with publishedCount=2 (and
     // publishedAt set).
@@ -544,23 +585,22 @@ describe('POST /api/manager/templates/[id]/publish', () => {
     mockByTable.Space = {
       rows: [{ id: 'space_fresh', ownerId: 'u_fresh', companyId: 'b_1' }],
     };
-    // No MessageTemplate exists for this agent yet — rows: [] is the default
-    // but we spell it out for clarity.
-    mockByTable.MessageTemplate = { rows: [] };
+    // No MessageTemplate copy exists for this agent yet — findCopiesBySource
+    // returns nothing (the default empty seed), so the fresh-insert branch runs.
+    convexExistingCopies.length = 0;
 
     const res = await invoke('t_1');
     expect(res.status).toBe(200);
     const json = (await res.json()) as { pushed: number; skipped: number };
-    // Either the fresh-insert branch counts as "pushed" or — if the API
-    // agent decided fresh inserts are opt-in only — "skipped". The spec
-    // says fresh copies ARE inserted, so we assert pushed>=1.
+    // The spec says fresh copies ARE inserted, so we assert pushed>=1.
     expect(json.pushed).toBeGreaterThanOrEqual(1);
 
-    // And at least one MessageTemplate insert should have fanned out.
-    const inserts = insertCalls.MessageTemplate ?? [];
-    expect(inserts.length).toBeGreaterThanOrEqual(1);
-    const payload = inserts[0] ?? {};
-    expect(payload.userId).toBe('u_fresh');
+    // And at least one createFromSource should have fanned out, carrying the
+    // source linkage + version. (MessageTemplate has no userId column — the
+    // route scopes the copy by spaceId, not userId, so we assert on that.)
+    expect(convexCreateArgs.length).toBeGreaterThanOrEqual(1);
+    const payload = convexCreateArgs[0] ?? {};
+    expect(payload.spaceId).toBe('space_fresh');
     expect(payload.sourceTemplateId).toBe('t_1');
     expect(payload.sourceVersion).toBe(5);
   });

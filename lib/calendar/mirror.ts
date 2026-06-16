@@ -26,7 +26,6 @@
  * all need the same through-write. One seam, one bug surface.
  */
 
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
@@ -79,32 +78,32 @@ export async function findCalendarConnection(
 ): Promise<CalendarConnection | null> {
   if (!composioConfigured()) return null;
 
-  const { data, error } = await supabase
-    .from('IntegrationConnection')
-    .select('id, userId, toolkit')
-    .eq('spaceId', spaceId)
-    .in('toolkit', CALENDAR_TOOLKITS as readonly string[])
-    .eq('status', 'active')
-    .order('toolkit', { ascending: true }) // 'googlecalendar' < 'outlook_calendar'
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
+  let rows: Array<{ id: string; userId: string; toolkit: string }>;
+  try {
+    rows = await convex().query(api.integrations.connections.activeForSpace, {
+      spaceId,
+      toolkits: CALENDAR_TOOLKITS as readonly string[] as string[],
+    });
+  } catch (err) {
     logger.warn(
       '[calendar.mirror] findCalendarConnection failed',
-      { spaceId, err: error.message },
+      { spaceId, err: err instanceof Error ? err.message : String(err) },
     );
     return null;
   }
+  // activeForSpace returns toolkit-ASC, so [0] preserves the old
+  // `.order('toolkit', { ascending: true }).limit(1)` precedence
+  // ('googlecalendar' < 'outlook_calendar').
+  const data = rows[0];
   if (!data) return null;
 
-  // Defensive narrow — the IN filter constrains it but the column type is text.
-  const toolkit = (data as { toolkit: string }).toolkit;
+  // Defensive narrow — the toolkit filter constrains it but the column is text.
+  const toolkit = data.toolkit;
   if (toolkit !== 'googlecalendar' && toolkit !== 'outlook_calendar') return null;
 
   return {
-    id: (data as { id: string }).id,
-    userId: (data as { userId: string }).userId,
+    id: data.id,
+    userId: data.userId,
     toolkit,
   };
 }

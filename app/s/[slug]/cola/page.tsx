@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { ColaWorkspace } from '@/components/cola/cola-workspace';
 import type { Conversation } from '@/lib/types';
 import type { MessageBlock } from '@/lib/ai-tools/blocks';
@@ -116,12 +117,9 @@ export default async function ColaPage({
   // an OAuth navigation that reloads the page, so the banner self-clears.
   let hasIntegrations = false;
   if (composioConfigured()) {
-    const { count } = await supabase
-      .from('IntegrationConnection')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', space.id)
-      .eq('status', 'active');
-    hasIntegrations = (count ?? 0) > 0;
+    hasIntegrations = await convex().query(api.integrations.connections.hasActiveBySpace, {
+      spaceId: space.id,
+    });
   }
   // If Composio isn't configured at all, treat as "has integrations" so the
   // banner stays hidden — there's nothing to connect to.

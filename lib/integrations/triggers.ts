@@ -31,7 +31,7 @@
  * `composio.triggers.listTypes()` — never guess slugs into this map.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { createTrigger, deleteTrigger } from './composio';
 import { fireRoutineRun } from '@/lib/routines';
@@ -689,14 +689,12 @@ export async function deleteForConnection(connectionId: string): Promise<void> {
   // DB-side cleanup. CASCADE on connection delete handles the case where
   // the connection row is removed; this covers the live revoke path where
   // the connection row sticks around as status='revoked'.
-  const { error } = await supabase
-    .from('IntegrationTrigger')
-    .delete()
-    .eq('connectionId', connectionId);
-  if (error) {
+  try {
+    await convex().mutation(api.integrations.triggers.deleteForConnection, { connectionId });
+  } catch (err) {
     logger.warn('[integrations.triggers] db delete failed', {
       connectionId,
-      err: error.message,
+      err: err instanceof Error ? err.message : String(err),
     });
   }
 }
@@ -715,23 +713,19 @@ export async function setPausedForConnection(args: {
   connectionId: string;
   paused: boolean;
 }): Promise<{ updated: number }> {
-  const targetStatus: TriggerStatus = args.paused ? 'paused' : 'active';
-  const oppositeStatus: TriggerStatus = args.paused ? 'active' : 'paused';
-  const { data, error } = await supabase
-    .from('IntegrationTrigger')
-    .update({ status: targetStatus, updatedAt: new Date().toISOString() })
-    .eq('connectionId', args.connectionId)
-    .eq('status', oppositeStatus)
-    .select('id');
-  if (error) {
+  try {
+    return await convex().mutation(api.integrations.triggers.setPausedForConnection, {
+      connectionId: args.connectionId,
+      paused: args.paused,
+    });
+  } catch (err) {
     logger.warn('[integrations.triggers] setPausedForConnection failed', {
       connectionId: args.connectionId,
       paused: args.paused,
-      err: error.message,
+      err: err instanceof Error ? err.message : String(err),
     });
     return { updated: 0 };
   }
-  return { updated: (data ?? []).length };
 }
 
 /**
@@ -741,13 +735,11 @@ export async function setPausedForConnection(args: {
  * connection has no rows at all (nothing curated for that toolkit).
  */
 export async function hasActiveTriggers(connectionId: string): Promise<boolean> {
-  const { count, error } = await supabase
-    .from('IntegrationTrigger')
-    .select('id', { count: 'exact', head: true })
-    .eq('connectionId', connectionId)
-    .eq('status', 'active');
-  if (error) return false;
-  return (count ?? 0) > 0;
+  try {
+    return await convex().query(api.integrations.triggers.hasActive, { connectionId });
+  } catch {
+    return false;
+  }
 }
 
 export type TriggerSummary = 'off' | 'active' | 'paused' | 'failed';
@@ -770,15 +762,17 @@ export async function summariesForConnections(connectionIds: string[]): Promise<
   Record<string, TriggerSummary>
 > {
   if (connectionIds.length === 0) return {};
-  const { data, error } = await supabase
-    .from('IntegrationTrigger')
-    .select('connectionId, status')
-    .in('connectionId', connectionIds);
-  if (error) {
-    logger.warn('[integrations.triggers] summariesForConnections failed', { err: error.message });
+  let rows: Array<{ connectionId: string; status: TriggerStatus }>;
+  try {
+    rows = (await convex().query(api.integrations.triggers.statusesForConnections, {
+      connectionIds,
+    })) as Array<{ connectionId: string; status: TriggerStatus }>;
+  } catch (err) {
+    logger.warn('[integrations.triggers] summariesForConnections failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return {};
   }
-  const rows = (data ?? []) as Array<{ connectionId: string; status: TriggerStatus }>;
   const map: Record<string, TriggerSummary> = {};
   for (const id of connectionIds) map[id] = 'off';
   const rank: Record<TriggerSummary, number> = { off: 0, failed: 1, paused: 2, active: 3 };
@@ -874,43 +868,41 @@ interface UpsertTriggerArgs {
 }
 
 async function upsertTriggerRow(args: UpsertTriggerArgs): Promise<boolean> {
-  // Unique (connectionId, triggerSlug) — onConflict makes this an upsert.
-  const { error } = await supabase
-    .from('IntegrationTrigger')
-    .upsert(
-      {
-        connectionId: args.connectionId,
-        triggerSlug: args.triggerSlug,
-        composioTriggerId: args.composioTriggerId,
-        status: args.status,
-        lastError: args.lastError ?? null,
-        updatedAt: new Date().toISOString(),
-      },
-      { onConflict: 'connectionId,triggerSlug' },
-    );
-  if (error) {
+  // Unique (connectionId, triggerSlug) — the mutation reads-then-patch/inserts
+  // on that pair (serializable) to preserve the old onConflict upsert.
+  try {
+    return await convex().mutation(api.integrations.triggers.upsertRow, {
+      connectionId: args.connectionId,
+      triggerSlug: args.triggerSlug,
+      composioTriggerId: args.composioTriggerId,
+      status: args.status,
+      ...(args.lastError !== undefined ? { lastError: args.lastError } : {}),
+    });
+  } catch (err) {
     logger.error('[integrations.triggers] upsert failed', {
       connectionId: args.connectionId,
       slug: args.triggerSlug,
-      err: error.message,
+      err: err instanceof Error ? err.message : String(err),
     });
     return false;
   }
-  return true;
 }
 
 export async function listTriggersForConnection(
   connectionId: string,
 ): Promise<IntegrationTriggerRow[]> {
-  const { data, error } = await supabase
-    .from('IntegrationTrigger')
-    .select('*')
-    .eq('connectionId', connectionId);
-  if (error) {
-    logger.warn('[integrations.triggers] list failed', { connectionId, err: error.message });
+  try {
+    const rows = await convex().query(api.integrations.triggers.listForConnection, {
+      connectionId,
+    });
+    return rows as IntegrationTriggerRow[];
+  } catch (err) {
+    logger.warn('[integrations.triggers] list failed', {
+      connectionId,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return [];
   }
-  return (data ?? []) as IntegrationTriggerRow[];
 }
 
 /**
@@ -921,21 +913,20 @@ export async function listTriggersForConnection(
 export async function findByComposioTriggerId(
   composioTriggerId: string,
 ): Promise<IntegrationTriggerRow | null> {
-  const { data } = await supabase
-    .from('IntegrationTrigger')
-    .select('*')
-    .eq('composioTriggerId', composioTriggerId)
-    .maybeSingle();
-  return (data ?? null) as IntegrationTriggerRow | null;
+  const row = await convex().query(api.integrations.triggers.findByComposioTriggerId, {
+    composioTriggerId,
+  });
+  return (row ?? null) as IntegrationTriggerRow | null;
 }
 
 /** Stamp `lastFiredAt`. Non-blocking: a failure here doesn't fail dispatch. */
 export async function stampFired(triggerRowId: string): Promise<void> {
-  const { error } = await supabase
-    .from('IntegrationTrigger')
-    .update({ lastFiredAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
-    .eq('id', triggerRowId);
-  if (error) {
-    logger.warn('[integrations.triggers] stampFired failed', { triggerRowId, err: error.message });
+  try {
+    await convex().mutation(api.integrations.triggers.stampFired, { id: triggerRowId });
+  } catch (err) {
+    logger.warn('[integrations.triggers] stampFired failed', {
+      triggerRowId,
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 }

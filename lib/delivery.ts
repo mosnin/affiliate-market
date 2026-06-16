@@ -26,7 +26,7 @@
  */
 
 import { Resend } from 'resend';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import {
   composioConfigured,
   executeToolForEntity,
@@ -85,16 +85,18 @@ async function activeInboxToolkit(
   spaceId: string,
   userId: string,
 ): Promise<InboxToolkit | null> {
-  const { data, error } = await supabase
-    .from('IntegrationConnection')
-    .select('toolkit')
-    .eq('spaceId', spaceId)
-    .eq('userId', userId)
-    .eq('status', 'active')
-    .in('toolkit', ['gmail', 'outlook']);
-
-  if (error || !data?.length) return null;
-  const toolkits = new Set(data.map((r) => r.toolkit));
+  let rows: Array<{ toolkit: string }>;
+  try {
+    rows = await convex().query(api.integrations.connections.activeForSpace, {
+      spaceId,
+      userId,
+      toolkits: ['gmail', 'outlook'],
+    });
+  } catch {
+    return null;
+  }
+  if (!rows.length) return null;
+  const toolkits = new Set(rows.map((r) => r.toolkit));
   if (toolkits.has('gmail')) return 'gmail';
   if (toolkits.has('outlook')) return 'outlook';
   return null;

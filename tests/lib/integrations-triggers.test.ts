@@ -10,6 +10,17 @@
  *      payload also no-ops.
  *   3. deleteForConnection deletes every Composio trigger AND wipes the
  *      DB rows, in that order.
+ *
+ * The DB hops moved from Supabase to Convex: registerForConnection's row
+ * upsert is api.integrations.triggers.upsertRow (returns boolean — true =
+ * registered, false/throw = failed); deleteForConnection lists rows via
+ * api.integrations.triggers.listForConnection then deletes them via
+ * api.integrations.triggers.deleteForConnection; setPausedForConnection and
+ * summariesForConnections call api.integrations.triggers.setPausedForConnection
+ * (returns { updated }) and api.integrations.triggers.statusesForConnections
+ * (returns [{connectionId,status}], the lib computes the precedence) — so we
+ * assert on the lib's RETURN value and steer behaviour with the query/mutation
+ * mocks, which is the load-bearing contract a refactor could break.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -35,34 +46,23 @@ vi.mock('@/lib/routines', () => ({
   fireRoutineRun: fireRoutineRunMock,
 }));
 
-// ── Supabase mock — captures upsert/delete/select on IntegrationTrigger
+// ── Convex mock — query/mutation steered per test; `api` is a path proxy
+// so any api.<domain>.<module>.<fn> access stringifies to its dotted path,
+// letting a test branch on String(ref) when call order isn't enough.
 
-type Terminal = { data: unknown; error: unknown };
-const supabaseState: {
-  terminal: Terminal;
-  calls: Array<{ table: string; chain: Array<[string, unknown[]]> }>;
-} = { terminal: { data: null, error: null }, calls: [] };
-
-vi.mock('@/lib/supabase', () => {
-  function makeChain(table: string): Record<string, unknown> {
-    const chainCalls: Array<[string, unknown[]]> = [];
-    supabaseState.calls.push({ table, chain: chainCalls });
-    const chain: Record<string, unknown> = {};
-    const passthrough = ['select', 'eq', 'is', 'in', 'order', 'limit', 'upsert', 'delete', 'update', 'insert'];
-    for (const method of passthrough) {
-      chain[method] = vi.fn((...args: unknown[]) => {
-        chainCalls.push([method, args]);
-        return chain;
-      });
-    }
-    const term = () => Promise.resolve(supabaseState.terminal);
-    chain.maybeSingle = vi.fn(term);
-    chain.single = vi.fn(term);
-    chain.then = (r: (v: Terminal) => unknown, e?: (e: unknown) => unknown) =>
-      Promise.resolve(supabaseState.terminal).then(r, e);
-    return chain;
-  }
-  return { supabase: { from: vi.fn((table: string) => makeChain(table)) } };
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
 });
 
 vi.mock('@/lib/logger', () => ({
@@ -99,10 +99,11 @@ function freshConnection(overrides: Partial<IntegrationConnectionRow> = {}): Int
 beforeEach(() => {
   createTriggerMock.mockReset();
   deleteTriggerMock.mockReset();
+  deleteTriggerMock.mockResolvedValue(undefined);
   fireRoutineRunMock.mockReset();
   fireRoutineRunMock.mockResolvedValue('ok');
-  supabaseState.terminal = { data: null, error: null };
-  supabaseState.calls = [];
+  convexQueryMock.mockReset();
+  convexMutationMock.mockReset();
 });
 
 // ─── CURATED_TRIGGERS sanity ─────────────────────────────────────────────────
@@ -168,7 +169,8 @@ describe('registerForConnection', () => {
     createTriggerMock.mockImplementation(async (args: { slug: string }) => ({
       triggerId: `trg_${args.slug.toLowerCase()}`,
     }));
-    supabaseState.terminal = { data: null, error: null };
+    // upsertRow resolves true → the row landed → registered++.
+    convexMutationMock.mockResolvedValue(true);
 
     const result = await registerForConnection({ connection: freshConnection() });
 
@@ -192,6 +194,10 @@ describe('registerForConnection', () => {
     createTriggerMock.mockImplementation(async (args: { slug: string }) => ({
       triggerId: `trg_${args.slug.toLowerCase()}`,
     }));
+    // upsertRow always lands (both the failed-row record in the catch and the
+    // success-path rows). The failed count comes from createTrigger throwing,
+    // not from the mutation.
+    convexMutationMock.mockResolvedValue(true);
 
     const result = await registerForConnection({ connection: freshConnection() });
 
@@ -217,193 +223,111 @@ describe('registerForConnection', () => {
 
 describe('deleteForConnection', () => {
   it('deletes every Composio trigger AND the DB rows', async () => {
-    // First supabase call (list) returns two rows; second call is the delete.
-    let callIndex = 0;
-    supabaseState.terminal = { data: null, error: null };
-    const responses: Terminal[] = [
-      { data: [
-        { id: 'r1', composioTriggerId: 'trg_a', connectionId: 'conn-1' },
-        { id: 'r2', composioTriggerId: 'trg_b', connectionId: 'conn-1' },
-      ], error: null },
-      { data: null, error: null },
-    ];
-    vi.mocked(supabaseState).calls = [];
-
-    // Intercept the supabase mock to swap the terminal per call.
-    const { supabase } = await import('@/lib/supabase');
-    const origFrom = supabase.from as ReturnType<typeof vi.fn>;
-    origFrom.mockImplementation((table: string) => {
-      const chain: Record<string, unknown> = {};
-      const passthrough = ['select', 'eq', 'is', 'in', 'order', 'limit', 'upsert', 'delete', 'update', 'insert'];
-      for (const m of passthrough) chain[m] = vi.fn(() => chain);
-      const term = () => Promise.resolve(responses[callIndex++] ?? { data: null, error: null });
-      chain.maybeSingle = vi.fn(term);
-      chain.single = vi.fn(term);
-      chain.then = (r: (v: Terminal) => unknown, e?: (e: unknown) => unknown) =>
-        Promise.resolve(responses[callIndex++] ?? { data: null, error: null }).then(r, e);
-      return chain;
-    });
+    // listForConnection (query) returns the rows; deleteForConnection (mutation)
+    // wipes them DB-side.
+    convexQueryMock.mockResolvedValue([
+      { id: 'r1', composioTriggerId: 'trg_a', connectionId: 'conn-1' },
+      { id: 'r2', composioTriggerId: 'trg_b', connectionId: 'conn-1' },
+    ]);
+    convexMutationMock.mockResolvedValue(undefined);
 
     await deleteForConnection('conn-1');
 
+    // Composio-side delete fires per row, with the right vendor ids.
     expect(deleteTriggerMock).toHaveBeenCalledWith('trg_a');
     expect(deleteTriggerMock).toHaveBeenCalledWith('trg_b');
     expect(deleteTriggerMock).toHaveBeenCalledTimes(2);
+    // Then the DB-side wipe runs, scoped to this connection.
+    expect(convexMutationMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ connectionId: 'conn-1' }),
+    );
   });
 
   it('skips Composio delete for rows with null composioTriggerId', async () => {
-    let callIndex = 0;
-    const responses: Terminal[] = [
-      { data: [{ id: 'r1', composioTriggerId: null, connectionId: 'conn-1' }], error: null },
-      { data: null, error: null },
-    ];
-    const { supabase } = await import('@/lib/supabase');
-    (supabase.from as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      const chain: Record<string, unknown> = {};
-      const passthrough = ['select', 'eq', 'is', 'in', 'order', 'limit', 'upsert', 'delete', 'update', 'insert'];
-      for (const m of passthrough) chain[m] = vi.fn(() => chain);
-      const term = () => Promise.resolve(responses[callIndex++] ?? { data: null, error: null });
-      chain.maybeSingle = vi.fn(term);
-      chain.single = vi.fn(term);
-      chain.then = (r: (v: Terminal) => unknown, e?: (e: unknown) => unknown) =>
-        Promise.resolve(responses[callIndex++] ?? { data: null, error: null }).then(r, e);
-      return chain;
-    });
+    convexQueryMock.mockResolvedValue([
+      { id: 'r1', composioTriggerId: null, connectionId: 'conn-1' },
+    ]);
+    convexMutationMock.mockResolvedValue(undefined);
 
     await deleteForConnection('conn-1');
 
     expect(deleteTriggerMock).not.toHaveBeenCalled();
+    // The DB-side wipe still runs even when there's no Composio side to clean.
+    expect(convexMutationMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ connectionId: 'conn-1' }),
+    );
   });
 });
 
 // ─── setPausedForConnection ──────────────────────────────────────────────────
 
 describe('setPausedForConnection', () => {
-  it('updates rows from active → paused when called with paused:true', async () => {
-    // Capture the chain to assert what was filtered + what was set.
-    let chainCalls: Array<[string, unknown[]]> = [];
-    const { supabase } = await import('@/lib/supabase');
-    (supabase.from as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      const chain: Record<string, unknown> = {};
-      const passthrough = ['select', 'eq', 'is', 'in', 'order', 'limit', 'upsert', 'delete', 'update', 'insert'];
-      for (const m of passthrough) {
-        chain[m] = vi.fn((...args: unknown[]) => {
-          chainCalls.push([m, args]);
-          return chain;
-        });
-      }
-      chainCalls = [];
-      const term = () => Promise.resolve({ data: [{ id: 'r1' }, { id: 'r2' }], error: null });
-      chain.maybeSingle = vi.fn(term);
-      chain.single = vi.fn(term);
-      chain.then = (r: (v: Terminal) => unknown, e?: (e: unknown) => unknown) =>
-        Promise.resolve({ data: [{ id: 'r1' }, { id: 'r2' }], error: null }).then(r, e);
-      return chain;
-    });
+  it('forwards paused:true + the connectionId and returns the updated count', async () => {
+    // The active→paused filter + flip now lives in the Convex mutation, which
+    // returns { updated }. The lib's job is to forward the args and surface the
+    // count — assert that contract, not the (moved) SQL filter.
+    convexMutationMock.mockResolvedValue({ updated: 2 });
 
     const result = await setPausedForConnection({ connectionId: 'conn-1', paused: true });
 
     expect(result.updated).toBe(2);
-    // Must have filtered on the OPPOSITE status — the helper only flips
-    // rows in the wrong state, leaving paused-already and failed alone.
-    const eqCalls = chainCalls.filter(([m]) => m === 'eq');
-    expect(eqCalls).toContainEqual(['eq', ['status', 'active']]);
-    // And updated TO 'paused'.
-    const updateCall = chainCalls.find(([m]) => m === 'update');
-    expect((updateCall![1][0] as { status: string }).status).toBe('paused');
+    expect(convexMutationMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ connectionId: 'conn-1', paused: true }),
+    );
   });
 
-  it('updates rows from paused → active when called with paused:false', async () => {
-    let chainCalls: Array<[string, unknown[]]> = [];
-    const { supabase } = await import('@/lib/supabase');
-    (supabase.from as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      const chain: Record<string, unknown> = {};
-      const passthrough = ['select', 'eq', 'is', 'in', 'order', 'limit', 'upsert', 'delete', 'update', 'insert'];
-      for (const m of passthrough) {
-        chain[m] = vi.fn((...args: unknown[]) => {
-          chainCalls.push([m, args]);
-          return chain;
-        });
-      }
-      chainCalls = [];
-      const term = () => Promise.resolve({ data: [{ id: 'r1' }], error: null });
-      chain.maybeSingle = vi.fn(term);
-      chain.single = vi.fn(term);
-      chain.then = (r: (v: Terminal) => unknown, e?: (e: unknown) => unknown) =>
-        Promise.resolve({ data: [{ id: 'r1' }], error: null }).then(r, e);
-      return chain;
-    });
+  it('forwards paused:false + the connectionId and returns the updated count', async () => {
+    convexMutationMock.mockResolvedValue({ updated: 1 });
 
     const result = await setPausedForConnection({ connectionId: 'conn-1', paused: false });
 
     expect(result.updated).toBe(1);
-    const eqCalls = chainCalls.filter(([m]) => m === 'eq');
-    expect(eqCalls).toContainEqual(['eq', ['status', 'paused']]);
-    const updateCall = chainCalls.find(([m]) => m === 'update');
-    expect((updateCall![1][0] as { status: string }).status).toBe('active');
+    expect(convexMutationMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ connectionId: 'conn-1', paused: false }),
+    );
+  });
+
+  it('returns updated:0 (does not throw) when the mutation fails', async () => {
+    // The lib swallows a Convex error and degrades to a zero-count result so a
+    // panel toggle never 500s the request.
+    convexMutationMock.mockRejectedValue(new Error('db down'));
+    const result = await setPausedForConnection({ connectionId: 'conn-1', paused: true });
+    expect(result).toEqual({ updated: 0 });
   });
 });
 
 // ─── summariesForConnections ─────────────────────────────────────────────────
 
 describe('summariesForConnections', () => {
+  // statusesForConnections (query) returns the raw (connectionId, status) pairs;
+  // the lib computes the off<failed<paused<active precedence — that's the
+  // behaviour these tests lock in, steered via the query mock's return value.
   it('returns "active" when ANY trigger row is active', async () => {
-    const { supabase } = await import('@/lib/supabase');
-    (supabase.from as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      const chain: Record<string, unknown> = {};
-      const passthrough = ['select', 'eq', 'is', 'in', 'order', 'limit', 'upsert', 'delete', 'update', 'insert'];
-      for (const m of passthrough) chain[m] = vi.fn(() => chain);
-      const data = [
-        { connectionId: 'c1', status: 'paused' },
-        { connectionId: 'c1', status: 'active' }, // wins
-      ];
-      const term = () => Promise.resolve({ data, error: null });
-      chain.maybeSingle = vi.fn(term);
-      chain.single = vi.fn(term);
-      chain.then = (r: (v: Terminal) => unknown, e?: (e: unknown) => unknown) =>
-        Promise.resolve({ data, error: null }).then(r, e);
-      return chain;
-    });
+    convexQueryMock.mockResolvedValue([
+      { connectionId: 'c1', status: 'paused' },
+      { connectionId: 'c1', status: 'active' }, // wins
+    ]);
 
     const result = await summariesForConnections(['c1']);
     expect(result.c1).toBe('active');
   });
 
   it('returns "paused" only when all rows are paused', async () => {
-    const { supabase } = await import('@/lib/supabase');
-    (supabase.from as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      const chain: Record<string, unknown> = {};
-      const passthrough = ['select', 'eq', 'is', 'in', 'order', 'limit', 'upsert', 'delete', 'update', 'insert'];
-      for (const m of passthrough) chain[m] = vi.fn(() => chain);
-      const data = [
-        { connectionId: 'c1', status: 'paused' },
-        { connectionId: 'c1', status: 'paused' },
-      ];
-      const term = () => Promise.resolve({ data, error: null });
-      chain.maybeSingle = vi.fn(term);
-      chain.single = vi.fn(term);
-      chain.then = (r: (v: Terminal) => unknown, e?: (e: unknown) => unknown) =>
-        Promise.resolve({ data, error: null }).then(r, e);
-      return chain;
-    });
+    convexQueryMock.mockResolvedValue([
+      { connectionId: 'c1', status: 'paused' },
+      { connectionId: 'c1', status: 'paused' },
+    ]);
 
     const result = await summariesForConnections(['c1']);
     expect(result.c1).toBe('paused');
   });
 
   it('returns "off" for connections with no rows', async () => {
-    const { supabase } = await import('@/lib/supabase');
-    (supabase.from as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      const chain: Record<string, unknown> = {};
-      const passthrough = ['select', 'eq', 'is', 'in', 'order', 'limit', 'upsert', 'delete', 'update', 'insert'];
-      for (const m of passthrough) chain[m] = vi.fn(() => chain);
-      const term = () => Promise.resolve({ data: [], error: null });
-      chain.maybeSingle = vi.fn(term);
-      chain.single = vi.fn(term);
-      chain.then = (r: (v: Terminal) => unknown, e?: (e: unknown) => unknown) =>
-        Promise.resolve({ data: [], error: null }).then(r, e);
-      return chain;
-    });
+    convexQueryMock.mockResolvedValue([]);
 
     const result = await summariesForConnections(['c1', 'c2']);
     expect(result.c1).toBe('off');
@@ -413,6 +337,8 @@ describe('summariesForConnections', () => {
   it('is a no-op for an empty input list', async () => {
     const result = await summariesForConnections([]);
     expect(result).toEqual({});
+    // Short-circuits before any DB hop.
+    expect(convexQueryMock).not.toHaveBeenCalled();
   });
 });
 

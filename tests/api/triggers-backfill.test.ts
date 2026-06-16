@@ -17,22 +17,26 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-// Supabase mock: returns a fixed set of active connections.
-const supabaseConnections: Array<Record<string, unknown>> = [];
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    from: vi.fn(() => {
-      const chain: Record<string, unknown> = {};
-      const passthrough = ['select', 'eq', 'in', 'order', 'limit', 'is'];
-      for (const m of passthrough) chain[m] = vi.fn(() => chain);
-      const term = () => Promise.resolve({ data: supabaseConnections, error: null });
-      chain.maybeSingle = vi.fn(term);
-      chain.single = vi.fn(term);
-      chain.then = (r: (v: unknown) => unknown) => term().then(r);
-      return chain;
-    }),
-  },
+// The active-connection list moved from Supabase to Convex: the route reads it
+// via convex().query(api.integrations.connections.listAllActive). `api` is a
+// path proxy so any api.<domain>.<module>.<fn> access stringifies to its dotted
+// path; the query mock returns the fixed connection set, the mutation mock is
+// present for shape parity (this route makes no Convex writes directly).
+const convexConnections: Array<Record<string, unknown>> = [];
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
 }));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
 
 const { listMock, registerMock } = vi.hoisted(() => ({
   listMock: vi.fn(),
@@ -69,7 +73,9 @@ function makeReq(opts: { auth?: string; force?: boolean } = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  supabaseConnections.length = 0;
+  convexConnections.length = 0;
+  // listAllActive returns the (mutable) connection set each test seeds.
+  convexQueryMock.mockImplementation(async () => convexConnections);
   listMock.mockResolvedValue([]);
   registerMock.mockResolvedValue({ registered: 1, failed: 0 });
   process.env.CRON_SECRET = 'test-secret';
@@ -95,7 +101,7 @@ describe('POST /api/admin/triggers/backfill', () => {
   });
 
   it('registers triggers for each active connection that has none', async () => {
-    supabaseConnections.push(
+    convexConnections.push(
       { id: 'c1', spaceId: 's1', userId: 'u1', toolkit: 'gmail', composioConnectionId: 'ca1', status: 'active' },
       { id: 'c2', spaceId: 's1', userId: 'u1', toolkit: 'hubspot', composioConnectionId: 'ca2', status: 'active' },
     );
@@ -115,7 +121,7 @@ describe('POST /api/admin/triggers/backfill', () => {
   });
 
   it('skips connections that already have IntegrationTrigger rows', async () => {
-    supabaseConnections.push(
+    convexConnections.push(
       { id: 'c1', spaceId: 's1', userId: 'u1', toolkit: 'gmail', composioConnectionId: 'ca1', status: 'active' },
     );
     listMock.mockResolvedValue([{ id: 'existing-row' }]); // already registered
@@ -131,7 +137,7 @@ describe('POST /api/admin/triggers/backfill', () => {
 
   it('skips toolkits with no curated triggers (empty CURATED_TRIGGERS entry)', async () => {
     // 'zoho' is empty in the curated map.
-    supabaseConnections.push(
+    convexConnections.push(
       { id: 'c1', spaceId: 's1', userId: 'u1', toolkit: 'zoho', composioConnectionId: 'ca1', status: 'active' },
     );
 
@@ -151,7 +157,7 @@ describe('POST /api/admin/triggers/backfill', () => {
     // (which would cost real money). Only when at least one
     // CURATED_TRIGGERS slug is missing from existing rows does
     // registerForConnection run.
-    supabaseConnections.push(
+    convexConnections.push(
       { id: 'c1', spaceId: 's1', userId: 'u1', toolkit: 'gmail', composioConnectionId: 'ca1', status: 'active' },
     );
     // Existing rows are missing the gmail curated slug (only the
@@ -170,7 +176,7 @@ describe('POST /api/admin/triggers/backfill', () => {
   });
 
   it('force=1 still skips when every curated slug is already present (no duplicate Composio subscriptions)', async () => {
-    supabaseConnections.push(
+    convexConnections.push(
       { id: 'c1', spaceId: 's1', userId: 'u1', toolkit: 'gmail', composioConnectionId: 'ca1', status: 'active' },
     );
     // Existing rows cover every gmail curated slug → delta empty → skip.
@@ -184,7 +190,7 @@ describe('POST /api/admin/triggers/backfill', () => {
   });
 
   it('captures per-connection failure without dropping the rest', async () => {
-    supabaseConnections.push(
+    convexConnections.push(
       { id: 'c1', spaceId: 's1', userId: 'u1', toolkit: 'gmail', composioConnectionId: 'ca1', status: 'active' },
       { id: 'c2', spaceId: 's1', userId: 'u1', toolkit: 'gmail', composioConnectionId: 'ca2', status: 'active' },
     );

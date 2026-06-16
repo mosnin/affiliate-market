@@ -24,7 +24,7 @@
  * Skip entirely if no active `slack` IntegrationConnection — return [].
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { executeToolForEntity, composioConfigured } from '@/lib/integrations/composio';
 import { logger } from '@/lib/logger';
 import type { Signal, SignalGatherer } from '../types';
@@ -100,14 +100,17 @@ export function isTeammate(
 
 /** Look up active slack connection for this space. Returns null when none. */
 async function findSlackConnection(spaceId: string): Promise<SlackConnection | null> {
-  const { data } = await supabase
-    .from('IntegrationConnection')
-    .select('userId, composioConnectionId')
-    .eq('spaceId', spaceId)
-    .eq('toolkit', 'slack')
-    .eq('status', 'active')
-    .maybeSingle();
-  return (data as SlackConnection | null) ?? null;
+  let rows: Array<{ userId: string; composioConnectionId: string }>;
+  try {
+    rows = await convex().query(api.integrations.connections.activeForSpace, {
+      spaceId,
+      toolkits: ['slack'],
+    });
+  } catch {
+    return null;
+  }
+  const data = rows[0];
+  return data ? { userId: data.userId, composioConnectionId: data.composioConnectionId } : null;
 }
 
 /**

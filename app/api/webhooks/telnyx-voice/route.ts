@@ -20,7 +20,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
   bridgeAndRecord,
@@ -123,15 +123,39 @@ export async function POST(req: NextRequest) {
 
 async function updateByCallId(
   callControlId: string | undefined,
-  fields: Record<string, unknown>,
+  fields: {
+    status?: string;
+    durationSec?: number;
+    recordingUrl?: string;
+    transcript?: string;
+    summary?: string;
+  },
 ): Promise<void> {
   if (!callControlId) return;
-  const { error } = await supabase
-    .from('CallLog')
-    .update({ ...fields, updatedAt: new Date().toISOString() })
-    .eq('telnyxCallId', callControlId);
-  if (error) {
-    logger.error('[telnyx-voice] update failed', { err: error.message });
+  try {
+    // The Convex mutation owns updatedAt and patches every row matching this
+    // telnyxCallId (parity with the old `.eq('telnyxCallId')` update). `status`
+    // is a free string at the call sites but the mutation validates it against
+    // the CallLog status union; the values passed here are all valid members.
+    await convex().mutation(api.support.calls.updateByTelnyxId, {
+      telnyxCallId: callControlId,
+      status: fields.status as
+        | 'initiated'
+        | 'ringing'
+        | 'answered'
+        | 'completed'
+        | 'failed'
+        | 'no_answer'
+        | undefined,
+      durationSec: fields.durationSec,
+      recordingUrl: fields.recordingUrl,
+      transcript: fields.transcript,
+      summary: fields.summary,
+    });
+  } catch (err) {
+    logger.error('[telnyx-voice] update failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 

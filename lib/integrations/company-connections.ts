@@ -12,7 +12,7 @@
  * storage and scoping differ here.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { deleteConnection as composioDelete } from './composio';
 
@@ -36,19 +36,18 @@ export interface CompanyIntegrationConnectionRow {
 export async function listCompanyConnections(
   companyId: string,
 ): Promise<CompanyIntegrationConnectionRow[]> {
-  const { data, error } = await supabase
-    .from('CompanyIntegrationConnection')
-    .select('*')
-    .eq('companyId', companyId)
-    .order('createdAt', { ascending: false });
-  if (error) {
+  try {
+    const rows = await convex().query(api.integrations.companyConnections.listByCompany, {
+      companyId,
+    });
+    return rows as CompanyIntegrationConnectionRow[];
+  } catch (err) {
     logger.warn('[integrations.company-connections] list failed', {
       companyId,
-      err: error.message,
+      err: err instanceof Error ? err.message : String(err),
     });
     return [];
   }
-  return (data ?? []) as CompanyIntegrationConnectionRow[];
 }
 
 /**
@@ -60,40 +59,33 @@ export async function listCompanyConnectionsForUser(args: {
   companyId: string;
   userId: string;
 }): Promise<CompanyIntegrationConnectionRow[]> {
-  const { data, error } = await supabase
-    .from('CompanyIntegrationConnection')
-    .select('*')
-    .eq('companyId', args.companyId)
-    .eq('userId', args.userId)
-    .order('createdAt', { ascending: false });
-  if (error) {
+  try {
+    const rows = await convex().query(api.integrations.companyConnections.listByCompanyUser, {
+      companyId: args.companyId,
+      userId: args.userId,
+    });
+    return rows as CompanyIntegrationConnectionRow[];
+  } catch (err) {
     logger.warn('[integrations.company-connections] listForUser failed', {
       companyId: args.companyId,
-      err: error.message,
+      err: err instanceof Error ? err.message : String(err),
     });
     return [];
   }
-  return (data ?? []) as CompanyIntegrationConnectionRow[];
 }
 
 /** Look up by composio connection id — used by the OAuth callback. */
 export async function findCompanyByComposioId(composioConnectionId: string) {
-  const { data } = await supabase
-    .from('CompanyIntegrationConnection')
-    .select('*')
-    .eq('composioConnectionId', composioConnectionId)
-    .maybeSingle();
-  return (data ?? null) as CompanyIntegrationConnectionRow | null;
+  const row = await convex().query(api.integrations.companyConnections.findByComposioId, {
+    composioConnectionId,
+  });
+  return (row ?? null) as CompanyIntegrationConnectionRow | null;
 }
 
 /** Look up by our own row id. */
 export async function getCompanyConnectionById(id: string) {
-  const { data } = await supabase
-    .from('CompanyIntegrationConnection')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
-  return (data ?? null) as CompanyIntegrationConnectionRow | null;
+  const row = await convex().query(api.integrations.companyConnections.getById, { id });
+  return (row ?? null) as CompanyIntegrationConnectionRow | null;
 }
 
 /** Find any active row for this (company, user, toolkit). */
@@ -102,15 +94,12 @@ export async function findActiveCompanyConnection(args: {
   userId: string;
   toolkit: string;
 }): Promise<CompanyIntegrationConnectionRow | null> {
-  const { data } = await supabase
-    .from('CompanyIntegrationConnection')
-    .select('*')
-    .eq('companyId', args.companyId)
-    .eq('userId', args.userId)
-    .eq('toolkit', args.toolkit)
-    .eq('status', 'active')
-    .maybeSingle();
-  return (data ?? null) as CompanyIntegrationConnectionRow | null;
+  const row = await convex().query(api.integrations.companyConnections.findActive, {
+    companyId: args.companyId,
+    userId: args.userId,
+    toolkit: args.toolkit,
+  });
+  return (row ?? null) as CompanyIntegrationConnectionRow | null;
 }
 
 /**
@@ -125,33 +114,26 @@ export async function insertCompanyConnection(args: {
   composioConnectionId: string;
   label?: string;
 }): Promise<CompanyIntegrationConnectionRow | null> {
-  const { data, error } = await supabase
-    .from('CompanyIntegrationConnection')
-    .insert({
+  try {
+    const row = await convex().mutation(api.integrations.companyConnections.insert, {
       companyId: args.companyId,
       userId: args.userId,
       toolkit: args.toolkit,
       composioConnectionId: args.composioConnectionId,
-      label: args.label ?? null,
-      status: 'active',
-    })
-    .select('*')
-    .single();
-  if (error) {
+      ...(args.label !== undefined ? { label: args.label } : {}),
+    });
+    return row as CompanyIntegrationConnectionRow;
+  } catch (err) {
     logger.error('[integrations.company-connections] insert failed', {
       companyId: args.companyId,
       userId: args.userId,
       toolkit: args.toolkit,
       composioConnectionId: args.composioConnectionId,
       hasLabel: Boolean(args.label),
-      errCode: (error as { code?: string }).code ?? null,
-      errMessage: error.message,
-      errDetails: (error as { details?: string }).details ?? null,
-      errHint: (error as { hint?: string }).hint ?? null,
+      errMessage: err instanceof Error ? err.message : String(err),
     });
     return null;
   }
-  return data as CompanyIntegrationConnectionRow;
 }
 
 /**
@@ -168,33 +150,25 @@ export async function upsertCompanyByComposioId(args: {
   composioConnectionId: string;
   label?: string;
 }): Promise<CompanyIntegrationConnectionRow | null> {
-  const existing = await findCompanyByComposioId(args.composioConnectionId);
-  if (existing) {
-    const { error } = await supabase
-      .from('CompanyIntegrationConnection')
-      .update({
-        label: args.label ?? existing.label ?? null,
-        status: 'active',
-        lastError: null,
-        updatedAt: new Date().toISOString(),
-      })
-      .eq('id', existing.id);
-    if (error) {
-      logger.error('[integrations.company-connections] upsertByComposioId update failed', {
-        id: existing.id,
-        errCode: (error as { code?: string }).code ?? null,
-        errMessage: error.message,
-      });
-      return null;
-    }
-    return {
-      ...existing,
-      label: args.label ?? existing.label ?? null,
-      status: 'active',
-      lastError: null,
-    };
+  try {
+    const row = await convex().mutation(
+      api.integrations.companyConnections.upsertByComposioId,
+      {
+        companyId: args.companyId,
+        userId: args.userId,
+        toolkit: args.toolkit,
+        composioConnectionId: args.composioConnectionId,
+        ...(args.label !== undefined ? { label: args.label } : {}),
+      },
+    );
+    return (row ?? null) as CompanyIntegrationConnectionRow | null;
+  } catch (err) {
+    logger.error('[integrations.company-connections] upsertByComposioId failed', {
+      composioConnectionId: args.composioConnectionId,
+      errMessage: err instanceof Error ? err.message : String(err),
+    });
+    return null;
   }
-  return insertCompanyConnection(args);
 }
 
 /** Flip a row's status. Used for reconnect (prior → revoked) and on errors. */
@@ -203,18 +177,16 @@ export async function setCompanyConnectionStatus(args: {
   status: CompanyIntegrationStatus;
   lastError?: string;
 }): Promise<void> {
-  const { error } = await supabase
-    .from('CompanyIntegrationConnection')
-    .update({
+  try {
+    await convex().mutation(api.integrations.companyConnections.setStatus, {
+      id: args.id,
       status: args.status,
-      lastError: args.lastError ?? null,
-      updatedAt: new Date().toISOString(),
-    })
-    .eq('id', args.id);
-  if (error) {
+      ...(args.lastError !== undefined ? { lastError: args.lastError } : {}),
+    });
+  } catch (err) {
     logger.warn('[integrations.company-connections] setStatus failed', {
       id: args.id,
-      err: error.message,
+      err: err instanceof Error ? err.message : String(err),
     });
   }
 }

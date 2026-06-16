@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,29 +30,19 @@ export async function POST(req: Request) {
   }
 
   // Verify the announcement exists and is dismissible.
-  const { data: announcement } = await supabase
-    .from('Announcement')
-    .select('id, dismissible')
-    .eq('id', announcementId)
-    .maybeSingle();
+  const announcement = await convex().query(api.notifications.announcements.getById, {
+    id: announcementId,
+  });
 
   if (!announcement) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!announcement.dismissible) {
     return NextResponse.json({ error: 'Not dismissible' }, { status: 400 });
   }
 
-  const { error } = await supabase.from('AnnouncementDismissal').upsert(
-    {
-      id: crypto.randomUUID(),
-      announcementId,
-      userId,
-      dismissedAt: new Date().toISOString(),
-    },
-    { onConflict: 'announcementId,userId', ignoreDuplicates: true },
-  );
-
-  if (error) {
-    console.error('[platform/announcements/dismiss] upsert failed', error);
+  try {
+    await convex().mutation(api.notifications.dismissals.dismiss, { announcementId, userId });
+  } catch (err) {
+    console.error('[platform/announcements/dismiss] upsert failed', err);
     return NextResponse.json({ error: 'Dismiss failed' }, { status: 500 });
   }
 

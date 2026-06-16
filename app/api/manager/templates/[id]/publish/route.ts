@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getManagerMemberContext } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 import { logger } from '@/lib/logger';
 
@@ -181,14 +182,13 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
     //    independently: locally-edited ones skip, unedited ones update.
     const existingBySpace = new Map<string, MessageTemplateRow[]>();
     if (targetSpaceIds.length > 0) {
-      const { data: existing, error: existingErr } = await supabase
-        .from('MessageTemplate')
-        .select('id, spaceId, sourceTemplateId, sourceVersion')
-        .eq('sourceTemplateId', templateId)
-        .in('spaceId', targetSpaceIds)
-        .returns<MessageTemplateRow[]>();
-
-      if (existingErr) {
+      let existing: MessageTemplateRow[];
+      try {
+        existing = (await convex().query(api.support.templates.findCopiesBySource, {
+          sourceTemplateId: templateId,
+          spaceIds: targetSpaceIds,
+        })) as MessageTemplateRow[];
+      } catch (existingErr) {
         logger.error(
           '[manager/templates/publish] existing fetch failed',
           { templateId, companyId: ctx.company.id },
@@ -200,14 +200,12 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
         );
       }
 
-      for (const row of existing ?? []) {
+      for (const row of existing) {
         const list = existingBySpace.get(row.spaceId) ?? [];
         list.push(row);
         existingBySpace.set(row.spaceId, list);
       }
     }
-
-    const nowIso = new Date().toISOString();
 
     // 5. Sequential writes per space. We wrap each one in its own try/catch
     //    so a single agent's failure doesn't nuke the whole publish. See
@@ -218,11 +216,11 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
 
         if (existing.length === 0) {
           // No copy yet — insert a fresh one tied to this source+version.
-          const { error: insertErr } = await supabase
-            .from('MessageTemplate')
-            .insert({
+          // (MessageTemplate has no userId column; the old insert's
+          // `userId: space.ownerId` was a harmless extra key and is dropped.)
+          try {
+            await convex().mutation(api.support.templates.createFromSource, {
               spaceId: space.id,
-              userId: space.ownerId,
               name: tmpl.name,
               channel: tmpl.channel,
               subject: tmpl.channel === 'email' ? tmpl.subject : null,
@@ -230,16 +228,14 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
               sourceTemplateId: tmpl.id,
               sourceVersion: tmpl.version,
             });
-
-          if (insertErr) {
+            inserted += 1;
+          } catch (insertErr) {
             skipped += 1;
             logger.error(
               '[manager/templates/publish] insert failed',
               { templateId, spaceId: space.id },
               insertErr,
             );
-          } else {
-            inserted += 1;
           }
           continue;
         }
@@ -256,27 +252,23 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
             continue;
           }
 
-          const { error: updateErr } = await supabase
-            .from('MessageTemplate')
-            .update({
+          try {
+            await convex().mutation(api.support.templates.updateFromSource, {
+              id: row.id,
               name: tmpl.name,
               channel: tmpl.channel,
               subject: tmpl.channel === 'email' ? tmpl.subject : null,
               body: tmpl.body,
               sourceVersion: tmpl.version,
-              updatedAt: nowIso,
-            })
-            .eq('id', row.id);
-
-          if (updateErr) {
+            });
+            updated += 1;
+          } catch (updateErr) {
             skipped += 1;
             logger.error(
               '[manager/templates/publish] update failed',
               { templateId, messageTemplateId: row.id, spaceId: space.id },
               updateErr,
             );
-          } else {
-            updated += 1;
           }
         }
       } catch (err) {

@@ -27,6 +27,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { HOT_LEAD_THRESHOLD } from '@/lib/constants';
 import type { Signal, SignalGatherer } from '../types';
@@ -154,15 +155,17 @@ export function evidenceForSkippedInbound(args: { contactName: string }): string
 /** Look up the active Gmail connection for the space. Returns null when
  *  no Gmail is connected — caller short-circuits to []. */
 async function activeGmailConnection(spaceId: string): Promise<ConnectionRow | null> {
-  const { data, error } = await supabase
-    .from('IntegrationConnection')
-    .select('id, userId')
-    .eq('spaceId', spaceId)
-    .eq('toolkit', 'gmail')
-    .eq('status', 'active')
-    .maybeSingle();
-  if (error || !data) return null;
-  return data as ConnectionRow;
+  let rows: Array<{ id: string; userId: string }>;
+  try {
+    rows = await convex().query(api.integrations.connections.activeForSpace, {
+      spaceId,
+      toolkits: ['gmail'],
+    });
+  } catch {
+    return null;
+  }
+  const data = rows[0];
+  return data ? { id: data.id, userId: data.userId } : null;
 }
 
 /** Race the Composio call against a 4s timer. On timeout / throw, return

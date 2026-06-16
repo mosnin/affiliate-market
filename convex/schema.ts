@@ -3,6 +3,9 @@ import { emailTables } from './schema/email';
 import { creditsTables } from './schema/credits';
 import { studioTables } from './schema/studio';
 import { calendarTables } from './schema/calendar';
+import { integrationsTables } from './schema/integrations';
+import { notificationsTables } from './schema/notifications';
+import { supportTables } from './schema/support';
 
 /**
  * Convex schema for Cola — the migration target replacing Supabase/Postgres.
@@ -20,4 +23,7 @@ export default defineSchema({
   ...creditsTables,
   ...studioTables,
   ...calendarTables,
+  ...integrationsTables,
+  ...notificationsTables,
+  ...supportTables,
 });

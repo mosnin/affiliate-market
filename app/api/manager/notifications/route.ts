@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 /**
  * GET /api/manager/notifications
@@ -14,14 +14,12 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: notifications } = await supabase
-    .from('ManagerNotification')
-    .select('*')
-    .eq('companyId', ctx.company.id)
-    .order('createdAt', { ascending: false })
-    .limit(20);
+  const notifications = await convex().query(api.notifications.manager.listByCompany, {
+    companyId: ctx.company.id,
+    limit: 20,
+  });
 
-  return NextResponse.json({ notifications: notifications ?? [] });
+  return NextResponse.json({ notifications });
 }
 
 /**
@@ -36,11 +34,9 @@ export async function PATCH() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  await supabase
-    .from('ManagerNotification')
-    .update({ read: true })
-    .eq('companyId', ctx.company.id)
-    .eq('read', false);
+  await convex().mutation(api.notifications.manager.markAllRead, {
+    companyId: ctx.company.id,
+  });
 
   return NextResponse.json({ success: true });
 }

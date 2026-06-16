@@ -14,7 +14,7 @@
  * in the loop on every send and read.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
   composioConfigured,
@@ -129,31 +129,30 @@ export async function findEmailConnection(
 ): Promise<MailConnection | null> {
   if (!composioConfigured()) return null;
 
-  const { data, error } = await supabase
-    .from('IntegrationConnection')
-    .select('id, userId, toolkit')
-    .eq('spaceId', spaceId)
-    .in('toolkit', MAIL_TOOLKITS as readonly string[])
-    .eq('status', 'active')
-    .order('toolkit', { ascending: true }) // 'gmail' < 'outlook'
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
+  let rows: Array<{ id: string; userId: string; toolkit: string }>;
+  try {
+    rows = await convex().query(api.integrations.connections.activeForSpace, {
+      spaceId,
+      toolkits: MAIL_TOOLKITS as readonly string[] as string[],
+    });
+  } catch (err) {
     logger.warn(
       '[communication.connect] findEmailConnection failed',
-      { spaceId, err: error.message },
+      { spaceId, err: err instanceof Error ? err.message : String(err) },
     );
     return null;
   }
+  // activeForSpace returns toolkit-ASC, so [0] preserves the old
+  // `.order('toolkit', { ascending: true }).limit(1)` precedence ('gmail' < 'outlook').
+  const data = rows[0];
   if (!data) return null;
 
-  const toolkit = (data as { toolkit: string }).toolkit;
+  const toolkit = data.toolkit;
   if (toolkit !== 'gmail' && toolkit !== 'outlook') return null;
 
   return {
-    id: (data as { id: string }).id,
-    userId: (data as { userId: string }).userId,
+    id: data.id,
+    userId: data.userId,
     toolkit,
   };
 }
@@ -170,27 +169,25 @@ export async function findWhatsAppConnection(
 ): Promise<WhatsAppConnection | null> {
   if (!composioConfigured()) return null;
 
-  const { data, error } = await supabase
-    .from('IntegrationConnection')
-    .select('id, userId, toolkit')
-    .eq('spaceId', spaceId)
-    .eq('toolkit', 'whatsapp')
-    .eq('status', 'active')
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
+  let rows: Array<{ id: string; userId: string; toolkit: string }>;
+  try {
+    rows = await convex().query(api.integrations.connections.activeForSpace, {
+      spaceId,
+      toolkits: ['whatsapp'],
+    });
+  } catch (err) {
     logger.warn(
       '[communication.connect] findWhatsAppConnection failed',
-      { spaceId, err: error.message },
+      { spaceId, err: err instanceof Error ? err.message : String(err) },
     );
     return null;
   }
+  const data = rows[0];
   if (!data) return null;
 
   return {
-    id: (data as { id: string }).id,
-    userId: (data as { userId: string }).userId,
+    id: data.id,
+    userId: data.userId,
     toolkit: 'whatsapp',
   };
 }

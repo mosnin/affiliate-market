@@ -9,7 +9,7 @@
 
 import { NextResponse } from 'next/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logAdminAction } from '@/lib/admin';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -20,9 +20,6 @@ type Priority = (typeof PRIORITIES)[number];
 
 const ADMIN_NOTE_MAX = 5000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const TICKET_COLUMNS =
-  'id, spaceId, userId, email, name, subject, message, category, status, priority, adminNote, createdAt, updatedAt';
 
 // ── GET — list all tickets (optional ?status= filter) ───────────────────────
 
@@ -37,23 +34,17 @@ export async function GET(req: Request) {
   if (!allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
 
   const status = new URL(req.url).searchParams.get('status');
+  const statusFilter =
+    status && (STATUSES as readonly string[]).includes(status) ? (status as Status) : undefined;
 
-  let query = supabase
-    .from('SupportTicket')
-    .select(TICKET_COLUMNS)
-    .order('createdAt', { ascending: false })
-    .limit(500);
-
-  if (status && (STATUSES as readonly string[]).includes(status)) {
-    query = query.eq('status', status);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    console.error('[admin/support] list failed', error);
+  let tickets;
+  try {
+    tickets = await convex().query(api.support.tickets.listAll, { status: statusFilter });
+  } catch (err) {
+    console.error('[admin/support] list failed', err);
     return NextResponse.json({ error: 'Query failed' }, { status: 500 });
   }
-  return NextResponse.json({ tickets: data ?? [] });
+  return NextResponse.json({ tickets });
 }
 
 // ── PATCH — update status / priority / adminNote ────────────────────────────
@@ -109,15 +100,18 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from('SupportTicket')
-    .update(update)
-    .eq('id', id)
-    .select(TICKET_COLUMNS)
-    .maybeSingle();
-
-  if (error) {
-    console.error('[admin/support] update failed', error);
+  let data;
+  try {
+    data = await convex().mutation(api.support.tickets.updateTriage, {
+      id,
+      status: update.status as Status | undefined,
+      priority: update.priority as Priority | undefined,
+      // adminNote present in `update` only when the body supplied it; the value
+      // is already `note || null` (tri-state: null clears, string sets).
+      adminNote: 'adminNote' in update ? (update.adminNote as string | null) : undefined,
+    });
+  } catch (err) {
+    console.error('[admin/support] update failed', err);
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
   }
   if (!data) {
