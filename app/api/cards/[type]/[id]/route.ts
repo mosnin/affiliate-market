@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -163,11 +164,7 @@ async function handleDeal(id: string, spaceId: string): Promise<NextResponse> {
       : Promise.resolve({ data: null, error: null }),
 
     row.productId
-      ? supabase
-          .from('Product')
-          .select('id, address')
-          .eq('id', row.productId)
-          .maybeSingle()
+      ? convex().query(api.marketplace.products.getById, { id: row.productId }).then((data) => ({ data, error: null }))
       : Promise.resolve({ data: null, error: null }),
 
     supabase
@@ -235,16 +232,10 @@ async function handleDeal(id: string, spaceId: string): Promise<NextResponse> {
 // ── Demo ─────────────────────────────────────────────────────────────────────
 
 async function handleDemo(id: string, spaceId: string): Promise<NextResponse> {
-  const { data: row, error } = await supabase
-    .from('Demo')
-    .select(
-      'id, startsAt, endsAt, status, notes, contactId, productAddress, guestName, guestEmail, guestPhone',
-    )
-    .eq('id', id)
-    .eq('spaceId', spaceId)
-    .maybeSingle();
-
-  if (error) {
+  let row;
+  try {
+    row = await convex().query(api.demos.demos.getByIdInSpace, { id, spaceId });
+  } catch (error) {
     console.error('[cards/demo/GET] query error:', error);
     return NextResponse.json({ error: 'Failed to fetch demo' }, { status: 500 });
   }
@@ -303,16 +294,10 @@ async function handleDemo(id: string, spaceId: string): Promise<NextResponse> {
 // ── Product ─────────────────────────────────────────────────────────────────
 
 async function handleProduct(id: string, spaceId: string): Promise<NextResponse> {
-  const { data: row, error } = await supabase
-    .from('Product')
-    .select(
-      'id, address, listPrice, beds, baths, squareFeet, listingStatus, notes, photos, createdAt',
-    )
-    .eq('id', id)
-    .eq('spaceId', spaceId)
-    .maybeSingle();
-
-  if (error) {
+  let row;
+  try {
+    row = await convex().query(api.marketplace.products.getByIdInSpace, { id, spaceId });
+  } catch (error) {
     console.error('[cards/product/GET] query error:', error);
     return NextResponse.json({ error: 'Failed to fetch product' }, { status: 500 });
   }

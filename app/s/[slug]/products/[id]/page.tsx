@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import { getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type { Product } from '@/lib/types';
 import { ProductDetailClient } from '@/components/products/product-detail-client';
 
@@ -17,28 +18,24 @@ export default async function ProductDetailPage({
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
-  const { data: product } = await supabase
-    .from('Product')
-    .select('*')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const product = await convex().query(api.marketplace.products.getByIdInSpace, {
+    id,
+    spaceId: space.id,
+  });
   if (!product) notFound();
 
-  const [{ data: deals }, { data: demos }] = await Promise.all([
+  const [{ data: deals }, demos] = await Promise.all([
     supabase
       .from('Deal')
       .select('id, title, status, value, closeDate')
       .eq('productId', id)
       .eq('spaceId', space.id)
       .order('updatedAt', { ascending: false }),
-    supabase
-      .from('Demo')
-      .select('id, guestName, startsAt, status')
-      .eq('productId', id)
-      .eq('spaceId', space.id)
-      .order('startsAt', { ascending: false })
-      .limit(20),
+    convex().query(api.demos.demos.listByProduct, {
+      productId: id,
+      spaceId: space.id,
+      limit: 20,
+    }),
   ]);
 
   const productName = product.name || 'Product';

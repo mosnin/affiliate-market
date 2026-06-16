@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
+import type { FunctionArgs } from 'convex/server';
 import { resolveManagerContext } from '@/lib/agent/manager-context';
 import { logger } from '@/lib/logger';
 import { _sanitiseProductBody as sanitiseBody } from '@/app/api/products/route';
@@ -50,18 +52,17 @@ export async function GET() {
 
   const members = await loadMemberSpaces(ctx.company.id, ctx.company.ownerId);
 
-  const { data, error } = await supabase
-    .from('Product')
-    .select('*')
-    .eq('companyId', ctx.company.id)
-    .order('updatedAt', { ascending: false })
-    .limit(2000);
-  if (error) {
+  let products: Array<Record<string, unknown>>;
+  try {
+    products = (await convex().query(api.marketplace.products.listForCompany, {
+      companyId: ctx.company.id,
+    })) as Array<Record<string, unknown>>;
+  } catch (error) {
     logger.error('[manager/products/GET] query failed', { companyId: ctx.company.id }, error);
     return NextResponse.json({ error: 'Failed to fetch products' }, { status: 500 });
   }
 
-  return NextResponse.json({ products: data ?? [], members });
+  return NextResponse.json({ products, members });
 }
 
 export async function POST(req: NextRequest) {
@@ -98,24 +99,30 @@ export async function POST(req: NextRequest) {
     assignedSpaceId = body.assignedSpaceId;
   }
 
-  const insert = {
-    id: crypto.randomUUID(),
-    spaceId: ownerSpace.id as string,
+  // `out` is the sanitised writable bag; companyId/assignedSpaceId are writable
+  // columns so they ride in `fields`. spaceId (the pool's home) is a top-level arg.
+  const fields = {
+    ...out,
     companyId: ctx.company.id,
     assignedSpaceId,
     listingStatus: out.listingStatus ?? 'active',
     photos: out.photos ?? [],
-    ...out,
-  };
+    // `out` is the runtime-sanitised bag; Convex re-validates against
+    // writableFields at the boundary, so cast to the create arg shape.
+  } as unknown as FunctionArgs<typeof api.marketplace.products.create>['fields'];
 
-  const { data, error } = await supabase.from('Product').insert(insert).select().single();
-  if (error) {
-    if ((error as { code?: string }).code === '23505') {
+  const result = await convex().mutation(api.marketplace.products.create, {
+    id: crypto.randomUUID(),
+    spaceId: ownerSpace.id as string,
+    fields,
+  });
+  if (!result.ok) {
+    if (result.error === 'duplicate_mls' || result.error === 'duplicate_slug') {
       return NextResponse.json({ error: 'A product with that MLS number already exists' }, { status: 409 });
     }
-    logger.error('[manager/products/POST] insert failed', { companyId: ctx.company.id }, error);
+    logger.error('[manager/products/POST] insert failed', { companyId: ctx.company.id, error: result.error });
     return NextResponse.json({ error: 'Failed to create product' }, { status: 500 });
   }
 
-  return NextResponse.json(data, { status: 201 });
+  return NextResponse.json(result.product, { status: 201 });
 }

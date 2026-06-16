@@ -12,7 +12,6 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
@@ -68,22 +67,24 @@ export const checkAvailabilityTool = defineTool<typeof parameters, CheckAvailabi
     const fromDate = fromIso.slice(0, 10);
     const toDate = toIso.slice(0, 10);
 
-    // Demo stays on Supabase (other domain); CalendarEvent moved to Convex.
-    // Convex throws on failure (no `.error`), so the event read is its own
-    // try/catch while the Demo read keeps the Supabase `{ data, error }` shape.
+    // Both Demo and CalendarEvent are on Convex now. The overlap predicate is
+    // `startsAt < to AND endsAt > from`; listBySpace bounds startsAt on the
+    // index, so we filter `endsAt > from` in-process. Both throw on failure.
     let eventData: Array<{ id: string; title: string; date: string; time: string | null }>;
-    let demoRes: Awaited<ReturnType<typeof demoQuery>>;
-    const demoQuery = () =>
-      supabase
-        .from('Demo')
-        .select('id, startsAt, endsAt, productAddress, guestName')
-        .eq('spaceId', ctx.space.id)
-        .lt('startsAt', toIso)
-        .gt('endsAt', fromIso)
-        .limit(20);
+    let demoData: Array<{
+      id: string;
+      startsAt: string;
+      endsAt: string;
+      productAddress: string | null;
+      guestName: string;
+    }>;
     try {
-      [demoRes, eventData] = await Promise.all([
-        demoQuery(),
+      const [demoRows, events] = await Promise.all([
+        convex().query(api.demos.demos.listBySpace, {
+          spaceId: ctx.space.id,
+          startsAtLt: toIso,
+          order: 'asc',
+        }),
         convex().query(api.calendar.events.listByDateRange, {
           spaceId: ctx.space.id,
           fromDate,
@@ -91,23 +92,15 @@ export const checkAvailabilityTool = defineTool<typeof parameters, CheckAvailabi
           limit: 50,
         }),
       ]);
+      demoData = (demoRows as typeof demoData).filter((t) => t.endsAt > fromIso).slice(0, 20);
+      eventData = events;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
       return { summary: `Availability check failed: ${message}`, display: 'error' };
     }
 
-    if (demoRes.error) {
-      return { summary: `Availability check failed: ${demoRes.error.message}`, display: 'error' };
-    }
-
     const conflicts: Conflict[] = [];
-    for (const t of (demoRes.data ?? []) as Array<{
-      id: string;
-      startsAt: string;
-      endsAt: string;
-      productAddress: string | null;
-      guestName: string;
-    }>) {
+    for (const t of demoData) {
       conflicts.push({
         title: t.productAddress
           ? `Demo: ${t.guestName} — ${t.productAddress}`

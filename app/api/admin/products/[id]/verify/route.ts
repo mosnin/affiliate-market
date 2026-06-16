@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logAdminAction } from '@/lib/admin';
 
@@ -37,14 +37,12 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'verified must be a boolean' }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from('Product')
-    .update({ verified: body.verified })
-    .eq('id', id)
-    .select('id, verified')
-    .maybeSingle();
+  const data = await convex().mutation(api.marketplace.products.setVerified, {
+    id,
+    verified: body.verified,
+  });
 
-  if (error || !data) {
+  if (!data) {
     return NextResponse.json({ error: 'Product not found' }, { status: 404 });
   }
 
@@ -55,5 +53,5 @@ export async function POST(req: Request, { params }: Params) {
     details: { verified: body.verified },
   });
 
-  return NextResponse.json({ ok: true, verified: (data as { verified: boolean }).verified });
+  return NextResponse.json({ ok: true, verified: data.verified });
 }

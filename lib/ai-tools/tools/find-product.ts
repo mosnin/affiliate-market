@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
 const parameters = z
@@ -43,8 +43,6 @@ interface FindProductResult {
   product?: ProductHit;
   products?: ProductHit[];
 }
-
-const SELECT = 'id, address, city, listingStatus, mlsNumber, listPrice, beds, baths, squareFeet';
 
 function toHit(row: Record<string, unknown>): ProductHit {
   return {
@@ -83,12 +81,10 @@ export const findProductTool = defineTool<typeof parameters, FindProductResult>(
   async handler(args, ctx) {
     // Exact id hit short-circuits the search.
     if (args.query) {
-      const { data: byId } = await supabase
-        .from('Product')
-        .select(SELECT)
-        .eq('id', args.query)
-        .eq('spaceId', ctx.space.id)
-        .maybeSingle();
+      const byId = await convex().query(api.marketplace.products.getByIdInSpace, {
+        id: args.query,
+        spaceId: ctx.space.id,
+      });
       if (byId) {
         const hit = toHit(byId as Record<string, unknown>);
         return {
@@ -99,34 +95,25 @@ export const findProductTool = defineTool<typeof parameters, FindProductResult>(
       }
     }
 
-    let query = supabase
-      .from('Product')
-      .select(SELECT)
-      .eq('spaceId', ctx.space.id)
-      .order('updatedAt', { ascending: false })
-      .limit(8);
+    const all = await convex().query(api.marketplace.products.listForSpace, {
+      spaceId: ctx.space.id,
+      order: 'updated',
+    });
 
-    if (args.status) query = query.eq('listingStatus', args.status);
+    // The old query was spaceId-only (no assigned-pool OR) — keep that scope.
+    let rows = (all as Record<string, unknown>[]).filter((r) => r.spaceId === ctx.space.id);
+    if (args.status) rows = rows.filter((r) => (r.listingStatus as string) === args.status);
     if (args.query) {
-      const escaped = args.query
-        .replace(/\\/g, '\\\\')
-        .replace(/%/g, '\\%')
-        .replace(/_/g, '\\_')
-        .replace(/[,()]/g, '');
-      const pat = `%${escaped}%`;
-      query = query.or(`address.ilike.${pat},city.ilike.${pat},mlsNumber.ilike.${pat}`);
+      const needle = args.query.toLowerCase();
+      rows = rows.filter((r) => {
+        const addr = (r.address as string | null)?.toLowerCase() ?? '';
+        const city = (r.city as string | null)?.toLowerCase() ?? '';
+        const mls = (r.mlsNumber as string | null)?.toLowerCase() ?? '';
+        return addr.includes(needle) || city.includes(needle) || mls.includes(needle);
+      });
     }
+    rows = rows.slice(0, 8);
 
-    const { data, error } = await query.abortSignal(ctx.signal);
-    if (error) {
-      return {
-        summary: `Product lookup failed: ${error.message}`,
-        data: { match: 'none' as const },
-        display: 'error',
-      };
-    }
-
-    const rows = (data ?? []) as Record<string, unknown>[];
     if (rows.length === 0) {
       return {
         summary: 'No products matched.',

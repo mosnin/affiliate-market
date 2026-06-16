@@ -56,14 +56,20 @@ export async function POST(req: Request) {
       .eq('spaceId', space.id)
       .order('updatedAt', { ascending: false })
       .limit(10),
-    supabase
-      .from('Demo')
-      .select('guestName, productAddress, startsAt, status')
-      .eq('spaceId', space.id)
-      .in('status', ['scheduled', 'confirmed'])
-      .gte('startsAt', new Date().toISOString())
-      .order('startsAt', { ascending: true })
-      .limit(15),
+    (async () => {
+      try {
+        const data = await convex().query(api.demos.demos.listBySpace, {
+          spaceId: space.id,
+          statuses: ['scheduled', 'confirmed'],
+          startsAtGte: new Date().toISOString(),
+          order: 'asc',
+          limit: 15,
+        });
+        return { data };
+      } catch {
+        return { data: [] as any[] };
+      }
+    })(),
     (async () => {
       try {
         const data = await convex().query(api.calendar.events.listUpcoming, {

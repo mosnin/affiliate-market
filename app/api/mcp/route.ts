@@ -176,19 +176,17 @@ function buildServer(spaceId: string): McpServer {
       limit: z.number().int().positive().max(200).optional().default(20),
     },
     async ({ status, limit }) => {
-      let q = supabase
-        .from('Demo')
-        .select(
-          'id, guestName, guestEmail, guestPhone, productAddress, startsAt, endsAt, status, createdAt',
-        )
-        .eq('spaceId', spaceId)
-        .order('startsAt', { ascending: false })
-        .limit(limit ?? 20);
-      if (status) q = q.eq('status', status);
-      const { data, error } = await q;
-      if (error)
+      try {
+        const data = await convex().query(api.demos.demos.listBySpace, {
+          spaceId,
+          order: 'desc',
+          limit: limit ?? 20,
+          ...(status ? { statuses: [status] } : {}),
+        });
+        return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+      } catch {
         return { content: [{ type: 'text' as const, text: 'Query failed' }] };
-      return { content: [{ type: 'text' as const, text: JSON.stringify(data ?? [], null, 2) }] };
+      }
     },
   );
 
@@ -293,13 +291,13 @@ function buildServer(spaceId: string): McpServer {
               0,
             ),
           })),
-        supabase
-          .from('Demo')
-          .select('*', { count: 'exact', head: true })
-          .eq('spaceId', spaceId)
-          .in('status', ['scheduled', 'confirmed'])
-          .gte('startsAt', now)
-          .then((r) => r.count ?? 0),
+        convex()
+          .query(api.demos.demos.listBySpace, {
+            spaceId,
+            statuses: ['scheduled', 'confirmed'],
+            startsAtGte: now,
+          })
+          .then((rows) => rows.length),
         supabase
           .from('Contact')
           .select('*', { count: 'exact', head: true })

@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { ApplicationStatusClient } from './application-status-client';
 import { PublicPageMinimalShell } from '@/components/public-page-shell';
@@ -150,17 +151,16 @@ export default async function ApplicationStatusPage({
         .select('id, senderType, content, readAt, createdAt')
         .eq('contactId', contact.id)
         .order('createdAt', { ascending: true }),
-      supabase
-        .from('Demo')
-        .select('id, startsAt, endsAt, productAddress, notes, status')
-        .eq('contactId', contact.id)
-        .in('status', ['scheduled', 'confirmed', 'completed'])
-        .order('startsAt', { ascending: true }),
+      convex().query(api.demos.demos.listByContact, {
+        contactId: contact.id,
+        statuses: ['scheduled', 'confirmed', 'completed'],
+        order: 'asc',
+      }),
     ]);
 
     statusHistory = historyResult.data ?? [];
     messages = messageResult.data ?? [];
-    demos = demoResult.data ?? [];
+    demos = demoResult;
 
     // Mark unread seller messages as read
     const unreadSellerIds = messages

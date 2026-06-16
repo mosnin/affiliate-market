@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server'; // Product reads (Product is Convex; other tables stay Supabase)
 import {
   getPublishedProducts,
   type MarketplaceProduct,
@@ -77,13 +78,13 @@ export async function getExploreProducts(filter?: {
     }
   }
 
-  // Per-product commission overrides (null = inherit program).
-  const { data: overrides } = await supabase
-    .from('Product')
-    .select('id, commissionType, commissionValue')
-    .in('id', products.map((p) => p.id));
+  // Per-product commission overrides (null = inherit program). Product is on
+  // Convex now; everything else in this file stays on Supabase.
+  const overrideRows = (await convex().query(api.marketplace.products.byIds, {
+    ids: products.map((p) => p.id),
+  })) as Array<{ id: string; commissionType: string | null; commissionValue: number | null }>;
   const overrideById = new Map(
-    (overrides ?? []).map((o) => [o.id, o as { commissionType: string | null; commissionValue: number | null }]),
+    overrideRows.map((o) => [o.id, { commissionType: o.commissionType, commissionValue: o.commissionValue }]),
   );
 
   return products.map((product) => {

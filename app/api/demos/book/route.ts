@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { sendDemoConfirmation, type DemoEmailData } from '@/lib/demo-emails';
 import { notifyNewDemo } from '@/lib/notify';
@@ -64,14 +65,9 @@ export async function POST(req: NextRequest) {
   // and use its demo duration if available
   let validProductProfileId: string | null = null;
   if (productProfileId) {
-    const { data: profileRow } = await supabase
-      .from('DemoProductProfile')
-      .select('id, demoDuration')
-      .eq('id', productProfileId)
-      .eq('spaceId', space.id)
-      .eq('isActive', true)
-      .maybeSingle();
-    if (profileRow) {
+    const profileRow = await convex().query(api.demos.profiles.getById, { id: productProfileId });
+    // Must belong to this space and be active (was the .eq('spaceId').eq('isActive', true) filter).
+    if (profileRow && profileRow.spaceId === space.id && profileRow.isActive) {
       validProductProfileId = profileRow.id;
       duration = profileRow.demoDuration;
     }
@@ -142,37 +138,29 @@ export async function POST(req: NextRequest) {
   crypto.getRandomValues(tokenBytes);
   const manageToken = Array.from(tokenBytes, (b) => b.toString(16).padStart(2, '0')).join('');
 
-  // Atomic booking via DB function — conflict check + insert in a single
-  // transaction with row-level locking to prevent double-booking.
+  // Atomic booking — the book mutation does the conflict check + insert in one
+  // serializable transaction (the old book_demo_atomic RPC) and returns the
+  // inserted row, so no follow-up fetch is needed. null means a conflict.
   const demoId = crypto.randomUUID();
-  const { data: bookedId, error: rpcError } = await supabase.rpc('book_demo_atomic', {
-    p_id: demoId,
-    p_space_id: space.id,
-    p_contact_id: contactId,
-    p_guest_name: guestName.trim(),
-    p_guest_email: guestEmail.trim().toLowerCase(),
-    p_guest_phone: guestPhone?.trim() || null,
-    p_product_address: productAddress?.trim() || null,
-    p_notes: notes?.trim() || null,
-    p_starts_at: start.toISOString(),
-    p_ends_at: end.toISOString(),
-    p_product_profile_id: validProductProfileId,
-    p_manage_token: manageToken,
+  const demo = await convex().mutation(api.demos.demos.book, {
+    id: demoId,
+    spaceId: space.id,
+    contactId,
+    guestName: guestName.trim(),
+    guestEmail: guestEmail.trim().toLowerCase(),
+    guestPhone: guestPhone?.trim() || null,
+    productAddress: productAddress?.trim() || null,
+    notes: notes?.trim() || null,
+    startsAt: start.toISOString(),
+    endsAt: end.toISOString(),
+    productProfileId: validProductProfileId,
+    manageToken,
   });
-  if (rpcError) throw rpcError;
 
-  // NULL return means a conflicting demo was found
-  if (!bookedId) {
+  // null return means a conflicting demo was found
+  if (!demo) {
     return NextResponse.json({ error: 'This time slot is no longer available' }, { status: 409 });
   }
-
-  // Fetch the created demo for the response
-  const { data: demo, error: fetchError } = await supabase
-    .from('Demo')
-    .select('*')
-    .eq('id', demoId)
-    .single();
-  if (fetchError) throw fetchError;
 
   // Send confirmation email (non-blocking)
   const { data: settingsFull } = await supabase

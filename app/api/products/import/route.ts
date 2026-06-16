@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSellerSpace } from '@/lib/affiliates/api-helpers';
 import { isValidProductType } from '@/lib/products';
 import { logger } from '@/lib/logger';
@@ -173,25 +173,27 @@ export async function POST(req: NextRequest) {
     const base = slugify(name) || 'product';
     const marketplaceSlug = `${base}-${crypto.randomUUID().slice(0, 6)}`;
 
-    const { error } = await supabase.from('Product').insert({
+    const result = await convex().mutation(api.marketplace.products.create, {
       id: crypto.randomUUID(),
       spaceId: space.id,
-      name,
-      address: name, // legacy column kept in sync (mirrors products POST)
-      tagline: tagline || null,
-      category,
-      priceCents,
-      pricingModel,
-      currency: 'usd',
-      published: false,
-      listingStatus: 'draft',
-      marketplaceSlug,
-      photos: [],
+      fields: {
+        name,
+        address: name, // legacy column kept in sync (mirrors products POST)
+        tagline: tagline || null,
+        category,
+        priceCents,
+        pricingModel,
+        currency: 'usd',
+        published: false,
+        listingStatus: 'draft',
+        marketplaceSlug,
+        photos: [],
+      },
     });
 
-    if (error) {
+    if (!result.ok) {
       skipped++;
-      logger.warn('[products/import] insert failed', { spaceId: space.id, line, error: error.message });
+      logger.warn('[products/import] insert failed', { spaceId: space.id, line, error: result.error });
       if (errors.length < 50) errors.push(`Row ${line}: could not import "${name}".`);
       continue;
     }

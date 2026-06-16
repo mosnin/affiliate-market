@@ -10,6 +10,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
 
@@ -56,14 +57,23 @@ export const rescheduleDemoTool = defineTool<typeof parameters, RescheduleDemoRe
   },
 
   async handler(args, ctx) {
-    const { data: demo, error: demoErr } = await supabase
-      .from('Demo')
-      .select('id, startsAt, endsAt, contactId, productAddress, guestName, status')
-      .eq('id', args.demoId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
-    if (demoErr) {
-      return { summary: `Demo lookup failed: ${demoErr.message}`, display: 'error' };
+    let demo: {
+      id: string;
+      startsAt: string;
+      endsAt: string;
+      contactId: string | null;
+      productAddress: string | null;
+      guestName: string;
+      status: string;
+    } | null;
+    try {
+      demo = await convex().query(api.demos.demos.getByIdInSpace, {
+        id: args.demoId,
+        spaceId: ctx.space.id,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      return { summary: `Demo lookup failed: ${message}`, display: 'error' };
     }
     if (!demo) {
       return { summary: `No demo with that id.`, display: 'error' };
@@ -87,18 +97,17 @@ export const rescheduleDemoTool = defineTool<typeof parameters, RescheduleDemoRe
       newEnds = new Date(newStarts.getTime() + duration);
     }
 
-    const { error: updateErr } = await supabase
-      .from('Demo')
-      .update({
+    try {
+      await convex().mutation(api.demos.demos.updateTimes, {
+        id: args.demoId,
+        spaceId: ctx.space.id,
         startsAt: newStarts.toISOString(),
         endsAt: newEnds.toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      .eq('id', args.demoId)
-      .eq('spaceId', ctx.space.id);
-    if (updateErr) {
-      logger.error('[tools.reschedule_demo] update failed', { demoId: args.demoId }, updateErr);
-      return { summary: `Reschedule failed: ${updateErr.message}`, display: 'error' };
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      logger.error('[tools.reschedule_demo] update failed', { demoId: args.demoId }, err);
+      return { summary: `Reschedule failed: ${message}`, display: 'error' };
     }
 
     if (demo.contactId) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -27,13 +27,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify demo access via manage token only
-  let demo: any = null;
-  const { data } = await supabase
-    .from('Demo')
-    .select('id, spaceId, status')
-    .eq('manageToken', token)
-    .maybeSingle();
-  demo = data;
+  const demo = await convex().query(api.demos.demos.getByManageToken, { manageToken: token });
 
   if (!demo) {
     return NextResponse.json({ error: 'Demo not found' }, { status: 404 });
@@ -43,29 +37,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Feedback only accepted for completed demos' }, { status: 400 });
   }
 
-  // Check for existing feedback
-  const { data: existing } = await supabase
-    .from('DemoFeedback')
-    .select('id')
-    .eq('demoId', demo.id)
-    .maybeSingle();
+  // Create with the one-per-demo existence check folded into the mutation;
+  // null return means feedback already exists.
+  const feedback = await convex().mutation(api.demos.feedback.create, {
+    demoId: demo.id,
+    spaceId: demo.spaceId,
+    rating: Math.round(rating),
+    comment: typeof comment === 'string' ? comment.trim().slice(0, 2000) || null : null,
+  });
 
-  if (existing) {
+  if (!feedback) {
     return NextResponse.json({ error: 'Feedback already submitted' }, { status: 409 });
   }
-
-  const { data: feedback, error } = await supabase
-    .from('DemoFeedback')
-    .insert({
-      demoId: demo.id,
-      spaceId: demo.spaceId,
-      rating: Math.round(rating),
-      comment: typeof comment === 'string' ? comment.trim().slice(0, 2000) || null : null,
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
 
   return NextResponse.json(feedback, { status: 201 });
 }
@@ -80,23 +63,18 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   if (demoId) {
-    const { data } = await supabase
-      .from('DemoFeedback')
-      .select('*')
-      .eq('demoId', demoId)
-      .eq('spaceId', auth.space.id)
-      .maybeSingle();
+    const data = await convex().query(api.demos.feedback.getByDemo, {
+      demoId,
+      spaceId: auth.space.id,
+    });
     if (!data) return NextResponse.json(null);
     return NextResponse.json(data);
   }
 
   // Return all feedback for this space
-  const { data } = await supabase
-    .from('DemoFeedback')
-    .select('*')
-    .eq('spaceId', auth.space.id)
-    .order('createdAt', { ascending: false })
-    .limit(100);
+  const data = await convex().query(api.demos.feedback.listBySpace, {
+    spaceId: auth.space.id,
+  });
 
-  return NextResponse.json(data ?? []);
+  return NextResponse.json(data);
 }

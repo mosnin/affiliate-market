@@ -8,15 +8,13 @@ import crypto from 'crypto';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';
 import { parseYouTubeId } from '@/lib/profile-page';
 import { SOCIAL_PLATFORMS, type SocialPlatform } from '@/components/profile-page/public-profile';
 
 export const runtime = 'nodejs';
-
-const SELECT =
-  'enabled, headline, showIntake, showDemos, showProducts, customLinks, videos, coverPhotoUrl, profilePhotoUrl, featuredProductIds';
 
 // Brand identity bits (verified badge, social handles) live on SpaceSetting
 // rather than ProfilePage because they're inherited across every public
@@ -79,8 +77,8 @@ export async function GET() {
   const space = await getSpaceForUser(authResult.userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const [{ data }, { data: settingsRow }, { data: productRows }] = await Promise.all([
-    supabase.from('ProfilePage').select(SELECT).eq('spaceId', space.id).maybeSingle(),
+  const [data, { data: settingsRow }, productRowsRaw] = await Promise.all([
+    convex().query(api.marketplace.profiles.getBySpace, { spaceId: space.id }),
     supabase
       .from('SpaceSetting')
       .select(SETTINGS_SELECT)
@@ -89,15 +87,17 @@ export async function GET() {
     // The picker shows every active listing in the space. Capped at 50 —
     // beyond that the seller isn't picking from a list any more, they're
     // hunting, and that belongs in the listings management surface, not
-    // here.
-    supabase
-      .from('Product')
-      .select('id, address, city, stateRegion, listPrice, photos')
-      .eq('spaceId', space.id)
-      .eq('listingStatus', 'active')
-      .order('updatedAt', { ascending: false })
-      .limit(AVAILABLE_PRODUCTS_CAP),
+    // here. listForSpace unions owned + assigned-pool rows; the old query
+    // was spaceId-only, so filter back to owned rows before capping.
+    convex().query(api.marketplace.products.listForSpace, {
+      spaceId: space.id,
+      listingStatusIn: ['active'],
+      order: 'updated',
+    }),
   ]);
+  const productRows = productRowsRaw
+    .filter((r) => r.spaceId === space.id)
+    .slice(0, AVAILABLE_PRODUCTS_CAP);
 
   // Sanitize socialLinks read from the DB. Older rows may carry arbitrary
   // platform keys (the original shape was Record<string,string>); the
@@ -134,7 +134,7 @@ export async function GET() {
   // Product photos are stored as a JSONB array of URLs (see the Product
   // migration comment). For the picker we only need the first one — the
   // public page's carousel uses the same shape.
-  const availableProducts: AvailableProduct[] = ((productRows ?? []) as Array<{
+  const availableProducts: AvailableProduct[] = ((productRows ?? []) as unknown as Array<{
     id: string;
     address: string;
     city: string | null;
@@ -215,27 +215,30 @@ export async function PATCH(req: NextRequest) {
     if (raw.length === 0) {
       patch.featuredProductIds = [];
     } else {
-      const { data: validRows } = await supabase
-        .from('Product')
-        .select('id')
-        .eq('spaceId', space.id)
-        .eq('listingStatus', 'active')
-        .in('id', raw);
-      const valid = new Set((validRows ?? []).map((r: { id: string }) => r.id));
-      // Preserve the seller's submitted order — `.in()` returns rows in
-      // whatever order Postgres feels like.
+      const validRows = await convex().query(api.marketplace.products.byIds, { ids: raw });
+      const valid = new Set(
+        validRows
+          .filter((r) => r.spaceId === space.id && r.listingStatus === 'active')
+          .map((r) => r.id),
+      );
+      // Preserve the seller's submitted order — the validation set is
+      // unordered, so filter `raw` to keep render order.
       patch.featuredProductIds = raw.filter((id) => valid.has(id));
     }
   }
 
-  const { data, error } = await supabase
-    .from('ProfilePage')
-    .upsert({ spaceId: space.id, ...patch }, { onConflict: 'spaceId' })
-    .select(SELECT)
-    .single();
-
-  if (error) {
-    logger.error('[profile-page] update failed', { spaceId: space.id }, error);
+  // The mutation bumps updatedAt itself and keys the upsert on spaceId, so
+  // strip both from the writable bag.
+  const { updatedAt: _updatedAt, ...fields } = patch;
+  void _updatedAt;
+  let data: Record<string, unknown>;
+  try {
+    data = await convex().mutation(api.marketplace.profiles.upsert, {
+      spaceId: space.id,
+      fields,
+    });
+  } catch (error) {
+    logger.error('[profile-page] update failed', { spaceId: space.id }, error as Error);
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
   }
 

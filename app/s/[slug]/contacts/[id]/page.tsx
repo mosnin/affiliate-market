@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import {
@@ -77,7 +78,7 @@ export default async function ClientDetailPage({
       if (c.spaceId !== space.id) notFound();
       const { data: dealRows, error: dealError } = await supabase.from('DealContact').select('Deal(id, title, address, value, status, priority, DealStage(name, color))').eq('contactId', id);
       if (dealError) throw dealError;
-      const { data: demoRows } = await supabase.from('Demo').select('id, guestName, startsAt, endsAt, status, productAddress').eq('contactId', id).eq('spaceId', space.id).order('startsAt', { ascending: false }).limit(10);
+      const demoRows = await convex().query(api.demos.demos.listByContact, { contactId: id, spaceId: space.id, order: 'desc', limit: 10 });
       const { data: latest } = await supabase
         .from('ContactActivity')
         .select('type, content, createdAt')

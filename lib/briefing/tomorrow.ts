@@ -16,6 +16,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -72,20 +73,20 @@ function renderForward(items: ForwardItems): string | null {
 export async function composeTomorrow(spaceId: string): Promise<string | null> {
   const { start, end, dateOnly } = tomorrowBounds();
 
-  const [closingRes, demosRes, followUpsRes] = await Promise.all([
+  const [closingRes, demoRows, followUpsRes] = await Promise.all([
     supabase
       .from('Deal')
       .select('id, title')
       .eq('spaceId', spaceId)
       .eq('status', 'active')
       .eq('closeDate', dateOnly),
-    supabase
-      .from('Demo')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', spaceId)
-      .gte('startsAt', start)
-      .lt('startsAt', end)
-      .neq('status', 'cancelled'),
+    // Demos scheduled tomorrow (excluding cancelled), counted via length.
+    convex().query(api.demos.demos.listBySpace, {
+      spaceId,
+      statuses: ['scheduled', 'confirmed', 'completed', 'no_show'],
+      startsAtGte: start,
+      startsAtLt: end,
+    }),
     supabase
       .from('Contact')
       .select('id', { count: 'exact', head: true })
@@ -99,7 +100,7 @@ export async function composeTomorrow(spaceId: string): Promise<string | null> {
   const items: ForwardItems = {
     closingDeal: closingRows.length > 0 ? { name: closingRows[0].title } : null,
     closingDealsCount: closingRows.length,
-    demoCount: demosRes.count ?? 0,
+    demoCount: demoRows.length,
     followUpCount: followUpsRes.count ?? 0,
   };
 

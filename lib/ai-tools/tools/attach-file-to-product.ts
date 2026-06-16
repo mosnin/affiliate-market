@@ -14,6 +14,7 @@
 
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 import { copyObject, getPublicUrl, buildKey } from '@/lib/storage';
 
@@ -43,19 +44,18 @@ export const attachFileToProductTool = defineTool<typeof parameters, AttachResul
 
   async handler(args, ctx) {
     // Both rows must belong to this space — defensive against id-guessing.
-    const [fileRes, propRes] = await Promise.all([
+    // File stays on Supabase; Product is resolved from Convex.
+    const [fileRes, propData] = await Promise.all([
       supabase
         .from('File')
         .select('id, name, mimeType, category, storageKey')
         .eq('id', args.fileId)
         .eq('spaceId', ctx.space.id)
         .maybeSingle(),
-      supabase
-        .from('Product')
-        .select('id, address, photos')
-        .eq('id', args.productId)
-        .eq('spaceId', ctx.space.id)
-        .maybeSingle(),
+      convex().query(api.marketplace.products.getByIdInSpace, {
+        id: args.productId,
+        spaceId: ctx.space.id,
+      }),
     ]);
 
     if (fileRes.error) {
@@ -79,13 +79,10 @@ export const attachFileToProductTool = defineTool<typeof parameters, AttachResul
       };
     }
 
-    if (propRes.error) {
-      return { summary: `Product lookup failed: ${propRes.error.message}`, display: 'error' };
-    }
-    if (!propRes.data) {
+    if (!propData) {
       return { summary: `No product with id "${args.productId}".`, display: 'error' };
     }
-    const product = propRes.data as {
+    const product = propData as {
       id: string;
       address: string;
       photos: string[] | null;
@@ -118,15 +115,15 @@ export const attachFileToProductTool = defineTool<typeof parameters, AttachResul
     const photoUrl = getPublicUrl(destKey);
     const nextPhotos = [...(product.photos ?? []), photoUrl];
 
-    const { error: updateErr } = await supabase
-      .from('Product')
-      .update({ photos: nextPhotos })
-      .eq('id', args.productId)
-      .eq('spaceId', ctx.space.id);
+    const updateRes = await convex().mutation(api.marketplace.products.update, {
+      id: args.productId,
+      spaceId: ctx.space.id,
+      fields: { photos: nextPhotos },
+    });
 
-    if (updateErr) {
+    if (!updateRes.ok) {
       return {
-        summary: `Product update failed: ${updateErr.message}`,
+        summary: `Product update failed: ${updateRes.error}`,
         display: 'error',
       };
     }

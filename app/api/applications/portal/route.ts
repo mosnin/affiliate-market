@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 /**
@@ -67,12 +68,11 @@ export async function GET(req: NextRequest) {
 
   // Fetch demos linked to this contact. Filter to active/recent statuses
   // — applicants don't need to see cancelled demos linger in their portal.
-  const { data: demos } = await supabase
-    .from('Demo')
-    .select('id, startsAt, endsAt, productAddress, notes, status')
-    .eq('contactId', contact.id)
-    .in('status', ['scheduled', 'confirmed', 'completed'])
-    .order('startsAt', { ascending: true });
+  const demos = await convex().query(api.demos.demos.listByContact, {
+    contactId: contact.id,
+    statuses: ['scheduled', 'confirmed', 'completed'],
+    order: 'asc',
+  });
 
   // Mark unread seller messages as read
   if (messages?.some((m: { senderType: string; readAt: string | null }) => m.senderType === 'seller' && !m.readAt)) {

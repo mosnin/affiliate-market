@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { approveRefundRequest, declineRefundRequest } from '@/lib/marketplace/refunds';
@@ -32,11 +32,7 @@ export async function POST(req: NextRequest) {
 
   // Load the request and verify it belongs to this seller's space. 404 (not 403)
   // when it isn't theirs — don't confirm the existence of another space's request.
-  const { data: request } = await supabase
-    .from('RefundRequest')
-    .select('id, spaceId, status')
-    .eq('id', requestId)
-    .maybeSingle();
+  const request = await convex().query(api.marketplace.refunds.getById, { id: requestId });
   if (!request || request.spaceId !== space.id) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }

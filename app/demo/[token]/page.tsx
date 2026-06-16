@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import type { Viewport } from 'next';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';
 import { DemoManageClient } from './demo-manage-client';
@@ -35,15 +36,13 @@ export default async function DemoManagePage({
 }) {
   const { token } = await params;
 
-  const { data: demo } = await supabase
-    .from('Demo')
-    .select('id, guestName, guestEmail, productAddress, startsAt, endsAt, status, spaceId')
-    .eq('manageToken', token)
-    .maybeSingle();
+  const demo = await convex().query(api.demos.demos.getByManageToken, {
+    manageToken: token,
+  });
 
   if (!demo) notFound();
 
-  const [{ data: settings }, { data: space }, { data: profileRow }] = await Promise.all([
+  const [{ data: settings }, { data: space }, profileRow] = await Promise.all([
     supabase
       .from('SpaceSetting')
       .select('businessName, logoUrl, sellerPhotoUrl')
@@ -54,22 +53,14 @@ export default async function DemoManagePage({
       .select('name, slug, ownerId')
       .eq('id', demo.spaceId)
       .maybeSingle(),
-    supabase
-      .from('ProfilePage')
-      .select('coverPhotoUrl, profilePhotoUrl')
-      .eq('spaceId', demo.spaceId)
-      .maybeSingle(),
+    convex().query(api.marketplace.profiles.getBySpace, { spaceId: demo.spaceId }),
   ]);
 
   const businessName = settings?.businessName || space?.name || 'the product';
   const [coverPhotoUrl, agentPhoto] = await Promise.all([
+    resolveStoredPhoto(profileRow?.coverPhotoUrl ?? null),
     resolveStoredPhoto(
-      (profileRow as { coverPhotoUrl?: string | null } | null)?.coverPhotoUrl ?? null,
-    ),
-    resolveStoredPhoto(
-      (profileRow as { profilePhotoUrl?: string | null } | null)?.profilePhotoUrl ??
-        settings?.sellerPhotoUrl ??
-        null,
+      profileRow?.profilePhotoUrl ?? settings?.sellerPhotoUrl ?? null,
     ),
   ]);
 

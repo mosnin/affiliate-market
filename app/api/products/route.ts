@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
+import type { FunctionArgs } from 'convex/server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
 import { isValidListingStatus, isValidProductType } from '@/lib/products';
@@ -200,29 +201,31 @@ export async function GET(req: NextRequest) {
 
   const search = (req.nextUrl.searchParams.get('search') ?? '').trim().slice(0, 200);
 
-  let query = supabase
-    .from('Product')
-    .select('*')
-    // The seller's own products PLUS any company-pool product assigned
-    // to their space. space.id is a controlled UUID, safe in the or-filter.
-    .or(`spaceId.eq.${space.id},assignedSpaceId.eq.${space.id}`)
-    .order('updatedAt', { ascending: false })
-    .limit(500);
-
-  if (search) {
-    // Escape PostgREST wildcards + strip filter-breaking characters.
-    const escaped = search.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-    const sanitized = escaped.replace(/[,()]/g, '');
-    const pattern = `%${sanitized}%`;
-    query = query.or(`address.ilike.${pattern},mlsNumber.ilike.${pattern},city.ilike.${pattern}`);
-  }
-
-  const { data, error } = await query;
-  if (error) {
+  // The seller's own products PLUS any company-pool product assigned to their
+  // space (the assigned-pool OR), updatedAt desc — encoded in the Convex fn.
+  let rows: Array<Record<string, unknown>>;
+  try {
+    rows = (await convex().query(api.marketplace.products.listForSpace, {
+      spaceId: space.id,
+      order: 'updated',
+    })) as Array<Record<string, unknown>>;
+  } catch (error) {
     logger.error('[products/GET] query failed', { spaceId: space.id }, error);
     return NextResponse.json({ error: 'Failed to fetch products' }, { status: 500 });
   }
-  return NextResponse.json(data ?? []);
+
+  if (search) {
+    // Case-insensitive substring over address/mlsNumber/city (the old ilike OR).
+    const needle = search.toLowerCase();
+    rows = rows.filter((r) => {
+      const hay = [r.address, r.mlsNumber, r.city]
+        .filter((v): v is string => typeof v === 'string')
+        .map((v) => v.toLowerCase());
+      return hay.some((v) => v.includes(needle));
+    });
+  }
+
+  return NextResponse.json(rows.slice(0, 500));
 }
 
 export async function POST(req: NextRequest) {
@@ -239,25 +242,32 @@ export async function POST(req: NextRequest) {
   const { out, errors } = sanitiseBody(body, 'create');
   if (errors.length) return NextResponse.json({ error: errors.join(', ') }, { status: 400 });
 
-  const insert = {
-    id: crypto.randomUUID(),
-    spaceId: space.id,
+  // `out` is the sanitised writable bag (no id/spaceId/verified). Preserve the
+  // route's defaults: listingStatus 'active' (NOT the mutation's 'draft'), photos [].
+  const fields = {
+    ...out,
     listingStatus: out.listingStatus ?? 'active',
     photos: out.photos ?? [],
-    ...out,
-  };
+    // `out` is the runtime-sanitised bag (Record<string, unknown>); Convex
+    // re-validates against writableFields at the boundary, so cast to the create
+    // arg shape to satisfy the strict v.object() at compile time.
+  } as unknown as FunctionArgs<typeof api.marketplace.products.create>['fields'];
 
-  const { data, error } = await supabase.from('Product').insert(insert).select().single();
-  if (error) {
-    // 23505 = unique_violation (e.g. duplicate MLS #).
-    if ((error as { code?: string }).code === '23505') {
+  const result = await convex().mutation(api.marketplace.products.create, {
+    id: crypto.randomUUID(),
+    spaceId: space.id,
+    fields,
+  });
+  if (!result.ok) {
+    // duplicate_mls = unique_violation (e.g. duplicate MLS #) — the old 23505→409.
+    if (result.error === 'duplicate_mls' || result.error === 'duplicate_slug') {
       return NextResponse.json({ error: 'A product with that MLS number already exists' }, { status: 409 });
     }
-    logger.error('[products/POST] insert failed', { spaceId: space.id }, error);
+    logger.error('[products/POST] insert failed', { spaceId: space.id, error: result.error });
     return NextResponse.json({ error: 'Failed to create product' }, { status: 500 });
   }
 
-  return NextResponse.json(data, { status: 201 });
+  return NextResponse.json(result.product, { status: 201 });
 }
 
 export { sanitiseBody as _sanitiseProductBody };

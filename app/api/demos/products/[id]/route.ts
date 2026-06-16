@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
 async function resolveProfile(userId: string, profileId: string) {
-  const { data: row } = await supabase.from('DemoProductProfile').select('*').eq('id', profileId).maybeSingle();
+  const row = await convex().query(api.demos.profiles.getById, { id: profileId });
   if (!row) return null;
   const space = await getSpaceForUser(userId);
   if (!space || row.spaceId !== space.id) return null;
@@ -24,24 +24,18 @@ export async function PATCH(
   if (!ctx) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const body = await req.json();
-  const update: Record<string, unknown> = { updatedAt: new Date().toISOString() };
-  if (body.name !== undefined) update.name = body.name;
-  if (body.address !== undefined) update.address = body.address || null;
-  if (body.demoDuration !== undefined) update.demoDuration = body.demoDuration;
-  if (body.startHour !== undefined) update.startHour = body.startHour;
-  if (body.endHour !== undefined) update.endHour = body.endHour;
-  if (body.daysAvailable !== undefined) update.daysAvailable = body.daysAvailable;
-  if (body.bufferMinutes !== undefined) update.bufferMinutes = body.bufferMinutes;
-  if (body.isActive !== undefined) update.isActive = body.isActive;
-
-  const { data, error } = await supabase
-    .from('DemoProductProfile')
-    .update(update)
-    .eq('id', id)
-    .eq('spaceId', ctx.space.id)
-    .select()
-    .single();
-  if (error) throw error;
+  const data = await convex().mutation(api.demos.profiles.updateById, {
+    id,
+    spaceId: ctx.space.id,
+    ...(body.name !== undefined ? { name: body.name } : {}),
+    ...(body.address !== undefined ? { address: body.address || null } : {}),
+    ...(body.demoDuration !== undefined ? { demoDuration: body.demoDuration } : {}),
+    ...(body.startHour !== undefined ? { startHour: body.startHour } : {}),
+    ...(body.endHour !== undefined ? { endHour: body.endHour } : {}),
+    ...(body.daysAvailable !== undefined ? { daysAvailable: body.daysAvailable } : {}),
+    ...(body.bufferMinutes !== undefined ? { bufferMinutes: body.bufferMinutes } : {}),
+    ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+  });
 
   return NextResponse.json(data);
 }
@@ -58,12 +52,7 @@ export async function DELETE(
   const ctx = await resolveProfile(userId, id);
   if (!ctx) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { error } = await supabase
-    .from('DemoProductProfile')
-    .delete()
-    .eq('id', id)
-    .eq('spaceId', ctx.space.id);
-  if (error) throw error;
+  await convex().mutation(api.demos.profiles.deleteById, { id, spaceId: ctx.space.id });
 
   return NextResponse.json({ success: true });
 }

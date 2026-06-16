@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server'; // Product names (Product is Convex; ReferralLink/ReferralClick stay Supabase)
 import { logger } from '@/lib/logger';
 
 export interface ReferralLinkRow {
@@ -198,11 +199,14 @@ export async function listLinksForPartners(
   const ids = links.map((l) => l.id);
   const productIds = [...new Set(links.map((l) => l.productId).filter(Boolean))] as string[];
 
-  const [clicksRes, productsRes] = await Promise.all([
+  // ReferralClick stays on Supabase; Product names come from Convex (hybrid).
+  const [clicksRes, productRows] = await Promise.all([
     supabase.from('ReferralClick').select('linkId').in('linkId', ids),
     productIds.length > 0
-      ? supabase.from('Product').select('id, name, address').in('id', productIds)
-      : Promise.resolve({ data: [] as { id: string; name: string | null; address: string | null }[] }),
+      ? (convex().query(api.marketplace.products.byIds, { ids: productIds }) as Promise<
+          { id: string; name: string | null; address: string | null }[]
+        >)
+      : Promise.resolve([] as { id: string; name: string | null; address: string | null }[]),
   ]);
 
   const counts = new Map<string, number>();
@@ -210,7 +214,7 @@ export async function listLinksForPartners(
     counts.set(c.linkId, (counts.get(c.linkId) ?? 0) + 1);
   }
   const productNames = new Map(
-    (productsRes.data ?? []).map((p) => [p.id, p.name ?? p.address ?? null]),
+    productRows.map((p) => [p.id, p.name ?? p.address ?? null]),
   );
 
   return links.map((l) => ({

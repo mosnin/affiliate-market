@@ -14,6 +14,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { deleteContactVector, syncContact } from '@/lib/vectorize';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
@@ -84,24 +85,22 @@ export const mergePersonsTool = defineTool<typeof parameters, MergePersonsResult
     const mergeName = mergeRes.data.name as string;
 
     // Count rows for the summary BEFORE moving.
-    const [actCountRes, demoCountRes, dcCountRes] = await Promise.all([
+    const [actCountRes, demosCount, dcCountRes] = await Promise.all([
       supabase
         .from('ContactActivity')
         .select('id', { count: 'exact', head: true })
         .eq('contactId', args.mergeId)
         .eq('spaceId', ctx.space.id),
-      supabase
-        .from('Demo')
-        .select('id', { count: 'exact', head: true })
-        .eq('contactId', args.mergeId)
-        .eq('spaceId', ctx.space.id),
+      convex().query(api.demos.demos.countByContact, {
+        contactId: args.mergeId,
+        spaceId: ctx.space.id,
+      }),
       supabase
         .from('DealContact')
         .select('dealId', { count: 'exact', head: true })
         .eq('contactId', args.mergeId),
     ]);
     const activitiesCount = (actCountRes as unknown as { count: number | null }).count ?? 0;
-    const demosCount = (demoCountRes as unknown as { count: number | null }).count ?? 0;
     const dealLinksCount = (dcCountRes as unknown as { count: number | null }).count ?? 0;
 
     // Step 1: ContactActivity → keepId
@@ -119,15 +118,17 @@ export const mergePersonsTool = defineTool<typeof parameters, MergePersonsResult
     }
 
     // Step 2: Demo → keepId
-    const { error: demoErr } = await supabase
-      .from('Demo')
-      .update({ contactId: args.keepId })
-      .eq('contactId', args.mergeId)
-      .eq('spaceId', ctx.space.id);
-    if (demoErr) {
+    try {
+      await convex().mutation(api.demos.demos.reassignContact, {
+        fromContactId: args.mergeId,
+        toContactId: args.keepId,
+        spaceId: ctx.space.id,
+      });
+    } catch (demoErr) {
+      const message = demoErr instanceof Error ? demoErr.message : 'unknown error';
       logger.error('[tools.merge_persons] demo move failed (PARTIAL MERGE)', { keep: args.keepId, merge: args.mergeId }, demoErr);
       return {
-        summary: `Partial merge — activities moved, demos failed: ${demoErr.message}. Please reconcile manually.`,
+        summary: `Partial merge — activities moved, demos failed: ${message}. Please reconcile manually.`,
         display: 'error',
       };
     }

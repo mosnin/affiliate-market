@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 /**
@@ -87,13 +88,10 @@ export async function POST(
   }
 
   // Validate demo belongs to this contact + space (defense in depth)
-  const { data: demo, error: demoError } = await supabase
-    .from('Demo')
-    .select('id, spaceId, contactId, status, startsAt, productAddress')
-    .eq('id', demoId)
-    .maybeSingle();
-
-  if (demoError) {
+  let demo;
+  try {
+    demo = await convex().query(api.demos.demos.getById, { id: demoId });
+  } catch (demoError) {
     console.error('[portal/demo-respond] Demo lookup error:', demoError);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
@@ -130,14 +128,15 @@ export async function POST(
   // both insert their receipt message — cluttering the seller's thread
   // with duplicates. With CAS, only the first writer's UPDATE returns a
   // row; the second sees zero affected rows and skips the message insert.
-  const { data: updated, error: updateError } = await supabase
-    .from('Demo')
-    .update({ status: targetStatus, updatedAt: new Date().toISOString() })
-    .eq('id', demoId)
-    .eq('spaceId', contact.spaceId)
-    .eq('status', demo.status)
-    .select('id');
-  if (updateError) {
+  let swapped: boolean;
+  try {
+    swapped = await convex().mutation(api.demos.demos.casStatus, {
+      id: demoId,
+      spaceId: contact.spaceId,
+      expectedStatus: demo.status,
+      newStatus: targetStatus,
+    });
+  } catch (updateError) {
     console.error('[portal/demo-respond] Demo update error:', updateError);
     return NextResponse.json({ error: 'Failed to update demo' }, { status: 500 });
   }
@@ -145,7 +144,7 @@ export async function POST(
   // Lost the CAS — another concurrent caller already moved the demo.
   // Return a clean success without inserting a duplicate message; the
   // first writer's message is already on the thread.
-  if (!updated || updated.length === 0) {
+  if (!swapped) {
     return NextResponse.json({
       ok: true,
       demo: { id: demo.id, status: targetStatus },

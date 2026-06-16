@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { redis } from '@/lib/redis';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import {
   STORAGE_PREFIXES,
   listObjectsByPrefix,
@@ -146,14 +147,14 @@ const PREFIX_SPECS: PrefixSpec[] = [
       // Product.photos is a JSONB array of public URLs; we map every
       // candidate KEY back through getPublicUrl-shape and check if any
       // listed product contains the URL. Easier: pull every Product
-      // row's photos array for any space that has at least one row
-      // (Supabase doesn't have a clean "URL contains key" predicate),
-      // build the reverse map, then check membership.
-      const { data } = await supabase.from('Product').select('photos').limit(5000);
+      // row's photos array (no clean "URL contains key" predicate),
+      // build the reverse map, then check membership. allPhotos returns
+      // each product's photos array directly (cap 5000).
+      const photosArrays = await convex().query(api.marketplace.products.allPhotos, {});
       const referenced = new Set<string>();
-      for (const row of (data ?? []) as { photos: unknown }[]) {
-        const urls = Array.isArray(row.photos)
-          ? row.photos.filter(
+      for (const photos of photosArrays) {
+        const urls = Array.isArray(photos)
+          ? photos.filter(
               (u): u is string => typeof u === 'string' && u.length > 0,
             )
           : [];
@@ -178,30 +179,22 @@ const PREFIX_SPECS: PrefixSpec[] = [
     prefix: STORAGE_PREFIXES.profileCover,
     label: 'profile-cover',
     referencedKeys: async (candidates) => {
-      const { data } = await supabase
-        .from('ProfilePage')
-        .select('coverPhotoUrl')
-        .in('coverPhotoUrl', candidates);
-      return new Set(
-        ((data ?? []) as { coverPhotoUrl: string }[])
-          .map((r) => r.coverPhotoUrl)
-          .filter(Boolean),
-      );
+      const keys = await convex().query(api.marketplace.profiles.referencedPhotoKeys, {
+        candidates,
+        field: 'cover',
+      });
+      return new Set(keys);
     },
   },
   {
     prefix: STORAGE_PREFIXES.profilePhoto,
     label: 'profile-photo',
     referencedKeys: async (candidates) => {
-      const { data } = await supabase
-        .from('ProfilePage')
-        .select('profilePhotoUrl')
-        .in('profilePhotoUrl', candidates);
-      return new Set(
-        ((data ?? []) as { profilePhotoUrl: string }[])
-          .map((r) => r.profilePhotoUrl)
-          .filter(Boolean),
-      );
+      const keys = await convex().query(api.marketplace.profiles.referencedPhotoKeys, {
+        candidates,
+        field: 'profile',
+      });
+      return new Set(keys);
     },
   },
   {

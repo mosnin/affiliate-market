@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { Building2, Calendar, FileText, ExternalLink, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type { Product, ProductPacket } from '@/lib/types';
 import { formatCurrency } from '@/lib/formatting';
 import { formatProductAddress, formatProductFacts } from '@/lib/products';
@@ -15,11 +16,7 @@ interface Props { params: Promise<{ token: string }> }
 export default async function PacketPage({ params }: Props) {
   const { token } = await params;
 
-  const { data: packetRow } = await supabase
-    .from('ProductPacket')
-    .select('*')
-    .eq('token', token)
-    .maybeSingle();
+  const packetRow = await convex().query(api.marketplace.packets.getByToken, { token });
   if (!packetRow) notFound();
   const packet = packetRow as ProductPacket;
 
@@ -41,20 +38,15 @@ export default async function PacketPage({ params }: Props) {
     );
   }
 
-  const { data: productRow } = await supabase
-    .from('Product')
-    .select('*')
-    .eq('id', packet.productId)
-    .maybeSingle();
+  const productRow = await convex().query(api.marketplace.products.getById, {
+    id: packet.productId,
+  });
   if (!productRow) notFound();
   const product = productRow as Product;
 
   // Best-effort view tracking. Non-blocking; a failure shouldn't take the
   // page down.
-  void supabase
-    .from('ProductPacket')
-    .update({ viewCount: packet.viewCount + 1, lastViewedAt: now.toISOString() })
-    .eq('id', packet.id);
+  void convex().mutation(api.marketplace.packets.bumpView, { id: packet.id });
 
   const documentIds = packet.includeDocumentIds ?? [];
   const { data: docRows } = documentIds.length > 0

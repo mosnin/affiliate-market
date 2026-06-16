@@ -13,7 +13,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
 
@@ -43,15 +43,10 @@ export const noteOnProductTool = defineTool<typeof parameters, NoteOnProductResu
   },
 
   async handler(args, ctx) {
-    const { data: product, error: fetchErr } = await supabase
-      .from('Product')
-      .select('id, address, notes')
-      .eq('id', args.productId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
-    if (fetchErr) {
-      return { summary: `Product lookup failed: ${fetchErr.message}`, display: 'error' };
-    }
+    const product = await convex().query(api.marketplace.products.getByIdInSpace, {
+      id: args.productId,
+      spaceId: ctx.space.id,
+    });
     if (!product) {
       return { summary: `No product with id "${args.productId}".`, display: 'error' };
     }
@@ -62,14 +57,14 @@ export const noteOnProductTool = defineTool<typeof parameters, NoteOnProductResu
     const existing = ((product.notes as string | null) ?? '').trim();
     const next = existing ? `${existing}\n${appendedLine}` : appendedLine;
 
-    const { error: updateErr } = await supabase
-      .from('Product')
-      .update({ notes: next, updatedAt: new Date().toISOString() })
-      .eq('id', args.productId)
-      .eq('spaceId', ctx.space.id);
-    if (updateErr) {
-      logger.error('[tools.note_on_product] update failed', { productId: args.productId }, updateErr);
-      return { summary: `Note save failed: ${updateErr.message}`, display: 'error' };
+    const updateRes = await convex().mutation(api.marketplace.products.update, {
+      id: args.productId,
+      spaceId: ctx.space.id,
+      fields: { notes: next },
+    });
+    if (!updateRes.ok) {
+      logger.error('[tools.note_on_product] update failed', { productId: args.productId, error: updateRes.error });
+      return { summary: `Note save failed: ${updateRes.error}`, display: 'error' };
     }
 
     return {

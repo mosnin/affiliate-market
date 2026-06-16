@@ -5,12 +5,14 @@
  * `createReview` looks for a PAID MarketplaceOrder for (productId, buyerEmail)
  * before it will insert. No purchase, no review — that's the whole anti-scam
  * point. One review per buyer per product is enforced both here (friendly
- * error) and by the unique index (race-safe backstop).
+ * error) and by the unique index, now re-implemented as a read-then-insert
+ * inside the Convex create mutation (race-safe backstop).
  *
  * Money never appears here, so none of the net/gross rules apply. These are
- * just star ratings and words.
+ * just star ratings and words. All DB hops (MarketplaceOrder gate, Review,
+ * Product names) are Convex calls — every table touched here is marketplace-owned.
  */
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 export type ReviewStatus = 'published' | 'hidden';
@@ -80,16 +82,12 @@ export async function createReview(input: {
   }
 
   // Purchased-before-review gate. A single paid order for this product by this
-  // buyer is enough. ilike keeps it case-insensitive to match how orders store
-  // the email. Also gives us the spaceId to denormalise onto the review.
-  const { data: order } = await supabase
-    .from('MarketplaceOrder')
-    .select('id, spaceId')
-    .eq('productId', input.productId)
-    .eq('status', 'paid')
-    .ilike('buyerEmail', buyerEmail)
-    .limit(1)
-    .maybeSingle();
+  // buyer is enough. Case-insensitive match (the query lowercases). Also gives
+  // us the spaceId to denormalise onto the review.
+  const order = (await convex().query(api.marketplace.orders.paidOrderForProductBuyer, {
+    productId: input.productId,
+    buyerEmail,
+  })) as { id: string; spaceId: string } | null;
 
   if (!order) {
     return { ok: false, error: 'Only buyers who purchased this product can review it.', status: 403 };
@@ -98,22 +96,21 @@ export async function createReview(input: {
   const title = (input.title ?? '').trim().slice(0, MAX_TITLE) || null;
   const body = (input.body ?? '').trim().slice(0, MAX_BODY) || null;
 
-  const { error } = await supabase.from('Review').insert({
-    spaceId: (order as { spaceId: string }).spaceId,
+  const result = (await convex().mutation(api.marketplace.reviews.create, {
+    spaceId: order.spaceId,
     productId: input.productId,
     buyerEmail,
     rating,
     title,
     body,
-    status: 'published',
-  });
+  })) as { ok: boolean; error?: 'duplicate' };
 
-  if (error) {
-    // 23505 = unique_violation → already reviewed this product.
-    if ((error as { code?: string }).code === '23505') {
+  if (!result.ok) {
+    // duplicate → already reviewed this product (the unique-index backstop).
+    if (result.error === 'duplicate') {
       return { ok: false, error: 'You already reviewed this product.', status: 409 };
     }
-    logger.error('[reviews] createReview insert failed', { productId: input.productId }, error);
+    logger.error('[reviews] createReview insert failed', { productId: input.productId });
     return { ok: false, error: 'Could not save your review. Try again.', status: 500 };
   }
 
@@ -122,21 +119,24 @@ export async function createReview(input: {
 
 /** Published reviews for a product, newest first. */
 export async function getReviewsForProduct(productId: string): Promise<PublicReview[]> {
-  const { data } = await supabase
-    .from('Review')
-    .select('id, rating, title, body, createdAt, buyerEmail')
-    .eq('productId', productId)
-    .eq('status', 'published')
-    .order('createdAt', { ascending: false })
-    .limit(100);
+  const data = (await convex().query(api.marketplace.reviews.publishedForProduct, {
+    productId,
+  })) as Array<{
+    id: string;
+    rating: number;
+    title: string | null;
+    body: string | null;
+    createdAt: string;
+    buyerEmail: string;
+  }>;
 
   return (data ?? []).map((r) => ({
-    id: r.id as string,
-    rating: r.rating as number,
-    title: (r.title as string | null) ?? null,
-    body: (r.body as string | null) ?? null,
-    createdAt: r.createdAt as string,
-    author: maskEmail(r.buyerEmail as string),
+    id: r.id,
+    rating: r.rating,
+    title: r.title ?? null,
+    body: r.body ?? null,
+    createdAt: r.createdAt,
+    author: maskEmail(r.buyerEmail),
   }));
 }
 
@@ -152,17 +152,15 @@ export async function getRatingForProducts(
   const ids = [...new Set(productIds)].filter(Boolean);
   if (ids.length === 0) return result;
 
-  const { data } = await supabase
-    .from('Review')
-    .select('productId, rating')
-    .in('productId', ids)
-    .eq('status', 'published');
+  const data = (await convex().query(api.marketplace.reviews.publishedRatingsForProducts, {
+    productIds: ids,
+  })) as Array<{ productId: string; rating: number }>;
 
   const sums = new Map<string, { sum: number; count: number }>();
   for (const r of data ?? []) {
-    const pid = r.productId as string;
+    const pid = r.productId;
     const acc = sums.get(pid) ?? { sum: 0, count: 0 };
-    acc.sum += (r.rating as number) ?? 0;
+    acc.sum += r.rating ?? 0;
     acc.count += 1;
     sums.set(pid, acc);
   }
@@ -175,57 +173,58 @@ export async function getRatingForProducts(
 
 /** Admin: hide a review (moderation) without deleting the buyer's words. */
 export async function hideReview(id: string): Promise<boolean> {
-  const { error } = await supabase.from('Review').update({ status: 'hidden' }).eq('id', id);
-  if (error) {
-    logger.warn('[reviews] hideReview failed', { id, err: error.message });
-    return false;
-  }
-  return true;
+  const res = (await convex().mutation(api.marketplace.reviews.setStatus, {
+    id,
+    status: 'hidden',
+  })) as { ok: boolean };
+  if (!res.ok) logger.warn('[reviews] hideReview failed', { id });
+  return res.ok;
 }
 
 /** Admin: restore a hidden review to published. */
 export async function unhideReview(id: string): Promise<boolean> {
-  const { error } = await supabase.from('Review').update({ status: 'published' }).eq('id', id);
-  if (error) {
-    logger.warn('[reviews] unhideReview failed', { id, err: error.message });
-    return false;
-  }
-  return true;
+  const res = (await convex().mutation(api.marketplace.reviews.setStatus, {
+    id,
+    status: 'published',
+  })) as { ok: boolean };
+  if (!res.ok) logger.warn('[reviews] unhideReview failed', { id });
+  return res.ok;
 }
 
 /** Admin moderation queue: recent reviews across all sellers, newest first. */
 export async function getReviewsForModeration(limit = 100): Promise<ModerationReview[]> {
-  const { data } = await supabase
-    .from('Review')
-    .select('id, productId, spaceId, buyerEmail, rating, title, body, status, createdAt')
-    .order('createdAt', { ascending: false })
-    .limit(limit);
+  const rows = (await convex().query(api.marketplace.reviews.forModeration, { limit })) as Array<{
+    id: string;
+    productId: string;
+    spaceId: string;
+    buyerEmail: string;
+    rating: number;
+    title: string | null;
+    body: string | null;
+    status: ReviewStatus;
+    createdAt: string;
+  }>;
 
-  const rows = data ?? [];
   if (rows.length === 0) return [];
 
-  const productIds = [...new Set(rows.map((r) => r.productId as string))];
-  const { data: products } = await supabase
-    .from('Product')
-    .select('id, name, address')
-    .in('id', productIds);
+  const productIds = [...new Set(rows.map((r) => r.productId))];
+  const products = (await convex().query(api.marketplace.products.byIds, {
+    ids: productIds,
+  })) as Array<{ id: string; name: string | null; address: string | null }>;
   const nameById = new Map(
-    (products ?? []).map((p) => [
-      p.id as string,
-      (p.name as string | null) ?? (p.address as string | null) ?? 'Untitled product',
-    ]),
+    products.map((p) => [p.id, p.name ?? p.address ?? 'Untitled product']),
   );
 
   return rows.map((r) => ({
-    id: r.id as string,
-    productId: r.productId as string,
-    productName: nameById.get(r.productId as string) ?? 'Untitled product',
-    spaceId: r.spaceId as string,
-    buyerEmail: r.buyerEmail as string,
-    rating: r.rating as number,
-    title: (r.title as string | null) ?? null,
-    body: (r.body as string | null) ?? null,
-    status: (r.status as ReviewStatus) ?? 'published',
-    createdAt: r.createdAt as string,
+    id: r.id,
+    productId: r.productId,
+    productName: nameById.get(r.productId) ?? 'Untitled product',
+    spaceId: r.spaceId,
+    buyerEmail: r.buyerEmail,
+    rating: r.rating,
+    title: r.title ?? null,
+    body: r.body ?? null,
+    status: r.status ?? 'published',
+    createdAt: r.createdAt,
   }));
 }

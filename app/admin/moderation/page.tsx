@@ -18,6 +18,7 @@ import {
 } from '@/lib/typography';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getReviewsForModeration } from '@/lib/marketplace/reviews';
 import { ReviewModerationButton, VerifyProductButton } from './moderation-actions';
 
@@ -36,14 +37,7 @@ interface UnverifiedProduct {
 
 /** Published listings still awaiting a verification decision. */
 async function getUnverifiedPublishedProducts(): Promise<UnverifiedProduct[]> {
-  const { data } = await supabase
-    .from('Product')
-    .select('id, name, address, marketplaceSlug, spaceId')
-    .eq('published', true)
-    .eq('verified', false)
-    .not('marketplaceSlug', 'is', null)
-    .order('updatedAt', { ascending: false })
-    .limit(100);
+  const data = await convex().query(api.marketplace.products.listUnverifiedPublished, {});
 
   const rows = data ?? [];
   if (rows.length === 0) return [];

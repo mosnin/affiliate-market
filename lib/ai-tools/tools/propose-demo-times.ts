@@ -11,7 +11,6 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
@@ -81,21 +80,18 @@ export const proposeDemoTimesTool = defineTool<typeof parameters, ProposeDemoTim
 
     // Fetch everything booked in the window, then walk the calendar in
     // 30-minute steps and accept the first free 60-min block in each hour.
-    // Demo stays on Supabase (other domain); CalendarEvent moved to Convex,
-    // which throws on failure rather than returning `.error`.
-    let demoRes: Awaited<ReturnType<typeof demoQuery>>;
+    // Both Demo and CalendarEvent are on Convex now; both throw on failure.
+    // Overlap predicate `startsAt < windowEnd AND endsAt > now`: the index
+    // bounds startsAt, `endsAt > now` is filtered in-process.
+    let demoData: Array<{ startsAt: string; endsAt: string }>;
     let eventData: Array<{ date: string; time: string | null }>;
-    const demoQuery = () =>
-      supabase
-        .from('Demo')
-        .select('startsAt, endsAt')
-        .eq('spaceId', ctx.space.id)
-        .lt('startsAt', windowEnd.toISOString())
-        .gt('endsAt', now.toISOString())
-        .limit(200);
     try {
-      [demoRes, eventData] = await Promise.all([
-        demoQuery(),
+      const [demoRows, events] = await Promise.all([
+        convex().query(api.demos.demos.listBySpace, {
+          spaceId: ctx.space.id,
+          startsAtLt: windowEnd.toISOString(),
+          order: 'asc',
+        }),
         convex().query(api.calendar.events.listByDateRange, {
           spaceId: ctx.space.id,
           fromDate: now.toISOString().slice(0, 10),
@@ -103,14 +99,10 @@ export const proposeDemoTimesTool = defineTool<typeof parameters, ProposeDemoTim
           limit: 500,
         }),
       ]);
+      const nowIso = now.toISOString();
+      demoData = (demoRows as typeof demoData).filter((t) => t.endsAt > nowIso).slice(0, 200);
+      eventData = events;
     } catch {
-      return {
-        summary: 'Could not check the calendar. Try again in a moment.',
-        display: 'error',
-      };
-    }
-
-    if (demoRes.error) {
       return {
         summary: 'Could not check the calendar. Try again in a moment.',
         display: 'error',
@@ -119,7 +111,7 @@ export const proposeDemoTimesTool = defineTool<typeof parameters, ProposeDemoTim
 
     type Band = { startsAt: number; endsAt: number };
     const conflicts: Band[] = [];
-    for (const t of (demoRes.data ?? []) as Array<{ startsAt: string; endsAt: string }>) {
+    for (const t of demoData) {
       conflicts.push({
         startsAt: Date.parse(t.startsAt),
         endsAt: Date.parse(t.endsAt),

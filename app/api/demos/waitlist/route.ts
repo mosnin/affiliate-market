@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
@@ -13,15 +13,12 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { space } = auth;
 
-  const { data, error } = await supabase
-    .from('DemoWaitlist')
-    .select('*')
-    .eq('spaceId', space.id)
-    .in('status', ['waiting', 'notified'])
-    .order('preferredDate', { ascending: true });
-  if (error) throw error;
+  const data = await convex().query(api.demos.waitlist.listBySpace, {
+    spaceId: space.id,
+    statuses: ['waiting', 'notified'],
+  });
 
-  return NextResponse.json(data ?? []);
+  return NextResponse.json(data);
 }
 
 /** POST — public endpoint: guest joins the waitlist */
@@ -53,35 +50,20 @@ export async function POST(req: NextRequest) {
   const space = await getSpaceFromSlug(slug);
   if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
 
-  // Check for duplicate
-  const { data: existing } = await supabase
-    .from('DemoWaitlist')
-    .select('id')
-    .eq('spaceId', space.id)
-    .eq('guestEmail', guestEmail.trim().toLowerCase())
-    .eq('preferredDate', preferredDate)
-    .eq('status', 'waiting')
-    .maybeSingle();
-
-  if (existing) {
+  // Create with the one-'waiting'-per-(space,email,date) dedupe folded into the
+  // mutation; null return means a duplicate already exists.
+  const data = await convex().mutation(api.demos.waitlist.create, {
+    spaceId: space.id,
+    productProfileId: productProfileId || null,
+    guestName: guestName.trim(),
+    guestEmail: guestEmail.trim().toLowerCase(),
+    guestPhone: guestPhone?.trim() || null,
+    preferredDate,
+    notes: notes?.trim() || null,
+  });
+  if (!data) {
     return NextResponse.json({ error: 'You are already on the waitlist for this date' }, { status: 409 });
   }
-
-  const { data, error } = await supabase
-    .from('DemoWaitlist')
-    .insert({
-      id: crypto.randomUUID(),
-      spaceId: space.id,
-      productProfileId: productProfileId || null,
-      guestName: guestName.trim(),
-      guestEmail: guestEmail.trim().toLowerCase(),
-      guestPhone: guestPhone?.trim() || null,
-      preferredDate,
-      notes: notes?.trim() || null,
-    })
-    .select()
-    .single();
-  if (error) throw error;
 
   return NextResponse.json(data, { status: 201 });
 }

@@ -12,7 +12,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
 const parameters = z
@@ -60,29 +60,32 @@ export const findComparableProductsTool = defineTool<typeof parameters, FindComp
   requiresApproval: false,
 
   async handler(args, ctx) {
-    let query = supabase
-      .from('Product')
-      .select('id, name, address, category, listPrice, listingStatus, tagline, updatedAt')
-      .eq('spaceId', ctx.space.id)
-      .limit(20); // small over-fetch to allow midpoint sort
+    const all = await convex().query(api.marketplace.products.listForSpace, {
+      spaceId: ctx.space.id,
+      order: 'updated',
+    });
 
-    if (args.priceMin != null) query = query.gte('listPrice', args.priceMin);
-    if (args.priceMax != null) query = query.lte('listPrice', args.priceMax);
-    if (args.status) query = query.eq('listingStatus', args.status);
-    if (args.category) query = query.eq('category', args.category);
+    // The old query was spaceId-only (no assigned-pool OR) — keep that scope, then
+    // apply the price/status/category/keyword filters in memory over the rows.
+    let scoped = (all as Array<ProductMatch & { updatedAt: string; spaceId: string; address?: string }>).filter(
+      (r) => r.spaceId === ctx.space.id,
+    );
+    if (args.priceMin != null) scoped = scoped.filter((r) => r.listPrice != null && r.listPrice >= args.priceMin!);
+    if (args.priceMax != null) scoped = scoped.filter((r) => r.listPrice != null && r.listPrice <= args.priceMax!);
+    if (args.status) scoped = scoped.filter((r) => r.listingStatus === args.status);
+    if (args.category) scoped = scoped.filter((r) => r.category === args.category);
     if (args.keyword) {
-      const escaped = args.keyword.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_').replace(/[,()]/g, '');
-      const pat = `%${escaped}%`;
-      query = query.or(`name.ilike.${pat},address.ilike.${pat},tagline.ilike.${pat},category.ilike.${pat}`);
+      const needle = args.keyword.toLowerCase();
+      scoped = scoped.filter((r) => {
+        const name = (r.name as string | null)?.toLowerCase() ?? '';
+        const address = (r.address as string | null | undefined)?.toLowerCase() ?? '';
+        const tagline = (r.tagline as string | null)?.toLowerCase() ?? '';
+        const category = (r.category as string | null)?.toLowerCase() ?? '';
+        return name.includes(needle) || address.includes(needle) || tagline.includes(needle) || category.includes(needle);
+      });
     }
-    query = query.order('updatedAt', { ascending: false });
-
-    const { data, error } = await query.abortSignal(ctx.signal);
-    if (error) {
-      return { summary: `Product lookup failed: ${error.message}`, display: 'error' };
-    }
-
-    let rows = (data ?? []) as Array<ProductMatch & { updatedAt: string; address?: string }>;
+    // small over-fetch to allow midpoint sort, matching the old `.limit(20)`.
+    let rows = scoped.slice(0, 20);
     if (rows.length === 0) {
       return {
         summary: 'No comparable products on file.',

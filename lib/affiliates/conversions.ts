@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server'; // Product read (Product is Convex; other tables stay Supabase)
 import { logger } from '@/lib/logger';
 import { getLinkByCode } from '@/lib/affiliates/links';
 import { getPartnerById } from '@/lib/affiliates/partners';
@@ -134,12 +135,12 @@ export async function recordConversion(
     // Per-product override beats the program default when set.
     let productOverride: { commissionType: string | null; commissionValue: number | null } | null = null;
     if (input.productId) {
-      const { data: product } = await supabase
-        .from('Product')
-        .select('commissionType, commissionValue')
-        .eq('id', input.productId)
-        .maybeSingle();
-      productOverride = (product as typeof productOverride) ?? null;
+      const product = (await convex().query(api.marketplace.products.getById, {
+        id: input.productId,
+      })) as { commissionType: string | null; commissionValue: number | null } | null;
+      productOverride = product
+        ? { commissionType: product.commissionType, commissionValue: product.commissionValue }
+        : null;
     }
     const plan = resolveCommissionPlan(program, productOverride);
     const commissionCents = calculateCommissionCents(plan, input.amountCents);

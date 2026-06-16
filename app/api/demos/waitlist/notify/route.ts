@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 
 /**
@@ -18,13 +19,11 @@ export async function POST(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { space } = auth;
 
-  const { data: entry } = await supabase
-    .from('DemoWaitlist')
-    .select('*')
-    .eq('id', waitlistId)
-    .eq('spaceId', space.id)
-    .eq('status', 'waiting')
-    .maybeSingle();
+  const entry = await convex().query(api.demos.waitlist.getByIdInSpace, {
+    id: waitlistId,
+    spaceId: space.id,
+    status: 'waiting',
+  });
 
   if (!entry) {
     return NextResponse.json({ error: 'Waitlist entry not found or already notified' }, { status: 404 });
@@ -32,17 +31,12 @@ export async function POST(req: NextRequest) {
 
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min hold
 
-  const { data: updated, error } = await supabase
-    .from('DemoWaitlist')
-    .update({
-      status: 'notified',
-      notifiedAt: new Date().toISOString(),
-      expiresAt: expiresAt.toISOString(),
-    })
-    .eq('id', waitlistId)
-    .select()
-    .single();
-  if (error) throw error;
+  const updated = await convex().mutation(api.demos.waitlist.markNotified, {
+    id: waitlistId,
+    spaceId: space.id,
+    notifiedAt: new Date().toISOString(),
+    expiresAt: expiresAt.toISOString(),
+  });
 
   // Send notification email
   const { data: settings } = await supabase

@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { BarChart3, Package, Plus } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { formatCurrency } from '@/lib/formatting';
 import { H1, TITLE_FONT, BODY_MUTED, PAGE_MAX, PRIMARY_PILL, GHOST_PILL } from '@/lib/typography';
@@ -65,12 +65,12 @@ export default async function ProductsPage({
   let products: (Product & Record<string, unknown>)[] = [];
   let fetchError = false;
   try {
-    const { data, error } = await supabase
-      .from('Product')
-      .select('*')
-      .or(`spaceId.eq.${space.id},assignedSpaceId.eq.${space.id}`)
-      .order('createdAt', { ascending: false });
-    if (error) throw error;
+    // The seller's own products PLUS company-pool products assigned to their
+    // space (the assigned-pool OR), createdAt desc — encoded in the Convex fn.
+    const data = await convex().query(api.marketplace.products.listForSpace, {
+      spaceId: space.id,
+      order: 'created',
+    });
     products = (data ?? []) as (Product & Record<string, unknown>)[];
   } catch (err) {
     console.error('[products/page] DB query failed', { slug, error: err });

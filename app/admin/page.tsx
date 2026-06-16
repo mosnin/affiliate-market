@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import {
   Users,
   CheckCircle2,
@@ -301,8 +302,8 @@ export default async function AdminOverviewPage() {
         await Promise.all([
           supabase.from('Contact').select('spaceId').limit(1000),
           supabase.from('Deal').select('spaceId').limit(1000),
-          supabase.from('Demo').select('spaceId').limit(1000),
-          supabase.from('Demo').select('*', { count: 'exact', head: true }),
+          convex().query(api.demos.demos.listSpaceIds, { limit: 1000 }),
+          convex().query(api.demos.demos.countAll, {}),
           supabase
             .from('Contact')
             .select('*', { count: 'exact', head: true })
@@ -315,9 +316,9 @@ export default async function AdminOverviewPage() {
         (dealSpaces.data ?? []).map((r: any) => r.spaceId).filter(Boolean)
       ).size;
       spacesWithDemos = new Set(
-        (demoSpaces.data ?? []).map((r: any) => r.spaceId).filter(Boolean)
+        demoSpaces.map((r) => r.spaceId).filter(Boolean)
       ).size;
-      totalDemos = demosCount.count ?? 0;
+      totalDemos = demosCount;
       totalFollowUps = followUpsCount.count ?? 0;
     } catch (e) {
       console.error('[admin] Feature usage queries failed', e);

@@ -6,12 +6,14 @@
  * the order must exist, belong to this buyer (case-insensitive email match),
  * and be 'paid' — refunded / pending / canceled orders are rejected. One open
  * request per order is enforced both here (friendly error) and by the partial
- * unique index (race-safe backstop).
+ * unique index, now re-implemented as a read-then-insert inside the Convex
+ * create mutation (race-safe backstop).
  *
  * No money lives here. This is a signal — the seller still settles the refund
- * with their existing action. So the net/gross rules don't apply.
+ * with their existing action. So the net/gross rules don't apply. Every DB hop
+ * (MarketplaceOrder guard, RefundRequest) is a Convex call.
  */
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { markOrderRefunded } from '@/lib/marketplace/orders';
 
@@ -53,19 +55,6 @@ export function refundEligibility(
   return 'ok';
 }
 
-function mapRow(r: Record<string, unknown>): RefundRequestRow {
-  return {
-    id: r.id as string,
-    orderId: r.orderId as string,
-    spaceId: r.spaceId as string,
-    buyerEmail: r.buyerEmail as string,
-    reason: (r.reason as string | null) ?? null,
-    status: (r.status as RefundRequestStatus) ?? 'requested',
-    createdAt: r.createdAt as string,
-    resolvedAt: (r.resolvedAt as string | null) ?? null,
-  };
-}
-
 /**
  * File a refund request. Loads the order, runs the eligibility guard, rejects a
  * duplicate open request, then inserts. spaceId is taken from the order row —
@@ -81,16 +70,14 @@ export async function createRefundRequest(input: {
 
   // Load the order directly — cheap targeted read, gives us status + owner +
   // spaceId without pulling the buyer's whole history through orders.ts.
-  const { data: order } = await supabase
-    .from('MarketplaceOrder')
-    .select('id, spaceId, buyerEmail, status')
-    .eq('id', orderId)
-    .maybeSingle();
+  const order = (await convex().query(api.marketplace.orders.guardFields, {
+    id: orderId,
+  })) as { id: string; spaceId: string; buyerEmail: string; status: string } | null;
 
   if (!order) return { ok: false, error: 'not_found' };
 
   const eligibility = refundEligibility(
-    { status: order.status as string, buyerEmail: order.buyerEmail as string },
+    { status: order.status, buyerEmail: order.buyerEmail },
     requesterEmail,
   );
   // not_owner before not_paid: don't leak an order's payment state to someone
@@ -98,55 +85,27 @@ export async function createRefundRequest(input: {
   if (eligibility === 'not_owner') return { ok: false, error: 'not_owner' };
   if (eligibility === 'not_paid') return { ok: false, error: 'not_paid' };
 
-  // One open request per order. The partial unique index is the race-safe
-  // backstop; this is the friendly pre-check.
-  const { data: open } = await supabase
-    .from('RefundRequest')
-    .select('id')
-    .eq('orderId', orderId)
-    .eq('status', 'requested')
-    .limit(1)
-    .maybeSingle();
-  if (open) return { ok: false, error: 'already_requested' };
-
   const reason = (input.reason ?? '').trim().slice(0, MAX_REASON) || null;
 
-  const { data, error } = await supabase
-    .from('RefundRequest')
-    .insert({
-      orderId,
-      spaceId: order.spaceId as string,
-      buyerEmail: requesterEmail,
-      reason,
-      status: 'requested',
-    })
-    .select('*')
-    .single();
+  // One open request per order. The read-then-insert inside the mutation is the
+  // race-safe backstop the partial unique index used to provide.
+  const result = (await convex().mutation(api.marketplace.refunds.create, {
+    orderId,
+    spaceId: order.spaceId,
+    buyerEmail: requesterEmail,
+    reason,
+  })) as { ok: true; request: RefundRequestRow } | { ok: false; error: 'already_requested' };
 
-  if (error || !data) {
-    // 23505 = unique_violation → lost the race to a concurrent request.
-    if ((error as { code?: string } | null)?.code === '23505') {
-      return { ok: false, error: 'already_requested' };
-    }
-    logger.error('[refunds] createRefundRequest insert failed', { orderId }, error ?? undefined);
-    // No 'failed' variant in the contract — surface as not_found so the route
-    // returns a non-200 the buyer can retry, rather than a false success.
-    return { ok: false, error: 'not_found' };
-  }
-
-  return { ok: true, request: mapRow(data) };
+  if (!result.ok) return { ok: false, error: 'already_requested' };
+  return { ok: true, request: result.request };
 }
 
 /** Latest refund request for an order (by createdAt), or null. */
 export async function getRefundRequestForOrder(orderId: string): Promise<RefundRequestRow | null> {
-  const { data } = await supabase
-    .from('RefundRequest')
-    .select('*')
-    .eq('orderId', orderId)
-    .order('createdAt', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data ? mapRow(data) : null;
+  const data = (await convex().query(api.marketplace.refunds.latestForOrder, {
+    orderId,
+  })) as RefundRequestRow | null;
+  return data ?? null;
 }
 
 /**
@@ -157,24 +116,19 @@ export async function getRefundRequestsForSpace(
   spaceId: string,
   opts?: { status?: RefundRequestStatus },
 ): Promise<RefundRequestRow[]> {
-  const { data } = await supabase
-    .from('RefundRequest')
-    .select('*')
-    .eq('spaceId', spaceId)
-    .eq('status', opts?.status ?? 'requested')
-    .order('createdAt', { ascending: false })
-    .limit(200);
-  return (data ?? []).map(mapRow);
+  const data = (await convex().query(api.marketplace.refunds.listForSpace, {
+    spaceId,
+    status: opts?.status ?? undefined,
+  })) as RefundRequestRow[];
+  return data ?? [];
 }
 
 /** Load a single request by id, or null. Used by the seller-resolver guard. */
 async function getRefundRequestById(requestId: string): Promise<RefundRequestRow | null> {
-  const { data } = await supabase
-    .from('RefundRequest')
-    .select('*')
-    .eq('id', requestId)
-    .maybeSingle();
-  return data ? mapRow(data) : null;
+  const data = (await convex().query(api.marketplace.refunds.getById, {
+    id: requestId,
+  })) as RefundRequestRow | null;
+  return data ?? null;
 }
 
 /**
@@ -194,18 +148,15 @@ export async function approveRefundRequest(requestId: string): Promise<RefundReq
   // status='paid', so a stale call is a no-op rather than a second refund.
   await markOrderRefunded(request.orderId, 'Refund approved by seller');
 
-  const { data, error } = await supabase
-    .from('RefundRequest')
-    .update({ status: 'approved', resolvedAt: new Date().toISOString() })
-    .eq('id', requestId)
-    .eq('status', 'requested')
-    .select('*')
-    .maybeSingle();
-  if (error || !data) {
-    logger.error('[refunds] approveRefundRequest update failed', { requestId }, error ?? undefined);
+  const data = (await convex().mutation(api.marketplace.refunds.resolve, {
+    id: requestId,
+    status: 'approved',
+  })) as RefundRequestRow | null;
+  if (!data) {
+    logger.error('[refunds] approveRefundRequest update failed', { requestId });
     return null;
   }
-  return mapRow(data);
+  return data;
 }
 
 /**
@@ -217,16 +168,13 @@ export async function declineRefundRequest(requestId: string): Promise<RefundReq
   const request = await getRefundRequestById(requestId);
   if (!request || request.status !== 'requested') return null;
 
-  const { data, error } = await supabase
-    .from('RefundRequest')
-    .update({ status: 'declined', resolvedAt: new Date().toISOString() })
-    .eq('id', requestId)
-    .eq('status', 'requested')
-    .select('*')
-    .maybeSingle();
-  if (error || !data) {
-    logger.error('[refunds] declineRefundRequest update failed', { requestId }, error ?? undefined);
+  const data = (await convex().mutation(api.marketplace.refunds.resolve, {
+    id: requestId,
+    status: 'declined',
+  })) as RefundRequestRow | null;
+  if (!data) {
+    logger.error('[refunds] declineRefundRequest update failed', { requestId });
     return null;
   }
-  return mapRow(data);
+  return data;
 }

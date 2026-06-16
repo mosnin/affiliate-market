@@ -34,6 +34,7 @@
 
 import crypto from 'crypto';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server'; // Product reads (Product is Convex; Contact/Deal stay Supabase)
 import { logger } from '@/lib/logger';
 import { embed } from '@/lib/agent-memory/embed';
 
@@ -182,17 +183,6 @@ async function matchProductsByAddress(
   tokens: string[],
 ): Promise<ContextEntity[]> {
   if (tokens.length === 0) return [];
-  const orSpec = tokens.map((t) => `address.ilike.%${escapeIlike(t)}%`).join(',');
-  const { data, error } = await supabase
-    .from('Product')
-    .select('id, address, city, "listingStatus", "listPrice"')
-    .eq('spaceId', spaceId)
-    .or(orSpec)
-    .limit(MAX_NAME_MATCHES);
-  if (error) {
-    logger.warn('[vector-context] product address match failed', { spaceId }, error);
-    return [];
-  }
   type Row = {
     id: string;
     address: string;
@@ -200,7 +190,28 @@ async function matchProductsByAddress(
     listingStatus: string | null;
     listPrice: number | null;
   };
-  return ((data ?? []) as Row[]).map((r) => {
+  // Product is on Convex now. The old query matched the space's products whose
+  // address ILIKE any token; we list the space's (owned-only, matching the old
+  // `.eq('spaceId')`) products and filter by case-insensitive address substring,
+  // then cap at MAX_NAME_MATCHES.
+  let rows: Row[];
+  try {
+    const all = (await convex().query(api.marketplace.products.listForSpace, {
+      spaceId,
+    })) as Array<Row & { spaceId: string; address: string | null }>;
+    const lowered = tokens.map((t) => t.toLowerCase()).filter(Boolean);
+    rows = all
+      .filter((r) => r.spaceId === spaceId)
+      .filter((r) => {
+        const addr = (r.address ?? '').toLowerCase();
+        return addr && lowered.some((t) => addr.includes(t));
+      })
+      .slice(0, MAX_NAME_MATCHES) as Row[];
+  } catch (err) {
+    logger.warn('[vector-context] product address match failed', { spaceId, err: String(err) });
+    return [];
+  }
+  return rows.map((r) => {
     const parts: string[] = [];
     if (r.listingStatus) parts.push(r.listingStatus);
     if (r.listPrice != null) parts.push(`$${Math.round(r.listPrice).toLocaleString()}`);

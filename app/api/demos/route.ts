@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
@@ -13,23 +14,40 @@ export async function GET(req: NextRequest) {
   const status = req.nextUrl.searchParams.get('status');
   const upcoming = req.nextUrl.searchParams.get('upcoming');
 
-  let query = supabase
-    .from('Demo')
-    .select('*, Contact(id, name, email, phone)')
-    .eq('spaceId', space.id);
+  // upcoming=true forces the scheduled/confirmed pair + startsAt>=now; otherwise
+  // an optional single ?status= filter. Ordered by startsAt asc, capped at 100.
+  const statuses = upcoming === 'true'
+    ? (['scheduled', 'confirmed'] as const)
+    : status
+      ? ([status] as ('scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show')[])
+      : undefined;
+  const rows = await convex().query(api.demos.demos.listBySpace, {
+    spaceId: space.id,
+    ...(statuses ? { statuses: statuses as ('scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show')[] } : {}),
+    ...(upcoming === 'true' ? { startsAtGte: new Date().toISOString() } : {}),
+    order: 'asc',
+    limit: 100,
+  });
 
-  if (status) {
-    query = query.eq('status', status);
+  // The PostgREST `Contact(id, name, email, phone)` embed can't ride a Convex
+  // query — batch-resolve the linked contacts (Contact stays on Supabase) and
+  // stitch each onto its demo to preserve the response shape.
+  const contactIds = Array.from(
+    new Set(rows.map((d) => d.contactId).filter((id): id is string => Boolean(id))),
+  );
+  const contactMap = new Map<string, { id: string; name: string; email: string | null; phone: string | null }>();
+  if (contactIds.length > 0) {
+    const { data: contactRows } = await supabase
+      .from('Contact')
+      .select('id, name, email, phone')
+      .in('id', contactIds);
+    for (const c of (contactRows ?? []) as { id: string; name: string; email: string | null; phone: string | null }[]) {
+      contactMap.set(c.id, { id: c.id, name: c.name, email: c.email ?? null, phone: c.phone ?? null });
+    }
   }
+  const data = rows.map((d) => ({ ...d, Contact: d.contactId ? contactMap.get(d.contactId) ?? null : null }));
 
-  if (upcoming === 'true') {
-    query = query.gte('startsAt', new Date().toISOString()).in('status', ['scheduled', 'confirmed']);
-  }
-
-  const { data, error } = await query.order('startsAt', { ascending: true }).limit(100);
-  if (error) throw error;
-
-  return NextResponse.json(data ?? []);
+  return NextResponse.json(data);
 }
 
 export async function POST(req: NextRequest) {
@@ -71,35 +89,28 @@ export async function POST(req: NextRequest) {
   crypto.getRandomValues(tokenBytes);
   const manageToken = Array.from(tokenBytes, (b) => b.toString(16).padStart(2, '0')).join('');
 
-  // Route through the same atomic RPC the public /book endpoint uses — locks
-  // overlapping demos and rejects conflicts. Without this, an agent creating
-  // a manual demo on an already-booked slot silently double-books.
+  // Route through the same atomic booking the public /book endpoint uses —
+  // locks overlapping demos and rejects conflicts. Without this, an agent
+  // creating a manual demo on an already-booked slot silently double-books.
+  // The mutation returns the inserted row, so no follow-up fetch is needed.
   const demoId = crypto.randomUUID();
-  const { data: bookedId, error: rpcError } = await supabase.rpc('book_demo_atomic', {
-    p_id: demoId,
-    p_space_id: space.id,
-    p_contact_id: validContactId,
-    p_guest_name: guestName.trim(),
-    p_guest_email: guestEmail.trim().toLowerCase(),
-    p_guest_phone: guestPhone?.trim() || null,
-    p_product_address: productAddress?.trim() || null,
-    p_notes: notes?.trim() || null,
-    p_starts_at: start.toISOString(),
-    p_ends_at: end.toISOString(),
-    p_product_profile_id: null,
-    p_manage_token: manageToken,
+  const data = await convex().mutation(api.demos.demos.book, {
+    id: demoId,
+    spaceId: space.id,
+    contactId: validContactId,
+    guestName: guestName.trim(),
+    guestEmail: guestEmail.trim().toLowerCase(),
+    guestPhone: guestPhone?.trim() || null,
+    productAddress: productAddress?.trim() || null,
+    notes: notes?.trim() || null,
+    startsAt: start.toISOString(),
+    endsAt: end.toISOString(),
+    productProfileId: null,
+    manageToken,
   });
-  if (rpcError) throw rpcError;
-  if (!bookedId) {
+  if (!data) {
     return NextResponse.json({ error: 'This time slot conflicts with an existing demo' }, { status: 409 });
   }
-
-  const { data, error } = await supabase
-    .from('Demo')
-    .select('*')
-    .eq('id', demoId)
-    .single();
-  if (error) throw error;
 
   return NextResponse.json(data, { status: 201 });
 }

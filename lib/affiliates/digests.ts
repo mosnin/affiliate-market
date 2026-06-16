@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server'; // MarketplaceOrder reads (Convex); AffiliatePartner/Commission stay Supabase
 
 /**
  * Weekly digest data — the last 7 days, for the cron that emails both sides.
@@ -50,15 +51,18 @@ export interface SellerWeekly {
 /** A seller's last-7-days program activity. */
 export async function getSellerWeekly(spaceId: string): Promise<SellerWeekly> {
   const since = weekAgoIso();
-  const [ordersRes, newPartnersRes, pendingRes] = await Promise.all([
-    supabase.from('MarketplaceOrder').select('amountCents').eq('spaceId', spaceId).eq('status', 'paid').gte('paidAt', since),
+  // MarketplaceOrder is on Convex; AffiliatePartner stays on Supabase (hybrid).
+  const [amounts, newPartnersRes, pendingRes] = await Promise.all([
+    convex().query(api.marketplace.orders.paidAmountsForSpaceSince, {
+      spaceId,
+      since,
+    }) as Promise<number[]>,
     supabase.from('AffiliatePartner').select('id', { count: 'exact', head: true }).eq('spaceId', spaceId).gte('createdAt', since),
     supabase.from('AffiliatePartner').select('id', { count: 'exact', head: true }).eq('spaceId', spaceId).eq('status', 'pending'),
   ]);
-  const orders = ordersRes.data ?? [];
   return {
-    sales: orders.length,
-    revenueCents: orders.reduce((s, o) => s + (o.amountCents ?? 0), 0),
+    sales: amounts.length,
+    revenueCents: amounts.reduce((s, c) => s + (c ?? 0), 0),
     newPartners: newPartnersRes.count ?? 0,
     pendingPartners: pendingRes.count ?? 0,
   };
@@ -67,13 +71,17 @@ export async function getSellerWeekly(spaceId: string): Promise<SellerWeekly> {
 /** Distinct spaces with any program activity (orders/partners/commissions) in the window. */
 export async function listActiveSpacesForDigest(): Promise<string[]> {
   const since = weekAgoIso();
-  const [orders, partners, commissions] = await Promise.all([
-    supabase.from('MarketplaceOrder').select('spaceId').gte('createdAt', since),
+  // MarketplaceOrder is on Convex; AffiliatePartner/AffiliateCommission stay on
+  // Supabase (hybrid).
+  const [orderRows, partners, commissions] = await Promise.all([
+    convex().query(api.marketplace.orders.ordersForMetrics, { createdSince: since }) as Promise<
+      Array<{ spaceId: string }>
+    >,
     supabase.from('AffiliatePartner').select('spaceId').gte('createdAt', since),
     supabase.from('AffiliateCommission').select('spaceId').gte('createdAt', since),
   ]);
   const ids = new Set<string>();
-  for (const r of orders.data ?? []) ids.add(r.spaceId);
+  for (const r of orderRows) ids.add(r.spaceId);
   for (const r of partners.data ?? []) ids.add(r.spaceId);
   for (const r of commissions.data ?? []) ids.add(r.spaceId);
   return [...ids];

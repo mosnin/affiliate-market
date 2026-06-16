@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type { ApplicationData, LeadScoreDetails } from '@/lib/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -162,7 +163,7 @@ interface RawData {
 }
 
 export async function fetchRawAnalyticsData(spaceId: string): Promise<RawData> {
-  const [contactsRes, dealsRes, stagesRes, demosRes] = await Promise.all([
+  const [contactsRes, dealsRes, stagesRes, demos] = await Promise.all([
     supabase
       .from('Contact')
       .select('id, type, tags, leadScore, scoreLabel, scoringStatus, createdAt, applicationData, scoreDetails, leadType')
@@ -175,17 +176,15 @@ export async function fetchRawAnalyticsData(spaceId: string): Promise<RawData> {
       .from('DealStage')
       .select('id, name, color')
       .eq('spaceId', spaceId),
-    supabase
-      .from('Demo')
-      .select('id, status, createdAt')
-      .eq('spaceId', spaceId),
+    // All of a space's demos (id/status/createdAt are consumed downstream).
+    convex().query(api.demos.demos.listBySpace, { spaceId }),
   ]);
 
   return {
     contacts: (contactsRes.data ?? []) as RawData['contacts'],
     deals: (dealsRes.data ?? []) as RawData['deals'],
     stages: (stagesRes.data ?? []) as RawData['stages'],
-    demos: (demosRes.data ?? []) as RawData['demos'],
+    demos: demos as RawData['demos'],
   };
 }
 

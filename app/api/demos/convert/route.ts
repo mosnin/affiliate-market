@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 
 /**
@@ -19,13 +20,7 @@ export async function POST(req: NextRequest) {
   const { space } = auth;
 
   // Fetch the demo
-  const { data: demo, error: demoError } = await supabase
-    .from('Demo')
-    .select('*')
-    .eq('id', demoId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
-  if (demoError) throw demoError;
+  const demo = await convex().query(api.demos.demos.getByIdInSpace, { id: demoId, spaceId: space.id });
   if (!demo) return NextResponse.json({ error: 'Demo not found' }, { status: 404 });
 
   // Check if already converted
@@ -123,7 +118,7 @@ export async function POST(req: NextRequest) {
     if (dcError) console.error('[convert] DealContact link failed:', dcError);
     // Update demo with contact link if it wasn't set
     if (!demo.contactId) {
-      await supabase.from('Demo').update({ contactId }).eq('id', demoId);
+      await convex().mutation(api.demos.demos.setContactId, { id: demoId, contactId });
     }
   }
 

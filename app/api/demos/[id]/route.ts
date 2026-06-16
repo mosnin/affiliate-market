@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { sendDemoFollowUp, type DemoEmailData } from '@/lib/demo-emails';
@@ -7,8 +8,7 @@ import { fireAgentTrigger } from '@/lib/agent/fire-trigger';
 import { deleteGoogleEvent } from '@/lib/gcal-helpers';
 
 async function resolveDemo(userId: string, demoId: string) {
-  const { data: demo, error } = await supabase.from('Demo').select('*').eq('id', demoId).maybeSingle();
-  if (error) throw error;
+  const demo = await convex().query(api.demos.demos.getById, { id: demoId });
   if (!demo) return null;
   const space = await getSpaceForUser(userId);
   if (!space || demo.spaceId !== space.id) return null;
@@ -120,17 +120,24 @@ export async function PATCH(
     }
   }
 
-  const { data, error } = await supabase
-    .from('Demo')
-    .update(update)
-    .eq('id', id)
-    // resolveDemo proved space ownership at read time; scope the write
-    // by spaceId too so a between-check-and-write reassignment can't
-    // cross-tenant the row.
-    .eq('spaceId', ctx.space.id)
-    .select()
-    .single();
-  if (error) throw error;
+  // resolveDemo proved space ownership at read time; updateById scopes the
+  // write by spaceId too so a between-check-and-write reassignment can't
+  // cross-tenant the row. The mutation sets updatedAt itself; pass only the
+  // whitelisted fields the route validated above (null clears a nullable col).
+  const data = await convex().mutation(api.demos.demos.updateById, {
+    id,
+    spaceId: ctx.space.id,
+    ...(update.status !== undefined ? { status: update.status as 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show' } : {}),
+    ...(update.guestName !== undefined ? { guestName: update.guestName as string } : {}),
+    ...(update.guestEmail !== undefined ? { guestEmail: update.guestEmail as string } : {}),
+    ...(update.guestPhone !== undefined ? { guestPhone: update.guestPhone as string | null } : {}),
+    ...(update.productAddress !== undefined ? { productAddress: update.productAddress as string | null } : {}),
+    ...(update.notes !== undefined ? { notes: update.notes as string | null } : {}),
+    ...(update.startsAt !== undefined ? { startsAt: update.startsAt as string } : {}),
+    ...(update.endsAt !== undefined ? { endsAt: update.endsAt as string } : {}),
+    ...(update.contactId !== undefined ? { contactId: update.contactId as string | null } : {}),
+  });
+  if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   // Auto-create follow-up reminder when demo is completed (24h later)
   if (body.status === 'completed' && ctx.demo.status !== 'completed' && data.contactId) {
@@ -217,11 +224,11 @@ export async function PATCH(
       if (ok) {
         // Clear the stale id so a re-sync doesn't try to update a
         // deleted event. Best-effort — orphaned id is survivable.
-        await supabase
-          .from('Demo')
-          .update({ googleEventId: null })
-          .eq('id', id)
-          .eq('spaceId', ctx.space.id);
+        await convex().mutation(api.demos.demos.setGoogleEventId, {
+          id,
+          spaceId: ctx.space.id,
+          googleEventId: null,
+        });
       }
     });
   }
@@ -244,15 +251,10 @@ export async function DELETE(
   // Capture the GCal mirror id before the delete — once the row is
   // gone we can't look it up, and the seller's calendar would keep
   // a ghost slot indefinitely.
-  const googleEventId = ctx.demo.googleEventId as string | null | undefined;
+  const googleEventId = ctx.demo.googleEventId;
 
-  const { error } = await supabase
-    .from('Demo')
-    .delete()
-    .eq('id', id)
-    // Scope by spaceId so the delete can't cross-tenant on reassignment.
-    .eq('spaceId', ctx.space.id);
-  if (error) throw error;
+  // Scoped by spaceId so the delete can't cross-tenant on reassignment.
+  await convex().mutation(api.demos.demos.deleteById, { id, spaceId: ctx.space.id });
 
   // Fire-and-forget the GCal cleanup. The DB has already committed; a
   // GCal failure orphans the event and lib/gcal-helpers logs it.

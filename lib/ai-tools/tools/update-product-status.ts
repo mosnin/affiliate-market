@@ -12,7 +12,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
 
@@ -46,15 +46,10 @@ export const updateProductStatusTool = defineTool<typeof parameters, UpdateProdu
   },
 
   async handler(args, ctx) {
-    const { data: product, error: fetchErr } = await supabase
-      .from('Product')
-      .select('id, address, listingStatus')
-      .eq('id', args.productId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
-    if (fetchErr) {
-      return { summary: `Product lookup failed: ${fetchErr.message}`, display: 'error' };
-    }
+    const product = await convex().query(api.marketplace.products.getByIdInSpace, {
+      id: args.productId,
+      spaceId: ctx.space.id,
+    });
     if (!product) {
       return { summary: `No product with id "${args.productId}".`, display: 'error' };
     }
@@ -68,14 +63,14 @@ export const updateProductStatusTool = defineTool<typeof parameters, UpdateProdu
       };
     }
 
-    const { error: updateErr } = await supabase
-      .from('Product')
-      .update({ listingStatus: args.newStatus, updatedAt: new Date().toISOString() })
-      .eq('id', args.productId)
-      .eq('spaceId', ctx.space.id);
-    if (updateErr) {
-      logger.error('[tools.update_product_status] update failed', { productId: args.productId }, updateErr);
-      return { summary: `Update failed: ${updateErr.message}`, display: 'error' };
+    const updateRes = await convex().mutation(api.marketplace.products.update, {
+      id: args.productId,
+      spaceId: ctx.space.id,
+      fields: { listingStatus: args.newStatus },
+    });
+    if (!updateRes.ok) {
+      logger.error('[tools.update_product_status] update failed', { productId: args.productId, error: updateRes.error });
+      return { summary: `Update failed: ${updateRes.error}`, display: 'error' };
     }
 
     return {

@@ -49,6 +49,26 @@ vi.mock('@/lib/supabase', () => {
   return { supabase: { from: vi.fn((table: string) => makeChain(table)) } };
 });
 
+// ── Convex mock — Product reads/writes (add_product, send_product_packet's
+// product lookup) moved off Supabase. `api` is a path proxy; steer the
+// product mutations/queries via convexMutationMock/convexQueryMock. Deal /
+// Space / Contact / Attachment stay on Supabase (above) — these tools are
+// hybrid.
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
 import { addProductTool } from '@/lib/ai-tools/tools/add-product';
 import { updateDealProbabilityTool } from '@/lib/ai-tools/tools/update-deal-probability';
 import { requestDealReviewTool } from '@/lib/ai-tools/tools/request-deal-review';
@@ -66,6 +86,8 @@ function makeCtx(): ToolContext {
 
 beforeEach(() => {
   mockByTable = {};
+  convexQueryMock.mockReset();
+  convexMutationMock.mockReset();
 });
 
 // ── add_product ─────────────────────────────────────────────────────────
@@ -80,7 +102,12 @@ describe('addProductTool', () => {
   });
 
   it('inserts with defaults and echoes the address', async () => {
-    mockByTable = { Product: { rows: [], error: null } };
+    // add_product writes via api.marketplace.products.create, which returns
+    // { ok, product } on success.
+    convexMutationMock.mockResolvedValueOnce({
+      ok: true,
+      product: { id: 'p_new', address: '412 Elm St', listingStatus: 'active' },
+    });
     const result = await addProductTool.handler(
       { address: '412 Elm St', listPrice: 850_000 },
       makeCtx(),
@@ -92,7 +119,9 @@ describe('addProductTool', () => {
   });
 
   it('returns error when Product insert fails', async () => {
-    mockByTable = { Product: { error: { message: 'unique violation' } } };
+    // products.create reports failures as { ok: false, error } — the tool
+    // surfaces res.error in the summary.
+    convexMutationMock.mockResolvedValueOnce({ ok: false, error: 'unique violation' });
     const result = await addProductTool.handler(
       { address: '412 Elm St' },
       makeCtx(),

@@ -138,15 +138,15 @@ describe('findComparableProductsTool', () => {
   });
 
   it('caps results at 6 and sorts by closeness to price midpoint', async () => {
-    mockByTable = {
-      Product: {
-        rows: [
-          { id: 'p1', address: '1 A St', city: 'X', beds: 3, baths: 2, listPrice: 1_000_000, listingStatus: 'active', updatedAt: '2026-01-01' },
-          { id: 'p2', address: '2 B St', city: 'X', beds: 3, baths: 2, listPrice: 510_000, listingStatus: 'active', updatedAt: '2026-01-02' },
-          { id: 'p3', address: '3 C St', city: 'X', beds: 3, baths: 2, listPrice: 490_000, listingStatus: 'active', updatedAt: '2026-01-03' },
-        ],
-      },
-    };
+    // Product is on Convex now — find_comparable_products lists the space's
+    // products via api.marketplace.products.listForSpace and filters/sorts
+    // in-process. Rows carry spaceId so the tool's `spaceId === ctx.space.id`
+    // scope passes.
+    convexQueryMock.mockResolvedValueOnce([
+      { id: 'p1', spaceId: 'space_1', address: '1 A St', city: 'X', beds: 3, baths: 2, listPrice: 1_000_000, listingStatus: 'active', updatedAt: '2026-01-01' },
+      { id: 'p2', spaceId: 'space_1', address: '2 B St', city: 'X', beds: 3, baths: 2, listPrice: 510_000, listingStatus: 'active', updatedAt: '2026-01-02' },
+      { id: 'p3', spaceId: 'space_1', address: '3 C St', city: 'X', beds: 3, baths: 2, listPrice: 490_000, listingStatus: 'active', updatedAt: '2026-01-03' },
+    ]);
     const result = await findComparableProductsTool.handler(
       { priceMin: 400_000, priceMax: 600_000 },
       makeCtx(),
@@ -223,9 +223,15 @@ describe('checkAvailabilityTool', () => {
   });
 
   it('reports a Demo conflict in the conflicts array', async () => {
-    mockByTable = {
-      Demo: {
-        rows: [
+    // check_availability fans out two Convex queries in parallel: the Demo
+    // overlap (api.demos.demos.listBySpace) and the CalendarEvent overlap
+    // (api.calendar.events.listByDateRange). Branch on the fn path so the
+    // demo query returns the conflicting row and the calendar query stays
+    // empty, regardless of Promise.all settle order.
+    convexQueryMock.mockImplementation(async (ref: unknown) => {
+      const p = typeof ref === 'function' ? (ref as () => string)() : '';
+      if (p.includes('demos')) {
+        return [
           {
             id: 't1',
             startsAt: '2026-05-01T14:30:00.000Z',
@@ -233,10 +239,10 @@ describe('checkAvailabilityTool', () => {
             productAddress: '123 Main',
             guestName: 'Alex',
           },
-        ],
-      },
-      CalendarEvent: { rows: [] },
-    };
+        ];
+      }
+      return [];
+    });
     const result = await checkAvailabilityTool.handler(
       { from: '2026-05-01T14:00:00.000Z', to: '2026-05-01T16:00:00.000Z' },
       makeCtx(),

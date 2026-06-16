@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { auth } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import {
   DropdownMenu,
@@ -123,12 +124,7 @@ export default async function DealDetailPage({
     // don't join here — Product rows can be referenced from multiple deals.
     const linkedProductId = (dealRow.productId as string | null | undefined) ?? null;
     if (linkedProductId) {
-      const { data: propData } = await supabase
-        .from('Product')
-        .select('*')
-        .eq('id', linkedProductId)
-        .eq('spaceId', space.id)
-        .maybeSingle();
+      const propData = await convex().query(api.marketplace.products.getByIdInSpace, { id: linkedProductId, spaceId: space.id });
       linkedProduct = (propData as Product | null) ?? null;
     }
     // Lookup whether this deal already has an open manager review request.

@@ -12,7 +12,7 @@
  */
 
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server'; // Product reads (Product is Convex)
 
 // ── Public payload shapes ────────────────────────────────────────────────────
 
@@ -182,6 +182,7 @@ function priceForComp(row: {
 
 interface ProductRow {
   id: string;
+  spaceId: string;
   address: string;
   city: string | null;
   stateRegion: string | null;
@@ -266,15 +267,13 @@ export async function buildCma(args: BuildCmaArgs): Promise<CmaPayload> {
   // ── Resolve the subject ───────────────────────────────────────────────────
   let subject: CmaSubject;
   if (subjectProductId) {
-    const { data, error } = await supabase
-      .from('Product')
-      .select(COMP_SELECT)
-      .eq('id', subjectProductId)
-      .eq('spaceId', spaceId)
-      .maybeSingle();
-    if (error) throw new Error(`Subject lookup failed: ${error.message}`);
+    // Product is on Convex now; the full row carries every COMP_SELECT column.
+    const data = (await convex().query(api.marketplace.products.getByIdInSpace, {
+      id: subjectProductId,
+      spaceId,
+    })) as ProductRow | null;
     if (!data) throw new Error('Subject product not found.');
-    const row = data as ProductRow;
+    const row = data;
     subject = {
       productId: row.id,
       address: row.address,
@@ -304,15 +303,14 @@ export async function buildCma(args: BuildCmaArgs): Promise<CmaPayload> {
 
   // ── Pull candidate comps from this space ──────────────────────────────────
   // Over-fetch and score in memory (small data, same as find_comparable).
-  const { data, error } = await supabase
-    .from('Product')
-    .select(COMP_SELECT)
-    .eq('spaceId', spaceId)
-    .order('updatedAt', { ascending: false })
-    .limit(50);
-  if (error) throw new Error(`Comp lookup failed: ${error.message}`);
-
-  let rows = (data ?? []) as ProductRow[];
+  // listForSpace returns owned + assigned-pool products newest-updated first;
+  // the old query was `.eq('spaceId')` only, so keep owned-only here, then cap to
+  // 50 to match the old .limit(50).
+  const allForSpace = (await convex().query(api.marketplace.products.listForSpace, {
+    spaceId,
+    order: 'updated',
+  })) as ProductRow[];
+  let rows = allForSpace.filter((r) => r.spaceId === spaceId).slice(0, 50);
   // Never include the subject itself as its own comp.
   if (subject.productId) rows = rows.filter((r) => r.id !== subject.productId);
 

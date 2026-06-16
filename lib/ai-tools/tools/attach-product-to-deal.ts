@@ -10,6 +10,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { syncDeal } from '@/lib/vectorize';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
@@ -53,15 +54,10 @@ export const attachProductToDealTool = defineTool<typeof parameters, AttachProdu
       return { summary: `No deal with id "${args.dealId}".`, display: 'error' };
     }
 
-    const { data: product, error: propErr } = await supabase
-      .from('Product')
-      .select('id, address')
-      .eq('id', args.productId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
-    if (propErr) {
-      return { summary: `Product lookup failed: ${propErr.message}`, display: 'error' };
-    }
+    const product = await convex().query(api.marketplace.products.getByIdInSpace, {
+      id: args.productId,
+      spaceId: ctx.space.id,
+    });
     if (!product) {
       return { summary: `No product with id "${args.productId}" in this workspace.`, display: 'error' };
     }
@@ -69,7 +65,7 @@ export const attachProductToDealTool = defineTool<typeof parameters, AttachProdu
     if (deal.productId === product.id) {
       return {
         summary: `"${deal.title}" is already linked to ${product.address}.`,
-        data: { dealId: deal.id, productId: product.id, address: product.address },
+        data: { dealId: deal.id, productId: product.id, address: product.address ?? '' },
         display: 'plain',
       };
     }
@@ -109,7 +105,7 @@ export const attachProductToDealTool = defineTool<typeof parameters, AttachProdu
 
     return {
       summary: `Linked "${deal.title}" → ${product.address}.`,
-      data: { dealId: args.dealId, productId: product.id, address: product.address },
+      data: { dealId: args.dealId, productId: product.id, address: product.address ?? '' },
       display: 'success',
     };
   },

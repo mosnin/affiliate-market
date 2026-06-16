@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -19,7 +20,7 @@ export async function GET(
   const { userId } = authResult;
   const { id } = await params;
 
-  const { data: demo } = await supabase.from('Demo').select('*').eq('id', id).maybeSingle();
+  const demo = await convex().query(api.demos.demos.getById, { id });
   if (!demo) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const space = await getSpaceForUser(userId);
@@ -107,13 +108,11 @@ export async function GET(
     }
 
     // Count previous demos
-    const { count } = await supabase
-      .from('Demo')
-      .select('*', { count: 'exact', head: true })
-      .eq('contactId', demo.contactId)
-      .in('status', ['completed', 'confirmed', 'scheduled'])
-      .neq('id', id);
-    prep.previousDemos = count ?? 0;
+    prep.previousDemos = await convex().query(api.demos.demos.countByContact, {
+      contactId: demo.contactId,
+      statuses: ['completed', 'confirmed', 'scheduled'],
+      excludeId: id,
+    });
   }
 
   // Generate talking points based on available data

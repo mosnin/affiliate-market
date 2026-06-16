@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';
@@ -83,7 +84,7 @@ export default async function PublicApplyPage({
   // Use two queries: one for core fields (always exist), one for customization (may not exist yet).
   // ProfilePage is read so the intake hero can reach for the same cover photo
   // the public /p/[slug] surface already renders — single source of identity material.
-  const [{ data: coreSettings }, { data: customSettings }, { data: ownerData }, { data: profileRow }] = await Promise.all([
+  const [{ data: coreSettings }, { data: customSettings }, { data: ownerData }, profileRow] = await Promise.all([
     supabase
       .from('SpaceSetting')
       .select('intakePageTitle, intakePageIntro, businessName, logoUrl, sellerPhotoUrl, privacyPolicyHtml, isVerified')
@@ -108,11 +109,7 @@ export default async function PublicApplyPage({
       .select('name, avatar, clerkId')
       .eq('id', space.ownerId)
       .maybeSingle(),
-    supabase
-      .from('ProfilePage')
-      .select('coverPhotoUrl, profilePhotoUrl')
-      .eq('spaceId', space.id)
-      .maybeSingle(),
+    convex().query(api.marketplace.profiles.getBySpace, { spaceId: space.id }),
   ]);
 
   const settingsData = { ...((coreSettings ?? {}) as any), ...((customSettings ?? {}) as any) };

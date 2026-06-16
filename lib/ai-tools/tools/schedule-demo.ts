@@ -24,6 +24,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
 import { assertCanSpend, chargeWorkflow, CreditsExhaustedError } from '@/lib/billing/meter';
@@ -144,11 +145,9 @@ export const scheduleDemoTool = defineTool<typeof parameters, ScheduleDemoResult
       }
     }
 
-    const demoId = crypto.randomUUID();
-    const { data: inserted, error: insertErr } = await supabase
-      .from('Demo')
-      .insert({
-        id: demoId,
+    let inserted: { id: string; startsAt: string; endsAt: string };
+    try {
+      inserted = await convex().mutation(api.demos.demos.create, {
         spaceId: ctx.space.id,
         contactId,
         guestName: guestName.trim(),
@@ -158,21 +157,20 @@ export const scheduleDemoTool = defineTool<typeof parameters, ScheduleDemoResult
         notes: args.notes?.trim() || null,
         startsAt: new Date(args.startsAt).toISOString(),
         endsAt: new Date(args.endsAt).toISOString(),
-        status: 'scheduled',
-      })
-      .select('id, startsAt, endsAt')
-      .single();
-    if (insertErr || !inserted) {
+      });
+    } catch (insertErr) {
+      const message = insertErr instanceof Error ? insertErr.message : 'unknown error';
       logger.error(
         '[tools.schedule_demo] insert failed',
         { spaceId: ctx.space.id },
         insertErr,
       );
       return {
-        summary: `Failed to schedule demo: ${insertErr?.message ?? 'unknown error'}`,
+        summary: `Failed to schedule demo: ${message}`,
         display: 'error',
       };
     }
+    const demoId = inserted.id;
 
     // Audit the demo on the Contact's activity feed when linked.
     if (contactId) {

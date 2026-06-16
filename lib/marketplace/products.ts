@@ -1,4 +1,5 @@
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase'; // Space lookup only (Space stays on Supabase — hybrid file)
+import { convex, api } from '@/lib/convex-server';
 import { getRatingForProducts } from '@/lib/marketplace/reviews';
 
 export interface MarketplaceProduct {
@@ -59,9 +60,6 @@ export function formatPrice(p: {
   return dollars;
 }
 
-const PRODUCT_COLUMNS =
-  'id, spaceId, name, address, tagline, longDescription, category, pricingModel, priceCents, currency, billingPeriod, features, logoUrl, websiteUrl, marketplaceSlug, published, featured, verified';
-
 interface ProductRow {
   id: string;
   spaceId: string;
@@ -92,8 +90,8 @@ async function decorate(rows: ProductRow[]): Promise<MarketplaceProduct[]> {
   if (rows.length === 0) return [];
   const visible = rows.filter((r) => r.marketplaceSlug);
   const spaceIds = [...new Set(visible.map((r) => r.spaceId))];
-  // Batch the seller lookup and the rating aggregate together — one round trip
-  // each, no N+1 as the list grows.
+  // Batch the seller lookup (Space — stays on Supabase) and the rating aggregate
+  // (Review — Convex, via getRatingForProducts) together — one round trip each.
   const [{ data: spaces }, ratings] = await Promise.all([
     supabase.from('Space').select('id, slug, name').in('id', spaceIds),
     getRatingForProducts(visible.map((r) => r.id)),
@@ -132,40 +130,41 @@ export async function getPublishedProducts(filter?: {
   category?: string;
   q?: string;
 }): Promise<MarketplaceProduct[]> {
-  let query = supabase
-    .from('Product')
-    .select(PRODUCT_COLUMNS)
-    .eq('published', true)
-    .not('marketplaceSlug', 'is', null)
-    .order('featured', { ascending: false })
-    .order('updatedAt', { ascending: false })
-    .limit(60);
+  // Published catalog (optional category filter), sorted featured-first then
+  // updatedAt desc, capped 60 — all inside the Convex query.
+  const rows = (await convex().query(api.marketplace.products.listPublished, {
+    category: filter?.category ?? undefined,
+  })) as ProductRow[];
 
-  if (filter?.category) query = query.eq('category', filter.category);
+  // Free-text search stays here: filter the returned rows on name/tagline (the
+  // old `.or(name.ilike,tagline.ilike)`), wildcards stripped exactly as before.
+  let out = rows;
   if (filter?.q) {
-    const q = filter.q.replace(/[%_]/g, '').trim();
-    if (q) query = query.or(`name.ilike.%${q}%,tagline.ilike.%${q}%`);
+    const q = filter.q.replace(/[%_]/g, '').trim().toLowerCase();
+    if (q) {
+      out = rows.filter(
+        (r) =>
+          (r.name ?? '').toLowerCase().includes(q) ||
+          (r.tagline ?? '').toLowerCase().includes(q),
+      );
+    }
   }
-
-  const { data } = await query;
-  return decorate((data ?? []) as ProductRow[]);
+  return decorate(out);
 }
 
 export async function getProductBySlug(
   marketplaceSlug: string,
 ): Promise<MarketplaceProduct | null> {
-  const { data } = await supabase
-    .from('Product')
-    .select(PRODUCT_COLUMNS)
-    .eq('marketplaceSlug', marketplaceSlug)
-    .eq('published', true)
-    .maybeSingle();
+  const data = (await convex().query(api.marketplace.products.getBySlugPublished, {
+    marketplaceSlug,
+  })) as ProductRow | null;
   if (!data) return null;
-  const [product] = await decorate([data as ProductRow]);
+  const [product] = await decorate([data]);
   return product ?? null;
 }
 
 export async function getProductsForSeller(sellerSlug: string): Promise<MarketplaceProduct[]> {
+  // Space (slug → id) stays on Supabase.
   const { data: space } = await supabase
     .from('Space')
     .select('id')
@@ -173,12 +172,8 @@ export async function getProductsForSeller(sellerSlug: string): Promise<Marketpl
     .maybeSingle();
   if (!space) return [];
 
-  const { data } = await supabase
-    .from('Product')
-    .select(PRODUCT_COLUMNS)
-    .eq('spaceId', space.id)
-    .eq('published', true)
-    .not('marketplaceSlug', 'is', null)
-    .order('updatedAt', { ascending: false });
-  return decorate((data ?? []) as ProductRow[]);
+  const rows = (await convex().query(api.marketplace.products.listPublishedForSpace, {
+    spaceId: space.id,
+  })) as ProductRow[];
+  return decorate(rows);
 }

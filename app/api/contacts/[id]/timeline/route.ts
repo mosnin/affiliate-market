@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -35,15 +36,14 @@ export async function GET(
   }> = [];
 
   // Fetch demos for this contact
-  const { data: demos } = await supabase
-    .from('Demo')
-    .select('id, startsAt, endsAt, status, productAddress, createdAt, updatedAt')
-    .eq('contactId', contactId)
-    .eq('spaceId', space.id)
-    .order('startsAt', { ascending: false })
-    .limit(50);
+  const demos = await convex().query(api.demos.demos.listByContact, {
+    contactId,
+    spaceId: space.id,
+    order: 'desc',
+    limit: 50,
+  });
 
-  for (const t of demos ?? []) {
+  for (const t of demos) {
     const dateStr = new Date(t.startsAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     const timeStr = new Date(t.startsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 

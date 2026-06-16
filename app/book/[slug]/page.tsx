@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import type { Viewport } from 'next';
 import { getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';
 import { BookingForm } from './booking-form';
@@ -97,18 +98,12 @@ export default async function PublicBookingPage({
 
   // Resolve the same identity material as /p/[slug] so the booking page
   // is visually consistent with the rest of the applicant-facing family.
-  const { data: profileRow } = await supabase
-    .from('ProfilePage')
-    .select('coverPhotoUrl, profilePhotoUrl')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const profileRow = await convex().query(api.marketplace.profiles.getBySpace, {
+    spaceId: space.id,
+  });
   const [agentPhoto, coverPhotoUrl] = await Promise.all([
-    resolveStoredPhoto(
-      (profileRow as { profilePhotoUrl?: string | null } | null)?.profilePhotoUrl ?? rawAgentPhoto,
-    ),
-    resolveStoredPhoto(
-      (profileRow as { coverPhotoUrl?: string | null } | null)?.coverPhotoUrl ?? null,
-    ),
+    resolveStoredPhoto(profileRow?.profilePhotoUrl ?? rawAgentPhoto),
+    resolveStoredPhoto(profileRow?.coverPhotoUrl ?? null),
   ]);
 
   // Gate on subscription status — only pause forms for explicitly failed billing

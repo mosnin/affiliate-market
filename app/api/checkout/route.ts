@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getStripe } from '@/lib/stripe';
 import { REF_COOKIE } from '@/lib/affiliates/tracking';
 import { getLinkByCode, normalizeVanityCode } from '@/lib/affiliates/links';
@@ -40,13 +40,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'A valid email is required.' }, { status: 400 });
   }
 
-  const { data: product } = await supabase
-    .from('Product')
-    .select(
-      'id, spaceId, name, address, priceCents, currency, pricingModel, billingPeriod, published, marketplaceSlug',
-    )
-    .eq('id', productId)
-    .maybeSingle();
+  const product = await convex().query(api.marketplace.products.getById, { id: productId });
 
   if (!product || !product.published) {
     return NextResponse.json({ error: 'Product not available.' }, { status: 404 });

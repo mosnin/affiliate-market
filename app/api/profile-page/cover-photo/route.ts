@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { uploadObject, buildKey, getSignedDownloadUrl, deleteObject } from '@/lib/storage';
@@ -120,34 +120,26 @@ export async function POST(req: NextRequest) {
   // revert; replacement is the explicit "I'm done with that photo"
   // signal, so we clean up. Without this, every cover-photo change
   // leaked the prior object into permanent storage with no DB pointer.
-  const { data: existing } = await supabase
-    .from('ProfilePage')
-    .select('coverPhotoUrl')
-    .eq('spaceId', space.id)
-    .maybeSingle();
-  const previousKey = (existing as { coverPhotoUrl?: string | null } | null)?.coverPhotoUrl ?? null;
+  const existing = await convex().query(api.marketplace.profiles.getBySpace, {
+    spaceId: space.id,
+  });
+  const previousKey = existing?.coverPhotoUrl ?? null;
 
   // Store the STORAGE KEY (not a URL) in coverPhotoUrl. The public page
   // signs a fresh download URL on each render. The column name keeps its
   // historical shape — what changes is the value contract: keys that don't
   // start with `http` are signed on read; any legacy `http(s)://...` value
   // is rendered verbatim.
-  const { error: dbErr } = await supabase
-    .from('ProfilePage')
-    .upsert(
-      {
-        spaceId: space.id,
-        coverPhotoUrl: key,
-        updatedAt: new Date().toISOString(),
-      },
-      { onConflict: 'spaceId' },
-    );
-
-  if (dbErr) {
+  try {
+    await convex().mutation(api.marketplace.profiles.upsert, {
+      spaceId: space.id,
+      fields: { coverPhotoUrl: key },
+    });
+  } catch (dbErr) {
     logger.error(
       '[profile-cover] db write failed',
       { spaceId: space.id },
-      dbErr,
+      dbErr as Error,
     );
     return NextResponse.json({ error: 'Save failed.' }, { status: 500 });
   }
@@ -192,22 +184,16 @@ export async function DELETE() {
   // We don't delete the underlying object — the seller may want to revert,
   // and the row is the source of truth for what's "live." Lifecycle cleanup
   // for orphaned cover images is a separate concern (Wasabi lifecycle rule).
-  const { error: dbErr } = await supabase
-    .from('ProfilePage')
-    .upsert(
-      {
-        spaceId: space.id,
-        coverPhotoUrl: null,
-        updatedAt: new Date().toISOString(),
-      },
-      { onConflict: 'spaceId' },
-    );
-
-  if (dbErr) {
+  try {
+    await convex().mutation(api.marketplace.profiles.upsert, {
+      spaceId: space.id,
+      fields: { coverPhotoUrl: null },
+    });
+  } catch (dbErr) {
     logger.error(
       '[profile-cover] db clear failed',
       { spaceId: space.id },
-      dbErr,
+      dbErr as Error,
     );
     return NextResponse.json({ error: 'Could not remove cover.' }, { status: 500 });
   }

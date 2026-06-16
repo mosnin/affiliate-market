@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { uploadObject, buildKey, getSignedDownloadUrl, deleteObject } from '@/lib/storage';
@@ -104,23 +104,24 @@ export async function POST(req: NextRequest) {
   // Capture the previous key before the upsert overwrites it — same
   // orphan-on-replace fix as cover-photo. DELETE intentionally keeps the
   // object for revert; POST is an explicit replacement signal.
-  const { data: existing } = await supabase
-    .from('ProfilePage')
-    .select('profilePhotoUrl')
-    .eq('spaceId', space.id)
-    .maybeSingle();
-  const previousKey = (existing as { profilePhotoUrl?: string | null } | null)?.profilePhotoUrl ?? null;
+  const existing = await convex().query(api.marketplace.profiles.getBySpace, {
+    spaceId: space.id,
+  });
+  const previousKey = existing?.profilePhotoUrl ?? null;
 
-  const { error: dbErr } = await supabase
-    .from('ProfilePage')
-    .upsert(
-      {
-        spaceId: space.id,
-        profilePhotoUrl: key,
-        updatedAt: new Date().toISOString(),
-      },
-      { onConflict: 'spaceId' },
-    );
+  // Mirror the original sequencing: attempt the write, but fire the
+  // previous-object cleanup regardless of its outcome before surfacing a
+  // failure. Convex throws instead of returning an error tuple, so capture
+  // it rather than returning inline.
+  let dbErr: Error | null = null;
+  try {
+    await convex().mutation(api.marketplace.profiles.upsert, {
+      spaceId: space.id,
+      fields: { profilePhotoUrl: key },
+    });
+  } catch (err) {
+    dbErr = err as Error;
+  }
 
   if (previousKey && !/^https?:\/\//i.test(previousKey)) {
     void deleteObject(previousKey).catch((err) =>
@@ -161,22 +162,16 @@ export async function DELETE() {
   const space = await getSpaceForUser(userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { error: dbErr } = await supabase
-    .from('ProfilePage')
-    .upsert(
-      {
-        spaceId: space.id,
-        profilePhotoUrl: null,
-        updatedAt: new Date().toISOString(),
-      },
-      { onConflict: 'spaceId' },
-    );
-
-  if (dbErr) {
+  try {
+    await convex().mutation(api.marketplace.profiles.upsert, {
+      spaceId: space.id,
+      fields: { profilePhotoUrl: null },
+    });
+  } catch (dbErr) {
     logger.error(
       '[profile-photo] db clear failed',
       { spaceId: space.id },
-      dbErr,
+      dbErr as Error,
     );
     return NextResponse.json({ error: 'Could not remove photo.' }, { status: 500 });
   }

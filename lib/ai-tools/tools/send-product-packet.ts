@@ -16,6 +16,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
 
@@ -73,15 +74,10 @@ export const sendProductPacketTool = defineTool<typeof parameters, SendProductPa
       return { summary: `No contact with id "${args.contactId}".`, display: 'error' };
     }
 
-    const { data: product, error: productErr } = await supabase
-      .from('Product')
-      .select('id, address')
-      .eq('id', args.productId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
-    if (productErr) {
-      return { summary: `Product lookup failed: ${productErr.message}`, display: 'error' };
-    }
+    const product = await convex().query(api.marketplace.products.getByIdInSpace, {
+      id: args.productId,
+      spaceId: ctx.space.id,
+    });
     if (!product) {
       return { summary: `No product with id "${args.productId}".`, display: 'error' };
     }

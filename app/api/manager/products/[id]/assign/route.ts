@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { resolveManagerContext } from '@/lib/agent/manager-context';
 import { logger } from '@/lib/logger';
 
@@ -33,12 +34,8 @@ export async function PATCH(
   }
 
   // The product must be in this company's pool.
-  const { data: prop } = await supabase
-    .from('Product')
-    .select('id, companyId')
-    .eq('id', id)
-    .maybeSingle();
-  if (!prop || (prop as { companyId?: string }).companyId !== ctx.company.id) {
+  const prop = await convex().query(api.marketplace.products.getById, { id });
+  if (!prop || prop.companyId !== ctx.company.id) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
@@ -58,16 +55,14 @@ export async function PATCH(
     }
   }
 
-  const { data, error } = await supabase
-    .from('Product')
-    .update({ assignedSpaceId: target, updatedAt: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) {
-    logger.error('[manager/products/assign] update failed', { companyId: ctx.company.id, id }, error);
+  const result = await convex().mutation(api.marketplace.products.setAssignedSpace, {
+    id,
+    assignedSpaceId: target,
+  });
+  if (!result.ok) {
+    logger.error('[manager/products/assign] update failed', { companyId: ctx.company.id, id, error: result.error });
     return NextResponse.json({ error: 'Failed to assign product' }, { status: 500 });
   }
 
-  return NextResponse.json(data);
+  return NextResponse.json(result.product);
 }

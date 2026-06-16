@@ -11,7 +11,7 @@
  *   - Demo later today: 0.85 (prep)
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type { Signal, SignalGatherer } from '../types';
 
 const MS_PER_HOUR = 1000 * 60 * 60;
@@ -43,19 +43,24 @@ export const calendarSource: SignalGatherer = {
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(0, 0, 0, 0);
 
-    const { data, error } = await supabase
-      .from('Demo')
-      .select('id, startsAt, contactId, guestName, productAddress, status')
-      .eq('spaceId', spaceId)
-      .gte('startsAt', now.toISOString())
-      .lt('startsAt', tomorrow.toISOString())
-      .neq('status', 'cancelled');
-
-    if (error || !data) return [];
+    let data: DemoRow[];
+    try {
+      // Cola-internal demos starting between now and tomorrow midnight, excluding
+      // cancelled (status filtered in-handler; the route's .neq('cancelled')).
+      data = (await convex().query(api.demos.demos.listBySpace, {
+        spaceId,
+        statuses: ['scheduled', 'confirmed', 'completed', 'no_show'],
+        startsAtGte: now.toISOString(),
+        startsAtLt: tomorrow.toISOString(),
+        order: 'asc',
+      })) as DemoRow[];
+    } catch {
+      return [];
+    }
 
     const signals: Signal[] = [];
 
-    for (const demo of data as DemoRow[]) {
+    for (const demo of data) {
       const startDate = new Date(demo.startsAt);
       if (isNaN(startDate.getTime())) continue;
 

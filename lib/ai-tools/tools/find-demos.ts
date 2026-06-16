@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
 const parameters = z
@@ -49,25 +49,32 @@ export const findDemosTool = defineTool<typeof parameters, FindDemosResult>({
   requiresApproval: false,
 
   async handler(args, ctx) {
-    let query = supabase
-      .from('Demo')
-      .select('id, startsAt, endsAt, productAddress, guestName, status')
-      .eq('spaceId', ctx.space.id)
-      .order('startsAt', { ascending: true })
-      .limit(20);
-
-    if (args.personId) query = query.eq('contactId', args.personId);
-    if (args.productId) query = query.eq('productId', args.productId);
-    if (args.status) query = query.eq('status', args.status);
-    if (args.fromDate) query = query.gte('startsAt', args.fromDate);
-    if (args.toDate) query = query.lte('startsAt', args.toDate);
-
-    const { data, error } = await query.abortSignal(ctx.signal);
-    if (error) {
-      return { summary: `Demo lookup failed: ${error.message}`, display: 'error' };
+    let demos: DemoRow[];
+    try {
+      // Fetch the space's demos with the filters listBySpace supports natively
+      // (status / startsAt range / product), ordered by startsAt. personId
+      // (contactId) isn't an index field here, so narrow it in-process and
+      // apply the 20-row cap last so the contact filter can't be truncated.
+      const rows = (await convex().query(api.demos.demos.listBySpace, {
+        spaceId: ctx.space.id,
+        order: 'asc',
+        // Only cap at the query when there's no in-process contact filter to
+        // apply afterward — otherwise the cap could truncate matches.
+        ...(args.personId ? {} : { limit: 20 }),
+        ...(args.status ? { statuses: [args.status] } : {}),
+        ...(args.fromDate ? { startsAtGte: args.fromDate } : {}),
+        ...(args.toDate ? { startsAtLte: args.toDate } : {}),
+        ...(args.productId ? { productId: args.productId } : {}),
+      })) as Array<DemoRow & { contactId: string | null }>;
+      const matched = args.personId
+        ? rows.filter((d) => d.contactId === args.personId)
+        : rows;
+      demos = matched.slice(0, 20);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      return { summary: `Demo lookup failed: ${message}`, display: 'error' };
     }
 
-    const demos = (data ?? []) as DemoRow[];
     if (demos.length === 0) {
       return {
         summary: 'No demos matched.',

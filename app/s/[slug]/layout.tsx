@@ -7,6 +7,7 @@ import { SidebarCollapseProvider } from '@/components/dashboard/sidebar-collapse
 import { MobileNav } from '@/components/dashboard/mobile-nav';
 import { Header } from '@/components/dashboard/header';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { ensureOnboardingBackfill } from '@/lib/onboarding';
 import { getManagerContext } from '@/lib/permissions';
 import { LiveNotifications } from '@/components/dashboard/live-notifications';
@@ -186,7 +187,7 @@ export default async function DashboardLayout({
   let pendingDraftCount = 0;
   let activeProductCount = 0;
   try {
-    const [leadResult, followUpResult, draftResult, productResult] = await Promise.all([
+    const [leadResult, followUpResult, draftResult, productCount] = await Promise.all([
       supabase
         .from('Contact')
         .select('*', { count: 'exact', head: true })
@@ -205,17 +206,16 @@ export default async function DashboardLayout({
         .select('id', { count: 'exact', head: true })
         .eq('spaceId', space.id)
         .eq('status', 'pending'),
-      supabase
-        .from('Product')
-        .select('id', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .in('listingStatus', ['active', 'pending']),
+      convex().query(api.marketplace.products.countForSpaceByStatus, {
+        spaceId: space.id,
+        listingStatusIn: ['active', 'pending'],
+      }),
     ]);
     if (leadResult.error) throw leadResult.error;
     unreadLeadCount = leadResult.count ?? 0;
     overdueFollowUpCount = followUpResult.count ?? 0;
     pendingDraftCount = draftResult.count ?? 0;
-    activeProductCount = productResult.count ?? 0;
+    activeProductCount = productCount ?? 0;
   } catch {
     unreadLeadCount = 0;
     overdueFollowUpCount = 0;

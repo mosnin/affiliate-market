@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 /**
@@ -19,11 +19,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'token and action required' }, { status: 400 });
   }
 
-  const { data: demo } = await supabase
-    .from('Demo')
-    .select('id, status, startsAt')
-    .eq('manageToken', token)
-    .maybeSingle();
+  const demo = await convex().query(api.demos.demos.getByManageToken, { manageToken: token });
 
   if (!demo) {
     return NextResponse.json({ error: 'Demo not found' }, { status: 404 });
@@ -48,12 +44,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { error } = await supabase
-      .from('Demo')
-      .update({ status: 'cancelled', updatedAt: new Date().toISOString() })
-      .eq('id', demo.id);
-
-    if (error) throw error;
+    await convex().mutation(api.demos.demos.updateStatus, { id: demo.id, status: 'cancelled' });
     return NextResponse.json({ success: true, status: 'cancelled' });
   }
 

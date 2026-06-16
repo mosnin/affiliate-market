@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceForUser } from '@/lib/space';
 import { requireAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
@@ -8,12 +9,10 @@ import { logger } from '@/lib/logger';
 async function resolve(userId: string, productId: string) {
   const space = await getSpaceForUser(userId);
   if (!space) return null;
-  const { data: product } = await supabase
-    .from('Product')
-    .select('id')
-    .eq('id', productId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const product = await convex().query(api.marketplace.products.getByIdInSpace, {
+    id: productId,
+    spaceId: space.id,
+  });
   if (!product) return null;
   return space;
 }
@@ -27,18 +26,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const space = await resolve(userId, id);
   if (!space) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { data, error } = await supabase
-    .from('ProductPacket')
-    .select('*')
-    .eq('productId', id)
-    .eq('spaceId', space.id)
-    .order('createdAt', { ascending: false });
-
-  if (error) {
-    logger.error('[packets/GET]', { productId: id }, error);
+  try {
+    const data = await convex().query(api.marketplace.packets.listForProductInSpace, {
+      productId: id,
+      spaceId: space.id,
+    });
+    return NextResponse.json(data ?? []);
+  } catch (error) {
+    logger.error('[packets/GET]', { productId: id }, error as Error);
     return NextResponse.json({ error: 'Failed to list packets' }, { status: 500 });
   }
-  return NextResponse.json(data ?? []);
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -94,9 +91,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Token: 32 bytes URL-safe = 43 chars base64url, plenty of entropy.
   const token = crypto.randomBytes(32).toString('base64url');
 
-  const { data, error } = await supabase
-    .from('ProductPacket')
-    .insert({
+  try {
+    const data = await convex().mutation(api.marketplace.packets.create, {
       id: crypto.randomUUID(),
       spaceId: space.id,
       productId: id,
@@ -104,14 +100,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       token,
       includeDocumentIds: includeIds,
       expiresAt,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    logger.error('[packets/POST]', { productId: id }, error);
+    });
+    return NextResponse.json(data, { status: 201 });
+  } catch (error) {
+    logger.error('[packets/POST]', { productId: id }, error as Error);
     return NextResponse.json({ error: 'Failed to create packet' }, { status: 500 });
   }
-
-  return NextResponse.json(data, { status: 201 });
 }

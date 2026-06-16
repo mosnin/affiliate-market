@@ -52,14 +52,9 @@ export async function GET(req: NextRequest) {
 
   let productProfile: any = null;
   if (productId) {
-    const { data: profile } = await supabase
-      .from('DemoProductProfile')
-      .select('*')
-      .eq('id', productId)
-      .eq('spaceId', space.id)
-      .eq('isActive', true)
-      .maybeSingle();
-    if (profile) {
+    const profile = await convex().query(api.demos.profiles.getById, { id: productId });
+    // Must belong to this space and be active (was the .eq('spaceId').eq('isActive', true) filter).
+    if (profile && profile.spaceId === space.id && profile.isActive) {
       productProfile = profile;
       duration = profile.demoDuration;
       startHour = profile.startHour;
@@ -77,19 +72,15 @@ export async function GET(req: NextRequest) {
   endDate.setDate(endDate.getDate() + 14);
 
   // Fetch existing demos in range (filter by product if specified)
-  let demosQuery = supabase
-    .from('Demo')
-    .select('startsAt, endsAt')
-    .eq('spaceId', space.id)
-    .in('status', ['scheduled', 'confirmed'])
-    .gte('startsAt', startDate.toISOString())
-    .lte('startsAt', endDate.toISOString());
-  if (productId) {
-    demosQuery = demosQuery.eq('productProfileId', productId);
-  }
-  const { data: existingDemos } = await demosQuery;
+  const existingDemos = await convex().query(api.demos.demos.listBySpace, {
+    spaceId: space.id,
+    statuses: ['scheduled', 'confirmed'],
+    startsAtGte: startDate.toISOString(),
+    startsAtLte: endDate.toISOString(),
+    ...(productId ? { productProfileId: productId } : {}),
+  });
 
-  const bookedSlots = (existingDemos ?? []).map((t: any) => ({
+  const bookedSlots = existingDemos.map((t: any) => ({
     start: new Date(t.startsAt).getTime() - bufferMinutes * 60_000,
     end: new Date(t.endsAt).getTime() + bufferMinutes * 60_000,
   }));
@@ -101,16 +92,14 @@ export async function GET(req: NextRequest) {
   const blockedSet = new Set(blockedDates);
 
   // Fetch overrides (single-date and recurring) scoped to this product or global
-  let overridesQuery = supabase
-    .from('DemoAvailabilityOverride')
-    .select('date, isBlocked, startHour, endHour, recurrence, endDate, productProfileId')
-    .eq('spaceId', space.id);
-  const { data: overridesRaw } = await overridesQuery;
+  const overridesRaw = await convex().query(api.demos.availability.listBySpace, {
+    spaceId: space.id,
+  });
 
   // Build effective overrides for each date in range, expanding recurring ones
   const overrideMap = new Map<string, { isBlocked: boolean; startHour: number | null; endHour: number | null }>();
 
-  for (const o of overridesRaw ?? []) {
+  for (const o of overridesRaw) {
     // Filter by product: use override if it's global (null) or matches the requested product
     if (productId && o.productProfileId && o.productProfileId !== productId) continue;
     if (!productId && o.productProfileId) continue;
@@ -230,19 +219,17 @@ export async function GET(req: NextRequest) {
   }
 
   // Also fetch all active product profiles for this space (so the booking page can show them)
-  const { data: profiles } = await supabase
-    .from('DemoProductProfile')
-    .select('id, name, address, demoDuration, isActive')
-    .eq('spaceId', space.id)
-    .eq('isActive', true)
-    .order('createdAt', { ascending: true });
+  const profiles = await convex().query(api.demos.profiles.listBySpace, {
+    spaceId: space.id,
+    activeOnly: true,
+  });
 
   return NextResponse.json({
     slots,
     duration,
     timezone,
     productProfileId: productId ?? null,
-    productProfiles: profiles ?? [],
+    productProfiles: profiles,
   });
 }
 

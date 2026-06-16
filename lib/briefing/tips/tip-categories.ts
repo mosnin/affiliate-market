@@ -32,6 +32,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { HOT_LEAD_THRESHOLD } from '@/lib/constants';
 import type { Signal } from '../types';
 
@@ -567,15 +568,19 @@ export async function tipDemoConversionDrop(spaceId: string): Promise<Signal[]> 
   const baselineEnd = new Date(today.getTime() - 22 * MS_PER_DAY);
 
   type DemoRow = { id: string; contactId: string | null; endsAt: string };
+  // Completed demos for the space; bound the endsAt window in-process (the
+  // index ranges on startsAt, not endsAt, and completed-demo volume per space
+  // is small). Only rows with a linked contact count toward conversion.
+  const completedDemos = (await convex().query(api.demos.demos.listBySpace, {
+    spaceId,
+    statuses: ['completed'],
+  })) as DemoRow[];
   const fetchDemos = async (from: Date, to: Date) => {
-    const { data } = await supabase
-      .from('Demo')
-      .select('id, contactId, endsAt')
-      .eq('spaceId', spaceId)
-      .eq('status', 'completed')
-      .gte('endsAt', from.toISOString())
-      .lt('endsAt', to.toISOString());
-    return ((data ?? []) as DemoRow[]).filter((t) => t.contactId);
+    const fromIso = from.toISOString();
+    const toIso = to.toISOString();
+    return completedDemos.filter(
+      (t) => t.contactId && t.endsAt >= fromIso && t.endsAt < toIso,
+    );
   };
   const recent = await fetchDemos(recentStart, today);
   const baseline = await fetchDemos(baselineStart, baselineEnd);

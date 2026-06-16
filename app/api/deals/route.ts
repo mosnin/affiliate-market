@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { syncDeal } from '@/lib/vectorize';
 import { notifyNewDeal } from '@/lib/notify';
@@ -193,13 +194,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid productId' }, { status: 400 });
     }
     const trimmed = productId.slice(0, 64);
-    const { data: propRow, error: propErr } = await supabase
-      .from('Product')
-      .select('id')
-      .eq('id', trimmed)
-      .eq('spaceId', space.id)
-      .maybeSingle();
-    if (propErr) throw propErr;
+    const propRow = await convex().query(api.marketplace.products.getByIdInSpace, { id: trimmed, spaceId: space.id });
     if (!propRow) return NextResponse.json({ error: 'Invalid productId' }, { status: 400 });
     productIdVal = trimmed;
   }

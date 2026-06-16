@@ -16,6 +16,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server'; // MarketplaceOrder reads (Convex); AffiliateCommission/Space stay Supabase
 import { PLANS, type PlanId } from '@/lib/plans';
 
 /** Subscription states that count as live revenue. Trialing is included
@@ -186,20 +187,17 @@ export async function getGmvCents(window: '30d' | 'all' = 'all'): Promise<GmvRes
         ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
         : null;
 
-    const { data, error } = await supabase
-      .from('MarketplaceOrder')
-      .select('amountCents, paidAt, createdAt, status')
-      .eq('status', 'paid');
+    // MarketplaceOrder is on Convex now. Fetch all paid orders and apply the
+    // (paidAt ?? createdAt) window in memory exactly as before.
+    const data = (await convex().query(api.marketplace.orders.ordersForMetrics, {
+      status: 'paid',
+    })) as { amountCents: number; paidAt: string | null; createdAt: string }[];
 
-    if (error || !data) return { gmvCents: 0, orderCount: 0 };
-
-    const rows = (data as { amountCents: number | null; paidAt: string | null; createdAt: string | null }[]).filter(
-      (o) => {
-        if (!since) return true;
-        const when = o.paidAt ?? o.createdAt;
-        return when ? when >= since : false;
-      },
-    );
+    const rows = data.filter((o) => {
+      if (!since) return true;
+      const when = o.paidAt ?? o.createdAt;
+      return when ? when >= since : false;
+    });
 
     const gmvCents = rows.reduce((sum, o) => sum + (o.amountCents ?? 0), 0);
     return { gmvCents, orderCount: rows.length };
@@ -243,21 +241,12 @@ export async function getPlatformRevenueCents(): Promise<PlatformRevenueResult> 
     affiliateFeeCents = 0;
   }
 
-  // Marketplace GMV fee — defensive: the column is not in the schema today.
-  // A select on a missing column returns a PostgREST error (it does not throw),
-  // so we branch on `error` AND wrap in try/catch, and only sum paid orders.
+  // Marketplace GMV fee — sum platformGmvFeeCents over paid orders (Convex).
   try {
-    const { data, error } = await supabase
-      .from('MarketplaceOrder')
-      .select('platformGmvFeeCents, status')
-      .eq('status', 'paid');
-    if (!error && data) {
-      gmvFeeCents = (data as { platformGmvFeeCents: number | null }[]).reduce(
-        (sum, o) => sum + (o.platformGmvFeeCents ?? 0),
-        0,
-      );
-    }
-    // error (e.g. column does not exist) → leave gmvFeeCents at 0.
+    const orders = (await convex().query(api.marketplace.orders.ordersForMetrics, {
+      status: 'paid',
+    })) as { platformGmvFeeCents: number }[];
+    gmvFeeCents = orders.reduce((sum, o) => sum + (o.platformGmvFeeCents ?? 0), 0);
   } catch {
     gmvFeeCents = 0;
   }

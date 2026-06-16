@@ -48,6 +48,24 @@ vi.mock('@/lib/supabase', () => {
   return { supabase: { from: vi.fn((table: string) => makeChain(table)) } };
 });
 
+// ── Convex mock — Demo writes (schedule_demo) moved off Supabase. `api` is a
+// path proxy so any api.<domain>.<module>.<fn> access yields a callable ref
+// whose dotted path is recoverable via ref(). Steer with convexMutationMock.
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
 const { syncContactMock, syncDealMock } = vi.hoisted(() => ({
   syncContactMock: vi.fn(async () => undefined),
   syncDealMock: vi.fn(async () => undefined),
@@ -87,6 +105,8 @@ beforeEach(() => {
   sendSMSMock.mockClear();
   sendSMSMock.mockResolvedValue(true);
   notifyNewDealMock.mockClear();
+  convexQueryMock.mockReset();
+  convexMutationMock.mockReset();
 });
 
 // ── move_deal_stage ──────────────────────────────────────────────────────
@@ -146,15 +166,13 @@ describe('scheduleDemoTool', () => {
   });
 
   it('creates a demo for a walk-in guest', async () => {
-    mockByTable = {
-      Demo: {
-        single: {
-          id: 'demo_1',
-          startsAt: '2026-05-01T14:00:00.000Z',
-          endsAt: '2026-05-01T15:00:00.000Z',
-        },
-      },
-    };
+    // schedule_demo writes the Demo via api.demos.demos.create (Convex), which
+    // returns the mapped row.
+    convexMutationMock.mockResolvedValueOnce({
+      id: 'demo_1',
+      startsAt: '2026-05-01T14:00:00.000Z',
+      endsAt: '2026-05-01T15:00:00.000Z',
+    });
     const result = await scheduleDemoTool.handler(
       {
         guestName: 'Walk-in',

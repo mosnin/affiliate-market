@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireManager } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 interface ActivityItem {
   id: string;
@@ -64,7 +65,7 @@ export async function GET() {
   }
 
   // Fetch recent leads, deals, and demos in parallel
-  const [leadsRes, dealsRes, demosRes] = await Promise.all([
+  const [leadsRes, dealsRes, demos] = await Promise.all([
     supabase
       .from('Contact')
       .select('id, name, spaceId, createdAt')
@@ -78,17 +79,11 @@ export async function GET() {
       .in('spaceId', spaceIds)
       .order('createdAt', { ascending: false })
       .limit(10),
-    supabase
-      .from('Demo')
-      .select('id, guestName, spaceId, createdAt')
-      .in('spaceId', spaceIds)
-      .order('createdAt', { ascending: false })
-      .limit(10),
+    convex().query(api.demos.demos.listBySpaceIdsRecent, { spaceIds, limit: 10 }),
   ]);
 
   if (leadsRes.error) console.error('[manager/activity] leads query failed:', leadsRes.error);
   if (dealsRes.error) console.error('[manager/activity] deals query failed:', dealsRes.error);
-  if (demosRes.error) console.error('[manager/activity] demos query failed:', demosRes.error);
 
   const activities: ActivityItem[] = [];
 
@@ -114,7 +109,7 @@ export async function GET() {
     });
   }
 
-  for (const demo of demosRes.data ?? []) {
+  for (const demo of demos) {
     activities.push({
       id: `demo-${demo.id}`,
       type: 'demo',

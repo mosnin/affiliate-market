@@ -8,6 +8,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { deleteGoogleEvent } from '@/lib/gcal-helpers';
 import { defineTool } from '../types';
@@ -37,14 +38,22 @@ export const cancelDemoTool = defineTool<typeof parameters, CancelDemoResult>({
   },
 
   async handler(args, ctx) {
-    const { data: demo, error: demoErr } = await supabase
-      .from('Demo')
-      .select('id, contactId, guestName, productAddress, status, googleEventId')
-      .eq('id', args.demoId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
-    if (demoErr) {
-      return { summary: `Demo lookup failed: ${demoErr.message}`, display: 'error' };
+    let demo: {
+      id: string;
+      contactId: string | null;
+      guestName: string;
+      productAddress: string | null;
+      status: string;
+      googleEventId: string | null;
+    } | null;
+    try {
+      demo = await convex().query(api.demos.demos.getByIdInSpace, {
+        id: args.demoId,
+        spaceId: ctx.space.id,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      return { summary: `Demo lookup failed: ${message}`, display: 'error' };
     }
     if (!demo) {
       return { summary: `No demo with that id.`, display: 'error' };
@@ -57,31 +66,33 @@ export const cancelDemoTool = defineTool<typeof parameters, CancelDemoResult>({
       };
     }
 
-    const { error: updateErr } = await supabase
-      .from('Demo')
-      .update({ status: 'cancelled', updatedAt: new Date().toISOString() })
-      .eq('id', args.demoId)
-      .eq('spaceId', ctx.space.id);
-    if (updateErr) {
-      logger.error('[tools.cancel_demo] update failed', { demoId: args.demoId }, updateErr);
-      return { summary: `Cancel failed: ${updateErr.message}`, display: 'error' };
+    try {
+      await convex().mutation(api.demos.demos.updateStatus, {
+        id: args.demoId,
+        spaceId: ctx.space.id,
+        status: 'cancelled',
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      logger.error('[tools.cancel_demo] update failed', { demoId: args.demoId }, err);
+      return { summary: `Cancel failed: ${message}`, display: 'error' };
     }
 
     // Drop the mirrored Google Calendar event — the /api/demos/[id] PATCH
     // route does this on status=cancelled; the tool path must match or the
     // seller's GCal keeps a ghost slot. Fire-and-forget: DB has committed,
     // a GCal hiccup orphans the event and gcal-helpers logs it for ops.
-    const googleEventId = (demo as { googleEventId?: string | null }).googleEventId;
+    const googleEventId = demo.googleEventId;
     if (googleEventId) {
       void deleteGoogleEvent({ spaceId: ctx.space.id, googleEventId }).then(async (ok) => {
         if (ok) {
           // Clear the stale id so a future sync doesn't try to update a
           // deleted event.
-          await supabase
-            .from('Demo')
-            .update({ googleEventId: null })
-            .eq('id', args.demoId)
-            .eq('spaceId', ctx.space.id);
+          await convex().mutation(api.demos.demos.setGoogleEventId, {
+            id: args.demoId,
+            spaceId: ctx.space.id,
+            googleEventId: null,
+          });
         }
       });
     }

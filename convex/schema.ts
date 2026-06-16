@@ -6,6 +6,8 @@ import { calendarTables } from './schema/calendar';
 import { integrationsTables } from './schema/integrations';
 import { notificationsTables } from './schema/notifications';
 import { supportTables } from './schema/support';
+import { marketplaceTables } from './schema/marketplace';
+import { demosTables } from './schema/demos';
 
 /**
  * Convex schema for Cola — the migration target replacing Supabase/Postgres.
@@ -26,4 +28,6 @@ export default defineSchema({
   ...integrationsTables,
   ...notificationsTables,
   ...supportTables,
+  ...marketplaceTables,
+  ...demosTables,
 });

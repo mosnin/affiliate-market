@@ -8,10 +8,11 @@
  *   - getFunnelForSeller  — views ⨝ paid orders, per published product.
  *
  * Money note: this is SELLER-facing, so every dollar here is GROSS (gross
- * marketplace order amount). Creator net never appears in a funnel.
+ * marketplace order amount). Creator net never appears in a funnel. Every DB hop
+ * (Product, ProductView, MarketplaceOrder) is a Convex call — all marketplace-owned.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { getOrdersForSpace } from '@/lib/marketplace/orders';
 
@@ -32,26 +33,19 @@ export async function recordProductView(input: RecordProductViewInput): Promise<
     const productId = input.productId?.trim();
     if (!productId) return false;
 
-    // Resolve owning space. A missing product → drop the view (the FK would
-    // reject it anyway); we never want an orphan row or an exception here.
-    const { data: product } = await supabase
-      .from('Product')
-      .select('id, spaceId')
-      .eq('id', productId)
-      .maybeSingle();
+    // Resolve owning space. A missing product → drop the view; we never want an
+    // orphan row or an exception here.
+    const product = (await convex().query(api.marketplace.products.spaceForProduct, {
+      productId,
+    })) as { spaceId: string | null } | null;
     if (!product) return false;
 
-    const { error } = await supabase.from('ProductView').insert({
-      spaceId: (product as { spaceId: string | null }).spaceId ?? null,
-      productId: product.id,
+    await convex().mutation(api.marketplace.views.record, {
+      productId,
+      spaceId: product.spaceId ?? null,
       visitorId: input.visitorId ? input.visitorId.slice(0, 64) : null,
       ipHash: input.ipHash ?? null,
     });
-
-    if (error) {
-      logger.warn('[marketplace] product-view insert failed', { error: error.message });
-      return false;
-    }
     return true;
   } catch (err) {
     logger.warn('[marketplace] recordProductView failed', { err: String(err) });
@@ -70,21 +64,13 @@ export async function getViewCountsForProducts(
   const ids = [...new Set(productIds.filter(Boolean))];
   if (ids.length === 0) return counts;
 
-  // One round trip: pull the productId column for the set and tally in memory.
-  // ProductView is intentionally thin, so the rows are tiny; this is cheaper
-  // and simpler than a per-product count() fan-out and scales with the index.
-  const { data, error } = await supabase
-    .from('ProductView')
-    .select('productId')
-    .in('productId', ids);
-
-  if (error) {
-    logger.warn('[marketplace] view-count query failed', { error: error.message });
-    return counts;
-  }
-
-  for (const row of (data ?? []) as { productId: string }[]) {
-    counts.set(row.productId, (counts.get(row.productId) ?? 0) + 1);
+  try {
+    const rows = (await convex().query(api.marketplace.views.countsForProducts, {
+      productIds: ids,
+    })) as Array<{ productId: string; count: number }>;
+    for (const row of rows) counts.set(row.productId, row.count);
+  } catch (err) {
+    logger.warn('[marketplace] view-count query failed', { error: String(err) });
   }
   return counts;
 }
@@ -116,19 +102,16 @@ export interface ProductFunnelRow {
 export async function getFunnelForSeller(spaceId: string): Promise<ProductFunnelRow[]> {
   // Published, marketplace-listed products for this space — the only ones a
   // buyer can reach, so the only ones a funnel describes.
-  const { data: products, error: prodErr } = await supabase
-    .from('Product')
-    .select('id, name, address')
-    .eq('spaceId', spaceId)
-    .eq('published', true)
-    .not('marketplaceSlug', 'is', null);
-
-  if (prodErr) {
-    logger.warn('[marketplace] funnel product query failed', { error: prodErr.message });
+  let rows: Array<{ id: string; name: string | null; address: string | null }>;
+  try {
+    rows = (await convex().query(api.marketplace.products.listPublishedForSpace, {
+      spaceId,
+    })) as Array<{ id: string; name: string | null; address: string | null }>;
+  } catch (err) {
+    logger.warn('[marketplace] funnel product query failed', { error: String(err) });
     return [];
   }
 
-  const rows = (products ?? []) as { id: string; name: string | null; address: string | null }[];
   if (rows.length === 0) return [];
 
   const productIds = rows.map((r) => r.id);

@@ -10,6 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -43,7 +44,7 @@ export async function GET(_req: NextRequest) {
 
   const nowIso = new Date().toISOString();
 
-  const [followUpsRes, demosRes] = await Promise.all([
+  const [followUpsRes, demosUpcoming] = await Promise.all([
     supabase
       .from('Contact')
       .select('id, name, phone, email, type, followUpAt, leadScore, scoreLabel')
@@ -53,18 +54,17 @@ export async function GET(_req: NextRequest) {
       .lte('followUpAt', nowIso)
       .order('followUpAt', { ascending: true })
       .limit(10),
-    supabase
-      .from('Demo')
-      .select('id, guestName, startsAt, endsAt, productAddress, status')
-      .eq('spaceId', space.id)
-      .gte('startsAt', nowIso)
-      .in('status', ['scheduled', 'confirmed'])
-      .order('startsAt', { ascending: true })
-      .limit(6),
+    convex().query(api.demos.demos.listBySpace, {
+      spaceId: space.id,
+      startsAtGte: nowIso,
+      statuses: ['scheduled', 'confirmed'],
+      order: 'asc',
+      limit: 6,
+    }),
   ]);
 
   return NextResponse.json({
     followUpsDue: (followUpsRes.data ?? []) as FollowUpDue[],
-    demosUpcoming: (demosRes.data ?? []) as UpcomingDemo[],
+    demosUpcoming: demosUpcoming as UpcomingDemo[],
   });
 }

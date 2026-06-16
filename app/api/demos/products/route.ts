@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
@@ -10,14 +10,9 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { space } = auth;
 
-  const { data, error } = await supabase
-    .from('DemoProductProfile')
-    .select('*')
-    .eq('spaceId', space.id)
-    .order('createdAt', { ascending: true });
-  if (error) throw error;
+  const data = await convex().query(api.demos.profiles.listBySpace, { spaceId: space.id });
 
-  return NextResponse.json(data ?? []);
+  return NextResponse.json(data);
 }
 
 export async function POST(req: NextRequest) {
@@ -31,22 +26,16 @@ export async function POST(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { space } = auth;
 
-  const { data, error } = await supabase
-    .from('DemoProductProfile')
-    .insert({
-      id: crypto.randomUUID(),
-      spaceId: space.id,
-      name: name.trim(),
-      address: address?.trim() || null,
-      demoDuration: demoDuration ?? 30,
-      startHour: startHour ?? 9,
-      endHour: endHour ?? 17,
-      daysAvailable: daysAvailable ?? [1, 2, 3, 4, 5],
-      bufferMinutes: bufferMinutes ?? 0,
-    })
-    .select()
-    .single();
-  if (error) throw error;
+  const data = await convex().mutation(api.demos.profiles.create, {
+    spaceId: space.id,
+    name: name.trim(),
+    address: address?.trim() || null,
+    demoDuration: demoDuration ?? 30,
+    startHour: startHour ?? 9,
+    endHour: endHour ?? 17,
+    daysAvailable: daysAvailable ?? [1, 2, 3, 4, 5],
+    bufferMinutes: bufferMinutes ?? 0,
+  });
 
   return NextResponse.json(data, { status: 201 });
 }

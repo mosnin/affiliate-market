@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
+import { supabase } from '@/lib/supabase'; // Space lookup only (Space stays on Supabase — hybrid file)
 import { logger } from '@/lib/logger';
 import { recordConversion } from '@/lib/affiliates/conversions';
 import { reverseCommissionsForOrder } from '@/lib/affiliates/reversals';
@@ -59,15 +60,21 @@ async function decorateOrders(rows: OrderRow[]): Promise<OrderWithProduct[]> {
   if (rows.length === 0) return [];
   const productIds = [...new Set(rows.map((r) => r.productId))];
   const spaceIds = [...new Set(rows.map((r) => r.spaceId))];
-  const [productsRes, spacesRes] = await Promise.all([
-    supabase.from('Product').select('id, name, address').in('id', productIds),
+  // Product is this domain's table (Convex); Space stays on Supabase.
+  const [products, spacesRes] = await Promise.all([
+    convex().query(api.marketplace.products.byIds, { ids: productIds }),
     supabase.from('Space').select('id, name').in('id', spaceIds),
   ]);
-  const products = new Map((productsRes.data ?? []).map((p) => [p.id, p]));
+  const productById = new Map(
+    (products as Array<{ id: string; name: string | null; address: string | null }>).map((p) => [
+      p.id,
+      p,
+    ]),
+  );
   const spaces = new Map((spacesRes.data ?? []).map((s) => [s.id, s]));
 
   return rows.map((r) => {
-    const product = products.get(r.productId);
+    const product = productById.get(r.productId);
     return {
       id: r.id,
       spaceId: r.spaceId,
@@ -87,58 +94,50 @@ async function decorateOrders(rows: OrderRow[]): Promise<OrderWithProduct[]> {
 }
 
 export async function getOrderById(id: string): Promise<OrderWithProduct | null> {
-  const { data } = await supabase.from('MarketplaceOrder').select('*').eq('id', id).maybeSingle();
+  const data = await convex().query(api.marketplace.orders.getById, { id });
   if (!data) return null;
   const [order] = await decorateOrders([data as OrderRow]);
   return order ?? null;
 }
 
 export async function getOrderByStripeSession(sessionId: string): Promise<OrderWithProduct | null> {
-  const { data } = await supabase
-    .from('MarketplaceOrder')
-    .select('*')
-    .eq('stripeCheckoutSessionId', sessionId)
-    .maybeSingle();
+  const data = await convex().query(api.marketplace.orders.getByStripeSession, { sessionId });
   if (!data) return null;
   const [order] = await decorateOrders([data as OrderRow]);
   return order ?? null;
 }
 
 export async function getOrdersForBuyerEmail(email: string): Promise<OrderWithProduct[]> {
-  const { data } = await supabase
-    .from('MarketplaceOrder')
-    .select('*')
-    .ilike('buyerEmail', email.trim().toLowerCase())
-    .order('createdAt', { ascending: false })
-    .limit(100);
+  const data = await convex().query(api.marketplace.orders.listByBuyerEmail, {
+    email: email.trim().toLowerCase(),
+  });
   return decorateOrders((data ?? []) as OrderRow[]);
 }
 
 export async function getOrdersForSpace(spaceId: string): Promise<OrderWithProduct[]> {
-  const { data } = await supabase
-    .from('MarketplaceOrder')
-    .select('*')
-    .eq('spaceId', spaceId)
-    .order('createdAt', { ascending: false })
-    .limit(200);
+  const data = await convex().query(api.marketplace.orders.listBySpace, { spaceId });
   return decorateOrders((data ?? []) as OrderRow[]);
 }
 
 export async function getLicensesForBuyerEmail(email: string): Promise<LicenseWithProduct[]> {
-  const { data: licenses } = await supabase
-    .from('License')
-    .select('*')
-    .ilike('buyerEmail', email.trim().toLowerCase())
-    .order('deliveredAt', { ascending: false })
-    .limit(100);
+  const licenses = (await convex().query(api.marketplace.orders.licensesByBuyerEmail, {
+    email: email.trim().toLowerCase(),
+  })) as Array<{
+    id: string;
+    orderId: string;
+    productId: string;
+    licenseKey: string;
+    status: string;
+    deliveredAt: string;
+    expiresAt: string | null;
+  }>;
   if (!licenses || licenses.length === 0) return [];
 
   const productIds = [...new Set(licenses.map((l) => l.productId))];
-  const { data: products } = await supabase
-    .from('Product')
-    .select('id, name, address')
-    .in('id', productIds);
-  const byId = new Map((products ?? []).map((p) => [p.id, p]));
+  const products = (await convex().query(api.marketplace.products.byIds, {
+    ids: productIds,
+  })) as Array<{ id: string; name: string | null; address: string | null }>;
+  const byId = new Map(products.map((p) => [p.id, p]));
 
   return licenses.map((l) => ({
     id: l.id,
@@ -152,17 +151,19 @@ export async function getLicensesForBuyerEmail(email: string): Promise<LicenseWi
 }
 
 export async function getLicenseForOrder(orderId: string): Promise<LicenseWithProduct | null> {
-  const { data: l } = await supabase
-    .from('License')
-    .select('*')
-    .eq('orderId', orderId)
-    .maybeSingle();
+  const l = (await convex().query(api.marketplace.orders.licenseForOrder, { orderId })) as {
+    id: string;
+    orderId: string;
+    productId: string;
+    licenseKey: string;
+    status: string;
+    deliveredAt: string;
+    expiresAt: string | null;
+  } | null;
   if (!l) return null;
-  const { data: product } = await supabase
-    .from('Product')
-    .select('name, address')
-    .eq('id', l.productId)
-    .maybeSingle();
+  const [product] = (await convex().query(api.marketplace.products.byIds, {
+    ids: [l.productId],
+  })) as Array<{ id: string; name: string | null; address: string | null }>;
   return {
     id: l.id,
     orderId: l.orderId,
@@ -174,7 +175,9 @@ export async function getLicenseForOrder(orderId: string): Promise<LicenseWithPr
   };
 }
 
-/** COLA-XXXX-XXXX-XXXX-XXXX license key (crockford-ish, no ambiguous chars). */
+/** COLA-XXXX-XXXX-XXXX-XXXX license key (crockford-ish, no ambiguous chars).
+ *  Kept for callers/tests; license delivery itself now mints the key inside the
+ *  Convex claimPending mutation (same algorithm) so it can enforce uniqueness. */
 export function generateLicenseKey(): string {
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   const bytes = randomBytes(16);
@@ -193,33 +196,29 @@ export async function createPendingOrder(input: {
   discountCents?: number;
   clientUserId?: string | null;
 }): Promise<OrderRow | null> {
-  const { data, error } = await supabase
-    .from('MarketplaceOrder')
-    .insert({
+  try {
+    const data = (await convex().mutation(api.marketplace.orders.createPending, {
       spaceId: input.spaceId,
       productId: input.productId,
       buyerEmail: input.buyerEmail.trim().toLowerCase(),
       clientUserId: input.clientUserId ?? null,
       amountCents: input.amountCents,
       currency: input.currency || 'usd',
-      status: 'pending',
       referralCode: input.referralCode,
       discountCents: input.discountCents ?? 0,
-    })
-    .select('*')
-    .single();
-  if (error || !data) {
-    logger.warn('[marketplace] createPendingOrder failed', { error: error?.message });
+    })) as OrderRow;
+    return data ?? null;
+  } catch (err) {
+    logger.warn('[marketplace] createPendingOrder failed', { error: String(err) });
     return null;
   }
-  return data as OrderRow;
 }
 
 export async function attachStripeSession(orderId: string, sessionId: string): Promise<void> {
-  await supabase
-    .from('MarketplaceOrder')
-    .update({ stripeCheckoutSessionId: sessionId })
-    .eq('id', orderId);
+  await convex().mutation(api.marketplace.orders.attachStripe, {
+    orderId,
+    stripeCheckoutSessionId: sessionId,
+  });
 }
 
 /** Recorded at payment so charge.refunded events can find their order. */
@@ -227,43 +226,35 @@ export async function attachStripePaymentIntent(
   orderId: string,
   paymentIntentId: string,
 ): Promise<void> {
-  await supabase
-    .from('MarketplaceOrder')
-    .update({ stripePaymentIntentId: paymentIntentId })
-    .eq('id', orderId);
+  await convex().mutation(api.marketplace.orders.attachStripe, {
+    orderId,
+    stripePaymentIntentId: paymentIntentId,
+  });
 }
 
 export async function getOrderByStripePaymentIntent(
   paymentIntentId: string,
 ): Promise<OrderWithProduct | null> {
-  const { data } = await supabase
-    .from('MarketplaceOrder')
-    .select('*')
-    .eq('stripePaymentIntentId', paymentIntentId)
-    .maybeSingle();
+  const data = await convex().query(api.marketplace.orders.getByStripePaymentIntent, {
+    paymentIntentId,
+  });
   if (!data) return null;
   const [order] = await decorateOrders([data as OrderRow]);
   return order ?? null;
 }
 
 export async function attachStripeCustomer(orderId: string, customerId: string): Promise<void> {
-  await supabase
-    .from('MarketplaceOrder')
-    .update({ stripeCustomerId: customerId })
-    .eq('id', orderId);
+  await convex().mutation(api.marketplace.orders.attachStripe, {
+    orderId,
+    stripeCustomerId: customerId,
+  });
 }
 
 /** Most recent Stripe customer id for a buyer's subscription purchase, if any. */
 export async function getStripeCustomerForBuyer(email: string): Promise<string | null> {
-  const { data } = await supabase
-    .from('MarketplaceOrder')
-    .select('stripeCustomerId')
-    .ilike('buyerEmail', email.trim().toLowerCase())
-    .not('stripeCustomerId', 'is', null)
-    .order('createdAt', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (data?.stripeCustomerId as string | null) ?? null;
+  return convex().query(api.marketplace.orders.stripeCustomerForBuyer, {
+    email: email.trim().toLowerCase(),
+  });
 }
 
 /** Recorded when a subscription checkout completes — renewals look it up. */
@@ -271,20 +262,18 @@ export async function attachStripeSubscription(
   orderId: string,
   subscriptionId: string,
 ): Promise<void> {
-  await supabase
-    .from('MarketplaceOrder')
-    .update({ stripeSubscriptionId: subscriptionId })
-    .eq('id', orderId);
+  await convex().mutation(api.marketplace.orders.attachStripe, {
+    orderId,
+    stripeSubscriptionId: subscriptionId,
+  });
 }
 
 export async function getOrderByStripeSubscription(
   subscriptionId: string,
 ): Promise<OrderWithProduct | null> {
-  const { data } = await supabase
-    .from('MarketplaceOrder')
-    .select('*')
-    .eq('stripeSubscriptionId', subscriptionId)
-    .maybeSingle();
+  const data = await convex().query(api.marketplace.orders.getByStripeSubscription, {
+    subscriptionId,
+  });
   if (!data) return null;
   const [order] = await decorateOrders([data as OrderRow]);
   return order ?? null;
@@ -297,50 +286,28 @@ export async function getOrderByStripeSubscription(
  *
  * On first transition: delivers the license, records the affiliate
  * conversion (best-effort), and emails the receipt.
+ *
+ * The status flip + license delivery are now ONE serializable Convex mutation
+ * (claimPending) — strictly stronger than the old non-atomic CAS-then-insert.
+ * The CROSS-DOMAIN work stays here in lib (per convex/CONVENTIONS): the affiliate
+ * conversion (Supabase), the Stripe transfer, and the emails. The money math is
+ * unchanged — gross commission from recordConversion, the 10% GMV fee, and
+ * sellerPayoutCents = amount − commission − gmvFee.
  */
 export async function markOrderPaid(orderId: string): Promise<OrderWithProduct | null> {
-  const { data: existing } = await supabase
-    .from('MarketplaceOrder')
-    .select('*')
-    .eq('id', orderId)
-    .maybeSingle();
-  if (!existing) return null;
-  if (existing.status === 'paid') return (await getOrderById(orderId))!;
+  const claim = (await convex().mutation(api.marketplace.orders.claimPending, { orderId })) as {
+    outcome: 'claimed' | 'already' | 'missing';
+    order: OrderRow | null;
+    licenseKey: string | null;
+  };
+  if (claim.outcome === 'missing') return null;
+  // Already paid / lost the idempotency race → another caller finished the job.
+  if (claim.outcome === 'already') return getOrderById(orderId);
 
-  const paidAt = new Date().toISOString();
-  const { data: updated, error } = await supabase
-    .from('MarketplaceOrder')
-    .update({ status: 'paid', paidAt })
-    .eq('id', orderId)
-    .eq('status', 'pending')
-    .select('*')
-    .maybeSingle();
-  if (error) {
-    logger.warn('[marketplace] markOrderPaid update failed', { orderId, error: error.message });
-    return null;
-  }
-  // Lost the idempotency race → another caller finished the job.
-  if (!updated) return getOrderById(orderId);
+  const order = claim.order as OrderRow;
+  const licenseKey = claim.licenseKey as string;
 
-  const order = updated as OrderRow;
-
-  // License delivery (unique per order — tolerate duplicate-key on races).
-  const licenseKey = generateLicenseKey();
-  const { error: licErr } = await supabase.from('License').insert({
-    orderId: order.id,
-    productId: order.productId,
-    buyerEmail: order.buyerEmail,
-    licenseKey,
-    status: 'active',
-  });
-  if (licErr && !`${licErr.message}`.toLowerCase().includes('duplicate')) {
-    logger.error('[marketplace] license delivery failed', {
-      orderId: order.id,
-      error: licErr.message,
-    });
-  }
-
-  // Affiliate attribution — never blocks fulfilment.
+  // Affiliate attribution — never blocks fulfilment. (Affiliates stay on Supabase.)
   let grossCommissionCents = 0;
   try {
     const conversion = await recordConversion({
@@ -372,14 +339,17 @@ export async function markOrderPaid(orderId: string): Promise<OrderWithProduct |
     amountCents: sellerPayoutCents,
     currency: order.currency,
   });
-  const { error: payoutErr } = await supabase
-    .from('MarketplaceOrder')
-    .update({ sellerPayoutCents, platformGmvFeeCents, ...(sellerTransferId ? { sellerTransferId } : {}) })
-    .eq('id', order.id);
-  if (payoutErr) {
+  try {
+    await convex().mutation(api.marketplace.orders.recordSellerProceeds, {
+      orderId: order.id,
+      sellerPayoutCents,
+      platformGmvFeeCents,
+      sellerTransferId: sellerTransferId ?? null,
+    });
+  } catch (err) {
     logger.error('[marketplace] failed to record seller proceeds', {
       orderId: order.id,
-      error: payoutErr.message,
+      error: String(err),
     });
   }
 
@@ -419,29 +389,21 @@ export async function markOrderPaid(orderId: string): Promise<OrderWithProduct |
  * The unhappy path, in one place: a refunded (or disputed) order revokes
  * its license and claws back its commissions. Idempotent — a second call
  * on an already-refunded order does nothing.
+ *
+ * The status flip + license revoke are now ONE serializable Convex mutation
+ * (markRefunded). The commission clawback (affiliates → Supabase) and the refund
+ * email stay here in lib, gated on the mutation reporting a real transition.
  */
 export async function markOrderRefunded(
   orderId: string,
   reason: string,
 ): Promise<OrderWithProduct | null> {
-  const { data: updated, error } = await supabase
-    .from('MarketplaceOrder')
-    .update({ status: 'refunded', refundedAt: new Date().toISOString() })
-    .eq('id', orderId)
-    .eq('status', 'paid')
-    .select('id, buyerEmail')
-    .maybeSingle();
-  if (error) {
-    logger.warn('[marketplace] markOrderRefunded failed', { orderId, error: error.message });
-    return null;
-  }
-  if (!updated) return getOrderById(orderId); // already refunded or never paid
-
-  await supabase
-    .from('License')
-    .update({ status: 'revoked' })
-    .eq('orderId', orderId)
-    .eq('status', 'active');
+  const result = (await convex().mutation(api.marketplace.orders.markRefunded, { orderId })) as {
+    outcome: 'refunded' | 'noop' | 'missing';
+    order: OrderRow | null;
+  };
+  if (result.outcome === 'missing') return null;
+  if (result.outcome === 'noop') return getOrderById(orderId); // already refunded or never paid
 
   await reverseCommissionsForOrder(orderId, reason);
 

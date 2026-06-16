@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
@@ -40,12 +41,15 @@ export async function GET(req: NextRequest) {
       .or(`title.ilike.${term},address.ilike.${term}`)
       .limit(8));
 
-    const demosPromise = safeQuery('demos', supabase
-      .from('Demo')
-      .select('id, guestName, guestEmail, productAddress, startsAt, status')
-      .eq('spaceId', space.id)
-      .or(`guestName.ilike.${term},guestEmail.ilike.${term},productAddress.ilike.${term}`)
-      .limit(8));
+    // Demo search moved to Convex (substring match over guestName/guestEmail/
+    // productAddress). Pass the bare needle (no SQL wildcards) and wrap the
+    // array in the { data } shape safeQuery's consumers expect.
+    const demosPromise = safeQuery(
+      'demos',
+      convex()
+        .query(api.demos.demos.searchBySpace, { spaceId: space.id, term: sanitized, limit: 8 })
+        .then((data) => ({ data, error: null })),
+    );
 
     const [contactsResult, dealsResult, demosResult] = await Promise.all([
       contactsPromise,

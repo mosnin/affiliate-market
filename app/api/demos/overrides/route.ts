@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 
 /** GET — list overrides for the next 90 days */
@@ -12,29 +12,21 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { space } = auth;
 
-  let query = supabase
-    .from('DemoAvailabilityOverride')
-    .select('*')
-    .eq('spaceId', space.id)
-    .order('date', { ascending: true });
-
-  // Filter by product or show global-only
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (productId) {
-    if (!UUID_RE.test(productId)) {
-      return NextResponse.json({ error: 'Invalid productId' }, { status: 400 });
-    }
-    query = query.or(`productProfileId.eq.${productId},productProfileId.is.null`);
-  } else {
-    query = query.is('productProfileId', null);
+  if (productId && !UUID_RE.test(productId)) {
+    return NextResponse.json({ error: 'Invalid productId' }, { status: 400 });
   }
 
-  const { data, error } = await query;
-  if (error) throw error;
+  // All of the space's overrides (ordered by date); apply the product/global
+  // filter here (was the PostgREST .or / .is('null') branch).
+  const all = await convex().query(api.demos.availability.listBySpace, { spaceId: space.id });
+  const scoped = all.filter((o) =>
+    productId ? o.productProfileId === productId || o.productProfileId === null : o.productProfileId === null,
+  );
 
   // Filter out past non-recurring overrides
   const today = new Date().toISOString().split('T')[0];
-  const filtered = (data ?? []).filter((o: any) => {
+  const filtered = scoped.filter((o) => {
     if (o.recurrence !== 'none') {
       // Keep recurring overrides if endDate is in the future or not set
       return !o.endDate || o.endDate >= today;
@@ -67,26 +59,6 @@ export async function POST(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { space } = auth;
 
-  // Check for an existing override on this date+product combination and delete it first
-  // (handles NULL productProfileId case where upsert uniqueness may not work)
-  {
-    let existingQuery = supabase
-      .from('DemoAvailabilityOverride')
-      .select('id')
-      .eq('spaceId', space.id)
-      .eq('date', date);
-    if (productProfileId) {
-      existingQuery = existingQuery.eq('productProfileId', productProfileId);
-    } else {
-      existingQuery = existingQuery.is('productProfileId', null);
-    }
-    const { data: existingRows } = await existingQuery;
-    if (existingRows && existingRows.length > 0) {
-      const ids = existingRows.map((r: { id: string }) => r.id);
-      await supabase.from('DemoAvailabilityOverride').delete().in('id', ids);
-    }
-  }
-
   if (!isBlocked) {
     if (startHour == null || endHour == null) {
       return NextResponse.json({ error: 'startHour and endHour required when not blocked' }, { status: 400 });
@@ -98,32 +70,25 @@ export async function POST(req: NextRequest) {
 
   // Validate product profile if provided
   if (productProfileId) {
-    const { data: profile } = await supabase
-      .from('DemoProductProfile')
-      .select('id')
-      .eq('id', productProfileId)
-      .eq('spaceId', space.id)
-      .maybeSingle();
-    if (!profile) return NextResponse.json({ error: 'Product profile not found' }, { status: 400 });
+    const profile = await convex().query(api.demos.profiles.getById, { id: productProfileId });
+    if (!profile || profile.spaceId !== space.id) {
+      return NextResponse.json({ error: 'Product profile not found' }, { status: 400 });
+    }
   }
 
-  const { data, error } = await supabase
-    .from('DemoAvailabilityOverride')
-    .insert({
-      id: crypto.randomUUID(),
-      spaceId: space.id,
-      productProfileId: productProfileId || null,
-      date,
-      isBlocked: !!isBlocked,
-      startHour: isBlocked ? null : startHour,
-      endHour: isBlocked ? null : endHour,
-      label: label?.trim() || null,
-      recurrence: rec,
-      endDate: rec !== 'none' ? (endDate || null) : null,
-    })
-    .select()
-    .single();
-  if (error) throw error;
+  // Upsert folds the "delete existing on (space, date, product) then insert"
+  // into one serializable mutation (preserving the NULL-product distinction).
+  const data = await convex().mutation(api.demos.availability.upsert, {
+    spaceId: space.id,
+    productProfileId: productProfileId || null,
+    date,
+    isBlocked: !!isBlocked,
+    startHour: isBlocked ? null : (startHour ?? null),
+    endHour: isBlocked ? null : (endHour ?? null),
+    label: label?.trim() || null,
+    recurrence: rec,
+    endDate: rec !== 'none' ? (endDate || null) : null,
+  });
 
   return NextResponse.json(data, { status: 201 });
 }

@@ -1,6 +1,7 @@
 import { getManagerContext } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceByOwnerId } from '@/lib/space';
 import { LeaderboardClient } from './leaderboard-client';
 import { H1, TITLE_FONT, BODY_MUTED } from '@/lib/typography';
@@ -87,7 +88,7 @@ export default async function LeaderboardPage() {
       }
 
       // Fetch all count-only stats and pipeline data in parallel
-      const [totalLeadsRes, dealsClosedRes, activeDealsRes, demosCompletedRes] = await Promise.all([
+      const [totalLeadsRes, dealsClosedRes, activeDealsRes, demosCompletedCount] = await Promise.all([
         // Count total leads
         supabase
           .from('Contact')
@@ -105,12 +106,10 @@ export default async function LeaderboardPage() {
           .select('value')
           .eq('spaceId', space.id)
           .eq('status', 'active'),
-        // Demos completed
-        supabase
-          .from('Demo')
-          .select('*', { count: 'exact', head: true })
-          .eq('spaceId', space.id)
-          .eq('status', 'completed'),
+        // Demos completed (count via length of the completed set)
+        convex()
+          .query(api.demos.demos.listBySpace, { spaceId: space.id, statuses: ['completed'] })
+          .then((rows) => rows.length),
       ]);
 
       const pipelineValue = (activeDealsRes.data ?? []).reduce(
@@ -130,7 +129,7 @@ export default async function LeaderboardPage() {
         totalLeads: leads,
         dealsClosed: closed,
         pipelineValue,
-        demosCompleted: demosCompletedRes.count ?? 0,
+        demosCompleted: demosCompletedCount,
         conversionRate,
         badges: [],
       });

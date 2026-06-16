@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 /**
  * POST — Demo reminder cron endpoint.
@@ -25,14 +26,15 @@ export async function POST(req: NextRequest) {
   const in1h = new Date(now.getTime() + 60 * 60 * 1000);
   const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-  const { data: demos24h } = await supabase
-    .from('Demo')
-    .select('id, guestName, guestEmail, guestPhone, productAddress, startsAt, endsAt, status, spaceId, manageToken, contactId')
-    .in('status', ['scheduled', 'confirmed'])
-    .gte('startsAt', now.toISOString())
-    .lte('startsAt', in24h.toISOString())
-    .order('startsAt', { ascending: true })
-    .limit(100);
+  // Cross-space cron sweep: demos starting in the next 24h, scheduled/confirmed,
+  // ordered by startsAt (no space filter — this runs for every space).
+  const demos24h = await convex().query(api.demos.demos.listByStartsRange, {
+    statuses: ['scheduled', 'confirmed'],
+    startsAtGte: now.toISOString(),
+    startsAtLte: in24h.toISOString(),
+    order: 'asc',
+    limit: 100,
+  });
 
   const reminders: Array<{
     demoId: string;

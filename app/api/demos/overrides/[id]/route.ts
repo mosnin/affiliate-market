@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -12,11 +12,7 @@ export async function DELETE(
   const { userId } = authResult;
   const { id } = await params;
 
-  const { data: row } = await supabase
-    .from('DemoAvailabilityOverride')
-    .select('spaceId')
-    .eq('id', id)
-    .maybeSingle();
+  const row = await convex().query(api.demos.availability.getById, { id });
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const space = await getSpaceForUser(userId);
@@ -24,12 +20,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { error } = await supabase
-    .from('DemoAvailabilityOverride')
-    .delete()
-    .eq('id', id)
-    .eq('spaceId', space.id);
-  if (error) throw error;
+  await convex().mutation(api.demos.availability.deleteById, { id, spaceId: space.id });
 
   return NextResponse.json({ success: true });
 }

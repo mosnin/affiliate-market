@@ -53,6 +53,32 @@ vi.mock('@/lib/supabase', () => {
   return { supabase: { from: vi.fn((table: string) => makeChain(table)) } };
 });
 
+// ── Convex mock — the Product (find_product, update_product_status,
+// note_on_product, attach_product_to_deal's product lookup) and Demo
+// (find_demos, reschedule_demo, cancel_demo) reads/writes moved off Supabase.
+// To keep each test's existing `mockByTable` steering, the query mock reads
+// the SAME dict: it maps the Convex fn (recovered from the path proxy via
+// ref()) to the table override a test already set —
+//   products.getByIdInSpace / demos.getByIdInSpace → mockByTable.X.single
+//   products.listForSpace   / demos.listBySpace    → mockByTable.X.rows
+// Deal / Contact stay on Supabase (above) — these tools are hybrid.
+// Mutations (products.update, demos.updateTimes/updateStatus) default to a
+// success shape; products.update returns { ok, error } which the tools check.
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
 const { syncContactMock, syncDealMock, deleteContactVectorMock } = vi.hoisted(() => ({
   syncContactMock: vi.fn(async () => undefined),
   syncDealMock: vi.fn(async () => undefined),
@@ -90,6 +116,20 @@ beforeEach(() => {
   syncContactMock.mockClear();
   syncDealMock.mockClear();
   deleteContactVectorMock.mockClear();
+  convexQueryMock.mockReset();
+  convexMutationMock.mockReset();
+  // Convex queries read the per-test `mockByTable` dict, mapping the fn path
+  // to the Product/Demo override (single for by-id, rows for lists).
+  convexQueryMock.mockImplementation(async (ref: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    const table = p.includes('products') ? 'Product' : p.includes('demos') ? 'Demo' : '';
+    const override = (table && mockByTable[table]) || {};
+    if (p.includes('getByIdInSpace')) return override.single ?? null;
+    // listForSpace / listBySpace
+    return override.rows ?? [];
+  });
+  // Product writes return { ok }; demo writes ignore the return. Default OK.
+  convexMutationMock.mockResolvedValue({ ok: true });
 });
 
 // ── update_deal_value ────────────────────────────────────────────────────
@@ -377,10 +417,11 @@ describe('findProductTool', () => {
   it('returns a single match richly', async () => {
     mockByTable = {
       Product: {
-        single: null, // exact-id miss falls through to query
+        single: null, // exact-id miss falls through to listForSpace
         rows: [
           {
             id: 'p_1',
+            spaceId: 'space_1', // listForSpace rows are scoped by spaceId in-process
             address: '123 Main',
             city: 'Brooklyn',
             listingStatus: 'active',

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getOrCreateDefaultProgram } from '@/lib/affiliates/programs';
 import { createPartner, getPartnersByUser } from '@/lib/affiliates/partners';
 import {
@@ -32,11 +32,7 @@ export async function POST(req: NextRequest) {
   const productId = typeof body.productId === 'string' ? body.productId : '';
   if (!productId) return NextResponse.json({ error: 'Missing product' }, { status: 400 });
 
-  const { data: product } = await supabase
-    .from('Product')
-    .select('id, spaceId, published, marketplaceSlug')
-    .eq('id', productId)
-    .maybeSingle();
+  const product = await convex().query(api.marketplace.products.getById, { id: productId });
   if (!product || !product.published || !product.marketplaceSlug) {
     return NextResponse.json({ error: 'Product not available.' }, { status: 404 });
   }

@@ -18,11 +18,14 @@ vi.mock('@/lib/agent-memory/embed', () => ({
   EMBED_DIMS: 1536,
 }));
 
-const { supabaseMock, rpcResp, contactResp, dealResp, productResp } = vi.hoisted(() => {
+// Contact + Deal name-matches still go through Supabase; the vector memory
+// search uses supabase.rpc('match_agent_memory'). Product moved to Convex
+// (matchProductsByAddress → api.marketplace.products.listForSpace), so its
+// canned rows are served by the Convex mock below, not this chain.
+const { supabaseMock, rpcResp, contactResp, dealResp } = vi.hoisted(() => {
   const rpcResp = { data: [] as Array<Record<string, unknown>>, error: null as { message: string } | null };
   const contactResp = { data: [] as Array<Record<string, unknown>>, error: null as { message: string } | null };
   const dealResp = { data: [] as Array<Record<string, unknown>>, error: null as { message: string } | null };
-  const productResp = { data: [] as Array<Record<string, unknown>>, error: null as { message: string } | null };
 
   // Track which table the current chain is for so the limit() resolver
   // returns the right canned response.
@@ -35,7 +38,6 @@ const { supabaseMock, rpcResp, contactResp, dealResp, productResp } = vi.hoisted
     limit() {
       if (activeTable === 'Contact') return Promise.resolve(contactResp);
       if (activeTable === 'Deal') return Promise.resolve(dealResp);
-      if (activeTable === 'Product') return Promise.resolve(productResp);
       return Promise.resolve({ data: [], error: null });
     },
   });
@@ -47,10 +49,29 @@ const { supabaseMock, rpcResp, contactResp, dealResp, productResp } = vi.hoisted
     },
     rpc: vi.fn(() => Promise.resolve(rpcResp)),
   };
-  return { supabaseMock, rpcResp, contactResp, dealResp, productResp };
+  return { supabaseMock, rpcResp, contactResp, dealResp };
 });
 
 vi.mock('@/lib/supabase', () => ({ supabase: supabaseMock }));
+
+// ── Convex mock — Product literal-name matches read api.marketplace.products
+// .listForSpace. `api` is a path proxy; the single query mock serves the
+// canned product rows a test seeds (the tool filters them by spaceId +
+// address substring in-process).
+const { convexQueryMock, productResp } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  productResp: { data: [] as Array<Record<string, unknown>> },
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: vi.fn() }),
+  };
+});
 
 import {
   retrieveContext,
@@ -69,7 +90,9 @@ beforeEach(() => {
   dealResp.data = [];
   dealResp.error = null;
   productResp.data = [];
-  productResp.error = null;
+  // products.listForSpace serves whatever a test stages in productResp.data.
+  convexQueryMock.mockReset();
+  convexQueryMock.mockImplementation(async () => productResp.data);
 });
 
 describe('retrieveContext — short circuits', () => {
@@ -122,7 +145,9 @@ describe('retrieveContext — happy path', () => {
       { id: 'd1', title: '456 Oak Ave', value: 480000, status: 'active', address: '456 Oak Ave' },
     ];
     productResp.data = [
-      { id: 'p1', address: '456 Oak Ave', city: 'Austin', listingStatus: 'active', listPrice: 480000 },
+      // spaceId must match the query's spaceId — matchProductsByAddress scopes
+      // the Convex rows to the space in-process before the address substring test.
+      { id: 'p1', spaceId: 'sp1', address: '456 Oak Ave', city: 'Austin', listingStatus: 'active', listPrice: 480000 },
     ];
     const r = await retrieveContext({
       spaceId: 'sp1',

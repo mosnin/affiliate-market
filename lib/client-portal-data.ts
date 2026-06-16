@@ -15,6 +15,7 @@
  */
 import 'server-only';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 export interface PortalApplication {
   contactId: string;
@@ -64,7 +65,7 @@ function escapeLike(value: string): string {
 export async function getClientPortalData(email: string): Promise<ClientPortalData> {
   const lower = email.trim().toLowerCase();
 
-  const [{ data: contacts }, { data: demos }] = await Promise.all([
+  const [{ data: contacts }, demoRows] = await Promise.all([
     supabase
       .from('Contact')
       .select(
@@ -72,12 +73,30 @@ export async function getClientPortalData(email: string): Promise<ClientPortalDa
       )
       .ilike('email', escapeLike(lower))
       .order('createdAt', { ascending: false }),
-    supabase
-      .from('Demo')
-      .select('id, productAddress, startsAt, status, spaceId, contactId, guestEmail, Space(name, slug)')
-      .ilike('guestEmail', lower)
-      .order('startsAt', { ascending: false }),
+    // Demos for this verified email, newest-first. The Space(name, slug) join
+    // can't ride a Convex query, so resolve seller names from Space separately
+    // (Space stays on Supabase) and stitch them in below.
+    convex().query(api.demos.demos.listByGuestEmail, { guestEmail: lower, order: 'desc' }),
   ]);
+
+  // Batch-resolve the seller name/slug for every space the demos belong to.
+  const demoSpaceIds = Array.from(
+    new Set((demoRows as { spaceId: string }[]).map((t) => t.spaceId)),
+  );
+  const demoSpaceMap = new Map<string, { name: string | null; slug: string | null }>();
+  if (demoSpaceIds.length > 0) {
+    const { data: spaceRows } = await supabase
+      .from('Space')
+      .select('id, name, slug')
+      .in('id', demoSpaceIds);
+    for (const s of (spaceRows ?? []) as { id: string; name: string | null; slug: string | null }[]) {
+      demoSpaceMap.set(s.id, { name: s.name ?? null, slug: s.slug ?? null });
+    }
+  }
+  const demos = (demoRows as Array<Record<string, unknown>>).map((t) => ({
+    ...t,
+    Space: demoSpaceMap.get(t.spaceId as string) ?? null,
+  })) as Array<Record<string, unknown> & { Space: { name: string | null; slug: string | null } | null }>;
 
   const applications: PortalApplication[] = (contacts ?? []).map((c) => {
     const space = c.Space as SpaceRel;

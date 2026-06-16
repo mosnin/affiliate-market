@@ -13,7 +13,7 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
 
@@ -74,9 +74,7 @@ export const addProductTool = defineTool<typeof parameters, AddProductResult>({
   async handler(args, ctx) {
     const productId = crypto.randomUUID();
     const status = args.listingStatus ?? 'active';
-    const row = {
-      id: productId,
-      spaceId: ctx.space.id,
+    const fields = {
       address: args.address.trim(),
       listingStatus: status,
       listPrice: args.listPrice ?? null,
@@ -89,15 +87,19 @@ export const addProductTool = defineTool<typeof parameters, AddProductResult>({
       notes: args.notes?.trim() || null,
     };
 
-    const { error: insertErr } = await supabase.from('Product').insert(row);
-    if (insertErr) {
-      logger.error('[tools.add_product] insert failed', { address: row.address }, insertErr);
-      return { summary: `Couldn't add the product: ${insertErr.message}`, display: 'error' };
+    const res = await convex().mutation(api.marketplace.products.create, {
+      id: productId,
+      spaceId: ctx.space.id,
+      fields,
+    });
+    if (!res.ok) {
+      logger.error('[tools.add_product] insert failed', { address: fields.address, error: res.error });
+      return { summary: `Couldn't add the product: ${res.error}`, display: 'error' };
     }
 
     return {
-      summary: `Product added at ${row.address}.`,
-      data: { productId, address: row.address, listingStatus: status },
+      summary: `Product added at ${fields.address}.`,
+      data: { productId, address: fields.address, listingStatus: status },
       display: 'success',
     };
   },

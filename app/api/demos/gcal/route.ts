@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { encrypt, decrypt, decryptOrPassthrough } from '@/lib/crypto';
@@ -107,7 +106,7 @@ export async function POST(req: NextRequest) {
 
     const accessToken = await getValidAccessToken(tokenRow, space.id);
 
-    const { data: demo } = await supabase.from('Demo').select('*').eq('id', demoId).maybeSingle();
+    const demo = await convex().query(api.demos.demos.getById, { id: demoId });
     if (!demo) return NextResponse.json({ error: 'Demo not found' }, { status: 404 });
 
     const event = {
@@ -138,7 +137,7 @@ export async function POST(req: NextRequest) {
       );
       if (!res.ok) {
         // Clear the stale event ID in the DB so it gets re-created on retry
-        await supabase.from('Demo').update({ googleEventId: null }).eq('id', demoId);
+        await convex().mutation(api.demos.demos.setGoogleEventId, { id: demoId, googleEventId: null });
         googleEventId = null; // Re-create below
       }
     }
@@ -161,7 +160,7 @@ export async function POST(req: NextRequest) {
       googleEventId = created.id;
     }
 
-    await supabase.from('Demo').update({ googleEventId }).eq('id', demoId);
+    await convex().mutation(api.demos.demos.setGoogleEventId, { id: demoId, googleEventId });
 
     return NextResponse.json({ synced: true, googleEventId });
   }
