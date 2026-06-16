@@ -12,6 +12,7 @@
 
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
 const parameters = z
@@ -80,24 +81,36 @@ export const proposeDemoTimesTool = defineTool<typeof parameters, ProposeDemoTim
 
     // Fetch everything booked in the window, then walk the calendar in
     // 30-minute steps and accept the first free 60-min block in each hour.
-    const [demoRes, eventRes] = await Promise.all([
+    // Demo stays on Supabase (other domain); CalendarEvent moved to Convex,
+    // which throws on failure rather than returning `.error`.
+    let demoRes: Awaited<ReturnType<typeof demoQuery>>;
+    let eventData: Array<{ date: string; time: string | null }>;
+    const demoQuery = () =>
       supabase
         .from('Demo')
         .select('startsAt, endsAt')
         .eq('spaceId', ctx.space.id)
         .lt('startsAt', windowEnd.toISOString())
         .gt('endsAt', now.toISOString())
-        .limit(200),
-      supabase
-        .from('CalendarEvent')
-        .select('date, time')
-        .eq('spaceId', ctx.space.id)
-        .gte('date', now.toISOString().slice(0, 10))
-        .lte('date', windowEnd.toISOString().slice(0, 10))
-        .limit(500),
-    ]);
+        .limit(200);
+    try {
+      [demoRes, eventData] = await Promise.all([
+        demoQuery(),
+        convex().query(api.calendar.events.listByDateRange, {
+          spaceId: ctx.space.id,
+          fromDate: now.toISOString().slice(0, 10),
+          toDate: windowEnd.toISOString().slice(0, 10),
+          limit: 500,
+        }),
+      ]);
+    } catch {
+      return {
+        summary: 'Could not check the calendar. Try again in a moment.',
+        display: 'error',
+      };
+    }
 
-    if (demoRes.error || eventRes.error) {
+    if (demoRes.error) {
       return {
         summary: 'Could not check the calendar. Try again in a moment.',
         display: 'error',
@@ -112,7 +125,7 @@ export const proposeDemoTimesTool = defineTool<typeof parameters, ProposeDemoTim
         endsAt: Date.parse(t.endsAt),
       });
     }
-    for (const e of (eventRes.data ?? []) as Array<{ date: string; time: string | null }>) {
+    for (const e of eventData) {
       if (e.time && /^\d{2}:\d{2}$/.test(e.time)) {
         const start = Date.parse(`${e.date}T${e.time}:00`);
         conflicts.push({ startsAt: start, endsAt: start + 60 * 60_000 });

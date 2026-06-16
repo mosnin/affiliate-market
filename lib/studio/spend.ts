@@ -19,7 +19,7 @@
  * never silently expand it from code.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 const DEFAULT_CAP_USD = 50;
@@ -40,21 +40,12 @@ function getCapUsd(): number {
  */
 export async function getStudioSpendToday(spaceId: string): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
-    .from('StudioGeneration')
-    .select('costUsd')
-    .eq('spaceId', spaceId)
-    .gte('createdAt', since);
-  if (error) {
-    logger.warn('[studio.spend] today-spend query failed — allowing', { spaceId }, error);
+  try {
+    return await convex().query(api.studio.generations.spendSince, { spaceId, since });
+  } catch (error) {
+    logger.warn('[studio.spend] today-spend query failed — allowing', { spaceId }, error as Error);
     return 0;
   }
-  let total = 0;
-  for (const row of (data ?? []) as { costUsd: number | string | null }[]) {
-    const v = typeof row.costUsd === 'string' ? Number(row.costUsd) : row.costUsd;
-    if (typeof v === 'number' && Number.isFinite(v)) total += v;
-  }
-  return total;
 }
 
 export interface SpendBudgetResult {

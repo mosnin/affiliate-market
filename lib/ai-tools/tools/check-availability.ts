@@ -13,6 +13,7 @@
 
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
 const parameters = z
@@ -67,28 +68,36 @@ export const checkAvailabilityTool = defineTool<typeof parameters, CheckAvailabi
     const fromDate = fromIso.slice(0, 10);
     const toDate = toIso.slice(0, 10);
 
-    const [demoRes, eventRes] = await Promise.all([
+    // Demo stays on Supabase (other domain); CalendarEvent moved to Convex.
+    // Convex throws on failure (no `.error`), so the event read is its own
+    // try/catch while the Demo read keeps the Supabase `{ data, error }` shape.
+    let eventData: Array<{ id: string; title: string; date: string; time: string | null }>;
+    let demoRes: Awaited<ReturnType<typeof demoQuery>>;
+    const demoQuery = () =>
       supabase
         .from('Demo')
         .select('id, startsAt, endsAt, productAddress, guestName')
         .eq('spaceId', ctx.space.id)
         .lt('startsAt', toIso)
         .gt('endsAt', fromIso)
-        .limit(20),
-      supabase
-        .from('CalendarEvent')
-        .select('id, title, date, time')
-        .eq('spaceId', ctx.space.id)
-        .gte('date', fromDate)
-        .lte('date', toDate)
-        .limit(50),
-    ]);
+        .limit(20);
+    try {
+      [demoRes, eventData] = await Promise.all([
+        demoQuery(),
+        convex().query(api.calendar.events.listByDateRange, {
+          spaceId: ctx.space.id,
+          fromDate,
+          toDate,
+          limit: 50,
+        }),
+      ]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      return { summary: `Availability check failed: ${message}`, display: 'error' };
+    }
 
     if (demoRes.error) {
       return { summary: `Availability check failed: ${demoRes.error.message}`, display: 'error' };
-    }
-    if (eventRes.error) {
-      return { summary: `Availability check failed: ${eventRes.error.message}`, display: 'error' };
     }
 
     const conflicts: Conflict[] = [];
@@ -108,12 +117,7 @@ export const checkAvailabilityTool = defineTool<typeof parameters, CheckAvailabi
         kind: 'demo',
       });
     }
-    for (const e of (eventRes.data ?? []) as Array<{
-      id: string;
-      title: string;
-      date: string;
-      time: string | null;
-    }>) {
+    for (const e of eventData) {
       const band = eventBand(e.date, e.time);
       // Filter all-day events down to the requested window.
       if (band.endsAt <= fromIso || band.startsAt >= toIso) continue;

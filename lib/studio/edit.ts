@@ -6,6 +6,7 @@
 
 import crypto from 'crypto';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
   uploadObject,
@@ -66,34 +67,31 @@ export async function runStudioEdit(args: {
   const sourceUrl = await getSignedDownloadUrl(source.storageKey as string, 3600);
 
   const generationId = crypto.randomUUID();
-  const { error: genErr } = await supabase.from('StudioGeneration').insert({
-    id: generationId,
-    spaceId: args.spaceId,
-    userId: args.userId,
-    kind: 'image',
-    model: tool.id,
-    prompt: prompt || null,
-    sourceFileId: args.sourceFileId,
-    status: 'running',
-    costUsd: 0,
-  });
-  if (genErr) {
-    logger.error('[studio.edit] log insert failed', { spaceId: args.spaceId }, genErr);
+  try {
+    await convex().mutation(api.studio.generations.insertRunning, {
+      id: generationId,
+      spaceId: args.spaceId,
+      userId: args.userId,
+      kind: 'image',
+      model: tool.id,
+      // PG stored `prompt || null`; Convex omits absent optionals, so pass
+      // undefined (== SQL NULL) when there's no prompt.
+      prompt: prompt || undefined,
+      sourceFileId: args.sourceFileId,
+    });
+  } catch (genErr) {
+    logger.error('[studio.edit] log insert failed', { spaceId: args.spaceId }, genErr as Error);
     throw new StudioGenerationError(
-      `Could not start the edit: ${genErr.message ?? 'unknown DB error'}`,
+      `Could not start the edit: ${(genErr as Error)?.message ?? 'unknown DB error'}`,
       500,
     );
   }
 
   const markFailed = async (message: string): Promise<void> => {
-    await supabase
-      .from('StudioGeneration')
-      .update({
-        status: 'failed',
-        errorMessage: message,
-        completedAt: new Date().toISOString(),
-      })
-      .eq('id', generationId);
+    await convex().mutation(api.studio.generations.markFailed, {
+      id: generationId,
+      errorMessage: message,
+    });
   };
 
   let out: GeneratedAsset;
@@ -157,15 +155,11 @@ export async function runStudioEdit(args: {
     throw new StudioGenerationError("Edit didn't go through — usually temporary.", 500);
   }
 
-  await supabase
-    .from('StudioGeneration')
-    .update({
-      status: 'completed',
-      fileId,
-      costUsd: tool.costUsd,
-      completedAt: new Date().toISOString(),
-    })
-    .eq('id', generationId);
+  await convex().mutation(api.studio.generations.markCompleted, {
+    id: generationId,
+    fileId,
+    costUsd: tool.costUsd,
+  });
 
   const url = await getSignedDownloadUrl(storageKey);
   return { generationId, fileId, url, kind: 'image', model: tool.id, costUsd: tool.costUsd };

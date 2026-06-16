@@ -5,7 +5,7 @@
  * same way.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { grantCredits, type BillingAccount } from '@/lib/billing/credits';
 import { PLANS, TOPUPS, CREDIT_ROLLOVER_DAYS, type PlanId, type TopupId } from '@/lib/plans';
 
@@ -41,13 +41,10 @@ export async function grantMonthlyCredits(
 export async function grantFreeSignup(account: BillingAccount): Promise<number> {
   const amount = PLANS.free.oneTimeCredits ?? 0;
   if (amount <= 0) return 0;
-  const { data: existing } = await supabase
-    .from('CreditLot')
-    .select('id')
-    .eq('accountType', account.type)
-    .eq('accountId', account.id)
-    .eq('reason', 'free_signup')
-    .maybeSingle();
+  const existing = await convex().query(api.credits.lots.hasFreeSignup, {
+    accountType: account.type,
+    accountId: account.id,
+  });
   if (existing) return 0;
   await grantCredits(account, amount, 'free_signup', null);
   return amount;

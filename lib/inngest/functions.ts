@@ -12,6 +12,7 @@
 
 import { inngest } from './client';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { publishToPlatform } from '@/lib/studio/publish';
 import { findByComposioId } from '@/lib/integrations/connections';
@@ -65,12 +66,8 @@ export const publishScheduledPost = inngest.createFunction(
       const postId = String(data.postId ?? '');
       let spaceId = 'unknown';
       if (postId) {
-        const { data: post } = await supabase
-          .from('StudioPost')
-          .select('userId')
-          .eq('id', postId)
-          .maybeSingle();
-        spaceId = await spaceIdForOwner(post?.userId);
+        const userId = await convex().query(api.studio.posts.getUserId, { id: postId });
+        spaceId = await spaceIdForOwner(userId);
       }
       await recordDeadLetter({
         spaceId,
@@ -86,19 +83,10 @@ export const publishScheduledPost = inngest.createFunction(
 
     // Load the post and the storage key of its image.
     const post = await step.run('load-post', async (): Promise<LoadedPost | null> => {
-      const { data } = await supabase
-        .from('StudioPost')
-        .select('status, userId, caption, platforms, fileId')
-        .eq('id', postId)
-        .maybeSingle();
-      if (!data) return null;
-      const row = data as {
-        status: string;
-        userId: string;
-        caption: string | null;
-        platforms: string[] | null;
-        fileId: string;
-      };
+      const row = await convex().query(api.studio.posts.getForPublish, { id: postId });
+      if (!row) return null;
+      // The image's storageKey lives on the File table (a different domain),
+      // so that lookup stays on Supabase.
       const { data: file } = await supabase
         .from('File')
         .select('storageKey')
@@ -120,14 +108,7 @@ export const publishScheduledPost = inngest.createFunction(
 
     if (!post.storageKey) {
       await step.run('mark-missing', async () => {
-        await supabase
-          .from('StudioPost')
-          .update({
-            status: 'failed',
-            platformResults: { error: 'The post image is missing.' },
-            updatedAt: new Date().toISOString(),
-          })
-          .eq('id', postId);
+        await convex().mutation(api.studio.posts.markMissingImage, { id: postId });
         return { done: true };
       });
       return { failed: 'missing image' };
@@ -139,15 +120,8 @@ export const publishScheduledPost = inngest.createFunction(
     // both would update to 'publishing' and post twice. If the CAS returns
     // no row, another worker already claimed it; bail.
     const claim = await step.run('claim', async () => {
-      const { data: claimedRow, error: claimErr } = await supabase
-        .from('StudioPost')
-        .update({ status: 'publishing', updatedAt: new Date().toISOString() })
-        .eq('id', postId)
-        .eq('status', 'scheduled')
-        .select('id')
-        .maybeSingle();
-      if (claimErr) throw claimErr;
-      return { claimed: claimedRow !== null };
+      const claimed = await convex().mutation(api.studio.posts.claimForPublish, { id: postId });
+      return { claimed };
     });
     if (!claim.claimed) {
       return { skipped: 'already claimed by another worker' };
@@ -176,15 +150,11 @@ export const publishScheduledPost = inngest.createFunction(
     }
 
     await step.run('finalize', async () => {
-      await supabase
-        .from('StudioPost')
-        .update({
-          status: anyOk ? 'posted' : 'failed',
-          platformResults: results,
-          postedAt: anyOk ? new Date().toISOString() : null,
-          updatedAt: new Date().toISOString(),
-        })
-        .eq('id', postId);
+      await convex().mutation(api.studio.posts.finalize, {
+        id: postId,
+        posted: anyOk,
+        platformResults: results,
+      });
       return { done: true };
     });
 

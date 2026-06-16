@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { getSignedDownloadUrl } from '@/lib/storage';
 
@@ -23,20 +24,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const offset = Math.max(0, parseInt(url.searchParams.get('offset') ?? '0', 10) || 0);
 
-  const { data: gens, error } = await supabase
-    .from('StudioGeneration')
-    .select('id, kind, model, prompt, fileId, createdAt')
-    .eq('spaceId', space.id)
-    .eq('status', 'completed')
-    .not('fileId', 'is', null)
-    .order('createdAt', { ascending: false })
-    .range(offset, offset + PAGE_SIZE - 1);
-  if (error) {
-    logger.error('[studio.library] query failed', { spaceId: space.id }, error);
-    return NextResponse.json({ error: 'Could not load your library.' }, { status: 500 });
-  }
-
-  const rows = (gens ?? []) as Array<{
+  let rows: Array<{
     id: string;
     kind: string;
     model: string;
@@ -44,6 +32,16 @@ export async function GET(req: Request) {
     fileId: string;
     createdAt: string;
   }>;
+  try {
+    rows = await convex().query(api.studio.generations.library, {
+      spaceId: space.id,
+      offset,
+      pageSize: PAGE_SIZE,
+    });
+  } catch (error) {
+    logger.error('[studio.library] query failed', { spaceId: space.id }, error as Error);
+    return NextResponse.json({ error: 'Could not load your library.' }, { status: 500 });
+  }
 
   // Resolve a signed URL per asset. S3 presigning is local (no network call),
   // so signing the whole page is cheap.

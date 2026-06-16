@@ -27,6 +27,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
   composioConfigured,
@@ -203,23 +204,20 @@ export async function writeEventThrough(
   // 2. Always log the mirror row, even when the external write failed.
   //    Intent is the unit of forensics: if Cola tried to put a demo on
   //    the calendar at 3pm and Google was down, we still want to know.
-  const { data: mirrorRow, error: mirrorErr } = await supabase
-    .from('CalendarEventMirror')
-    .insert({
+  try {
+    const mirrorRow = await convex().mutation(api.calendar.mirrors.create, {
       spaceId: input.spaceId,
       externalProvider: input.connection.toolkit,
-      externalEventId,
+      externalEventId: externalEventId ?? undefined,
       title: input.title,
       start: input.startsAt,
       end: input.endsAt,
       attendees: input.attendees ?? [],
-      sourceDemoId: input.sourceDemoId ?? null,
+      sourceDemoId: input.sourceDemoId ?? undefined,
       createdBy: input.createdBy ?? 'agent',
-    })
-    .select('id')
-    .single();
-
-  if (mirrorErr || !mirrorRow) {
+    });
+    return { mirrorId: mirrorRow.id, externalEventId, externalOk };
+  } catch (mirrorErr) {
     logger.error(
       '[calendar.mirror] mirror insert failed',
       { spaceId: input.spaceId, externalEventId },
@@ -230,10 +228,4 @@ export async function writeEventThrough(
     // any) still landed — the seller's calendar is the truth.
     return { mirrorId: '', externalEventId, externalOk };
   }
-
-  return {
-    mirrorId: (mirrorRow as { id: string }).id,
-    externalEventId,
-    externalOk,
-  };
 }

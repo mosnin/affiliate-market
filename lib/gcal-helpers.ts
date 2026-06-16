@@ -13,7 +13,7 @@
  * loudly enough that ops can chase orphans manually if needed.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { decrypt, encrypt, decryptOrPassthrough } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
 
@@ -65,14 +65,11 @@ export async function getValidAccessToken(
   const tokens = (await res.json()) as { access_token?: string; expires_in?: number };
   if (!tokens.access_token) throw new Error('No access_token in Google refresh response');
 
-  await supabase
-    .from('GoogleCalendarToken')
-    .update({
-      accessToken: encrypt(tokens.access_token),
-      expiresAt: new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
-    .eq('spaceId', spaceId);
+  await convex().mutation(api.calendar.tokens.updateTokens, {
+    spaceId,
+    accessToken: encrypt(tokens.access_token),
+    expiresAt: new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString(),
+  });
 
   return tokens.access_token;
 }
@@ -92,11 +89,9 @@ export async function deleteGoogleEvent(args: {
 }): Promise<boolean> {
   if (!args.googleEventId) return true;
 
-  const { data: tokenRow } = await supabase
-    .from('GoogleCalendarToken')
-    .select('accessToken, refreshToken, expiresAt, calendarId')
-    .eq('spaceId', args.spaceId)
-    .maybeSingle();
+  const tokenRow = await convex().query(api.calendar.tokens.getBySpace, {
+    spaceId: args.spaceId,
+  });
   if (!tokenRow) return true;
 
   let accessToken: string;

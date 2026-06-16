@@ -3,6 +3,7 @@ import { requirePlatformAdmin } from '@/lib/permissions';
 import { logAdminAction } from '@/lib/admin';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import {
   getCreditBalance,
   getRecentTxns,
@@ -111,11 +112,7 @@ export async function POST(req: Request) {
       // Bind the refund to the account in context — refundCredits(txnId) would
       // otherwise reverse ANY transaction in the system by id, so a stale/wrong
       // txnId could silently refund an unrelated account's debit.
-      const { data: txn } = await supabase
-        .from('CreditTxn')
-        .select('accountType, accountId')
-        .eq('id', txnId)
-        .maybeSingle();
+      const txn = await convex().query(api.credits.txns.txnAccountById, { id: txnId });
       if (!txn) return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
       if (txn.accountType !== account.type || txn.accountId !== account.id) {
         return NextResponse.json({ error: 'Transaction does not belong to this account' }, { status: 400 });

@@ -7,6 +7,7 @@
 
 import crypto from 'crypto';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
   uploadObject,
@@ -65,49 +66,38 @@ export async function runStudioGeneration(args: {
   // Brand kit — fold the seller's palette into the prompt so output comes
   // out on-brand. The original prompt is what gets logged; fal sees the augment.
   let effectivePrompt = prompt;
-  const { data: brand } = await supabase
-    .from('StudioBrand')
-    .select('colors')
-    .eq('spaceId', args.spaceId)
-    .maybeSingle();
-  const brandColors = (brand?.colors as string[] | null) ?? [];
+  const brandColors = await convex().query(api.studio.brand.getBrandColors, {
+    spaceId: args.spaceId,
+  });
   if (brandColors.length > 0) {
     effectivePrompt = `${prompt}\n\nUse a color palette of ${brandColors.join(', ')}.`;
   }
 
   const generationId = crypto.randomUUID();
-  const { error: genErr } = await supabase.from('StudioGeneration').insert({
-    id: generationId,
-    spaceId: args.spaceId,
-    userId: args.userId,
-    kind: model.kind,
-    model: model.id,
-    prompt,
-    status: 'running',
-    costUsd: 0,
-  });
-  if (genErr) {
-    logger.error('[studio.generate] log insert failed', { spaceId: args.spaceId }, genErr);
+  try {
+    await convex().mutation(api.studio.generations.insertRunning, {
+      id: generationId,
+      spaceId: args.spaceId,
+      userId: args.userId,
+      kind: model.kind,
+      model: model.id,
+      prompt,
+    });
+  } catch (genErr) {
+    logger.error('[studio.generate] log insert failed', { spaceId: args.spaceId }, genErr as Error);
     // Surface the underlying error so the seller sees WHAT's wrong instead
-    // of a generic message that requires log access to diagnose. The
-    // common cause is the 20260606000005_studio_tables.sql migration not
-    // being applied — without it the table doesn't exist and we get
-    // `relation "StudioGeneration" does not exist`.
+    // of a generic message that requires log access to diagnose.
     throw new StudioGenerationError(
-      `Could not start generation: ${genErr.message ?? 'unknown DB error'}`,
+      `Could not start generation: ${(genErr as Error)?.message ?? 'unknown DB error'}`,
       500,
     );
   }
 
   const markFailed = async (message: string): Promise<void> => {
-    await supabase
-      .from('StudioGeneration')
-      .update({
-        status: 'failed',
-        errorMessage: message,
-        completedAt: new Date().toISOString(),
-      })
-      .eq('id', generationId);
+    await convex().mutation(api.studio.generations.markFailed, {
+      id: generationId,
+      errorMessage: message,
+    });
   };
 
   // ── Generate ────────────────────────────────────────────────────────────
@@ -180,15 +170,11 @@ export async function runStudioGeneration(args: {
     throw new StudioGenerationError("Generation didn't go through — usually temporary.", 500);
   }
 
-  await supabase
-    .from('StudioGeneration')
-    .update({
-      status: 'completed',
-      fileId,
-      costUsd: model.costUsd,
-      completedAt: new Date().toISOString(),
-    })
-    .eq('id', generationId);
+  await convex().mutation(api.studio.generations.markCompleted, {
+    id: generationId,
+    fileId,
+    costUsd: model.costUsd,
+  });
 
   const url = await getSignedDownloadUrl(storageKey);
   return {

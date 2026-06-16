@@ -17,7 +17,7 @@
  * input). See lib/billing/account.ts.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { WORKFLOW_CREDIT_COST, type Workflow, type AccountType } from '@/lib/plans';
 
 export interface BillingAccount {
@@ -95,14 +95,11 @@ export function workflowCost(workflow: Workflow, units = 1): number {
 
 /** Current spendable balance for an account. */
 export async function getCreditBalance(account: BillingAccount): Promise<number> {
-  const { data, error } = await supabase
-    .from('CreditLot')
-    .select('id, remaining, expiresAt')
-    .eq('accountType', account.type)
-    .eq('accountId', account.id)
-    .gt('remaining', 0);
-  if (error) throw error;
-  return availableBalance((data ?? []) as CreditLot[]);
+  const lots = await convex().query(api.credits.lots.balanceLots, {
+    accountType: account.type,
+    accountId: account.id,
+  });
+  return availableBalance(lots as CreditLot[]);
 }
 
 /** Add a credit lot (monthly grant, top-up, free signup, or add-on user).
@@ -117,15 +114,14 @@ export async function grantCredits(
   expiresAt: Date | null,
   sourceId?: string | null,
 ): Promise<void> {
-  const { error } = await supabase.rpc('grant_credits', {
-    p_account_type: account.type,
-    p_account_id: account.id,
-    p_amount: amount,
-    p_reason: reason,
-    p_expires_at: expiresAt ? expiresAt.toISOString() : null,
-    p_source_id: sourceId ?? null,
+  await convex().mutation(api.credits.lots.grant, {
+    accountType: account.type,
+    accountId: account.id,
+    amount,
+    reason,
+    expiresAt: expiresAt ? expiresAt.toISOString() : null,
+    sourceId: sourceId ?? null,
   });
-  if (error) throw error;
 }
 
 /** Recent ledger transactions for an account (newest first) — for billing UIs. */
@@ -137,15 +133,11 @@ export interface CreditTxnRow {
   createdAt: string;
 }
 export async function getRecentTxns(account: BillingAccount, limit = 20): Promise<CreditTxnRow[]> {
-  const { data, error } = await supabase
-    .from('CreditTxn')
-    .select('id, delta, workflow, reason, createdAt')
-    .eq('accountType', account.type)
-    .eq('accountId', account.id)
-    .order('createdAt', { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return (data ?? []) as CreditTxnRow[];
+  return convex().query(api.credits.txns.recentTxns, {
+    accountType: account.type,
+    accountId: account.id,
+    limit,
+  });
 }
 
 export interface SpendResult {
@@ -167,25 +159,21 @@ export async function spendCredits(
   opts?: { units?: number; spaceId?: string; userId?: string; metadata?: Record<string, unknown> },
 ): Promise<SpendResult> {
   const cost = workflowCost(workflow, opts?.units ?? 1);
-  const { data, error } = await supabase.rpc('spend_credits', {
-    p_account_type: account.type,
-    p_account_id: account.id,
-    p_amount: cost,
-    p_workflow: workflow,
-    p_space_id: opts?.spaceId ?? null,
-    p_user_id: opts?.userId ?? null,
-    p_metadata: opts?.metadata ?? {},
+  const row = await convex().mutation(api.credits.txns.spend, {
+    accountType: account.type,
+    accountId: account.id,
+    amount: cost,
+    workflow,
+    spaceId: opts?.spaceId ?? null,
+    userId: opts?.userId ?? null,
+    metadata: opts?.metadata ?? {},
   });
-  if (error) throw error;
-  // spend_credits returns a single row: { ok, balance, txn_id }
-  const row = Array.isArray(data) ? data[0] : data;
-  return { ok: !!row?.ok, balance: row?.balance ?? 0, txnId: row?.txn_id ?? undefined };
+  return { ok: !!row?.ok, balance: row?.balance ?? 0, txnId: row?.txnId ?? undefined };
 }
 
 /** Reverse a debit (e.g. the workflow threw after charging). Idempotent per txn. */
 export async function refundCredits(txnId: string): Promise<void> {
-  const { error } = await supabase.rpc('refund_credit_txn', { p_txn_id: txnId });
-  if (error) throw error;
+  await convex().mutation(api.credits.txns.refund, { txnId });
 }
 
 /**

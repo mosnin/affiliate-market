@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { decrypt, decryptOrPassthrough, encrypt } from '@/lib/crypto';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
@@ -252,11 +253,9 @@ async function fetchGoogleCalendarBusy(
   timeMin: Date,
   timeMax: Date
 ): Promise<Array<{ start: number; end: number }>> {
-  const { data: tokenRow } = await supabase
-    .from('GoogleCalendarToken')
-    .select('*')
-    .eq('spaceId', spaceId)
-    .maybeSingle();
+  const tokenRow = await convex().query(api.calendar.tokens.getBySpace, {
+    spaceId,
+  });
 
   if (!tokenRow) return [];
 
@@ -324,15 +323,12 @@ async function getValidGCalToken(tokenRow: any, spaceId: string): Promise<string
   const tokens = await res.json();
   if (!tokens.access_token) throw new Error('No access_token in Google refresh response');
 
-  await supabase
-    .from('GoogleCalendarToken')
-    .update({
-      // Encrypt at rest — must match the read path and every other writer.
-      accessToken: encrypt(tokens.access_token),
-      expiresAt: new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
-    .eq('spaceId', spaceId);
+  // Encrypt at rest — must match the read path and every other writer.
+  await convex().mutation(api.calendar.tokens.updateTokens, {
+    spaceId,
+    accessToken: encrypt(tokens.access_token),
+    expiresAt: new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString(),
+  });
 
   return tokens.access_token;
 }

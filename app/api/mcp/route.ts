@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import crypto from 'crypto';
 import { jwtVerify } from 'jose';
@@ -342,13 +343,11 @@ function buildServer(spaceId: string): McpServer {
     'List custom calendar events.',
     { limit: z.number().int().positive().max(200).optional().default(20) },
     async ({ limit }) => {
-      const { data } = await supabase
-        .from('CalendarEvent')
-        .select('id, title, description, date, time, color')
-        .eq('spaceId', spaceId)
-        .gte('date', new Date().toISOString().slice(0, 10))
-        .order('date')
-        .limit(limit ?? 20);
+      const data = await convex().query(api.calendar.events.listUpcoming, {
+        spaceId,
+        fromDate: new Date().toISOString().slice(0, 10),
+        limit: limit ?? 20,
+      });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(data ?? [], null, 2) }],
       };

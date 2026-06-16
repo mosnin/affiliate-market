@@ -55,6 +55,24 @@ vi.mock('@/lib/supabase', () => {
   return { supabase: { from: vi.fn((table: string) => makeChain(table)) } };
 });
 
+// Calendar tools (check_availability, block_time) now read/write CalendarEvent
+// through Convex instead of Supabase. Mock the server client; `api` is a path
+// proxy so any api.<domain>.<fn> access yields a harmless stub the mocks ignore.
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
 // composeQuickDraft is the only external dependency for draft_email/draft_sms.
 const { composeQuickDraftMock } = vi.hoisted(() => ({
   composeQuickDraftMock: vi.fn(),
@@ -99,6 +117,11 @@ beforeEach(() => {
   mockByTable = {};
   composeQuickDraftMock.mockReset();
   recallMemoryMock.mockReset();
+  convexQueryMock.mockReset();
+  convexMutationMock.mockReset();
+  // Calendar reads default to empty; the block-time mutation returns a row.
+  convexQueryMock.mockResolvedValue([]);
+  convexMutationMock.mockResolvedValue({ id: 'ev_default', date: '2026-05-01', time: '14:00', title: 'Blocked' });
 });
 
 // ── find_comparable_products ─────────────────────────────────────────────
@@ -241,9 +264,12 @@ describe('blockTimeTool', () => {
   });
 
   it('inserts a CalendarEvent and titles it "Blocked: ..."', async () => {
-    mockByTable = {
-      CalendarEvent: { single: { id: 'ev_1', date: '2026-05-01', time: '14:00', title: 'Blocked: dentist' } },
-    };
+    convexMutationMock.mockResolvedValueOnce({
+      id: 'ev_1',
+      date: '2026-05-01',
+      time: '14:00',
+      title: 'Blocked: dentist',
+    });
     const result = await blockTimeTool.handler(
       { from: '2026-05-01T14:00:00.000Z', to: '2026-05-01T15:00:00.000Z', reason: 'dentist' },
       makeCtx(),

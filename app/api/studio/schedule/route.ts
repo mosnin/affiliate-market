@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { uploadObject, deleteObject, buildKey } from '@/lib/storage';
 import { validateUpload } from '@/lib/storage/limits';
@@ -47,21 +48,26 @@ export async function GET() {
   const space = await getSpaceForUser(auth.userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const [platforms, postsRes] = await Promise.all([
-    connectedSocials(space.id, auth.userId),
-    supabase
-      .from('StudioPost')
-      .select('id, caption, platforms, scheduledAt, status, createdAt')
-      .eq('spaceId', space.id)
-      .order('scheduledAt', { ascending: true })
-      .limit(100),
-  ]);
-  if (postsRes.error) {
-    logger.error('[studio.schedule] list failed', { spaceId: space.id }, postsRes.error);
+  let platforms: Array<{ toolkit: string; name: string }>;
+  let posts: Array<{
+    id: string;
+    caption: string;
+    platforms: string[];
+    scheduledAt: string;
+    status: string;
+    createdAt: string;
+  }>;
+  try {
+    [platforms, posts] = await Promise.all([
+      connectedSocials(space.id, auth.userId),
+      convex().query(api.studio.posts.listForSpace, { spaceId: space.id }),
+    ]);
+  } catch (error) {
+    logger.error('[studio.schedule] list failed', { spaceId: space.id }, error as Error);
     return NextResponse.json({ error: 'Could not load scheduled posts.' }, { status: 500 });
   }
 
-  return NextResponse.json({ platforms, posts: postsRes.data ?? [] });
+  return NextResponse.json({ platforms, posts });
 }
 
 export async function POST(req: NextRequest) {
@@ -204,22 +210,25 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data: post, error: postErr } = await supabase
-    .from('StudioPost')
-    .insert({
-      id: crypto.randomUUID(),
+  let post: {
+    id: string;
+    caption: string;
+    platforms: string[];
+    scheduledAt: string;
+    status: string;
+    createdAt: string;
+  };
+  try {
+    post = await convex().mutation(api.studio.posts.insertPost, {
       spaceId: space.id,
       userId,
       fileId,
       caption,
       platforms: targets,
       scheduledAt: scheduledAt.toISOString(),
-      status: 'scheduled',
-    })
-    .select('id, caption, platforms, scheduledAt, status, createdAt')
-    .single();
-  if (postErr) {
-    logger.error('[studio.schedule] post insert failed', { spaceId: space.id }, postErr);
+    });
+  } catch (postErr) {
+    logger.error('[studio.schedule] post insert failed', { spaceId: space.id }, postErr as Error);
     return NextResponse.json({ error: "Couldn't schedule the post — usually temporary." }, { status: 500 });
   }
 
@@ -234,17 +243,14 @@ export async function POST(req: NextRequest) {
     });
     const eventId = sent.ids?.[0];
     if (eventId) {
-      await supabase
-        .from('StudioPost')
-        .update({ inngestEventId: eventId })
-        .eq('id', post.id);
+      await convex().mutation(api.studio.posts.setInngestEventId, {
+        id: post.id,
+        inngestEventId: eventId,
+      });
     }
   } catch (err) {
     logger.error('[studio.schedule] inngest send failed', { spaceId: space.id }, err as Error);
-    await supabase
-      .from('StudioPost')
-      .update({ status: 'failed', updatedAt: new Date().toISOString() })
-      .eq('id', post.id);
+    await convex().mutation(api.studio.posts.markFailed, { id: post.id });
     return NextResponse.json(
       { error: "Couldn't schedule the post — usually temporary." },
       { status: 500 },
@@ -268,19 +274,14 @@ export async function DELETE(req: NextRequest) {
   // Only a still-scheduled post in this space can be canceled. The Inngest
   // publish function skips any post that is not 'scheduled', so flipping the
   // status is the whole cancel mechanism.
-  const { data, error } = await supabase
-    .from('StudioPost')
-    .update({ status: 'canceled', updatedAt: new Date().toISOString() })
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .eq('status', 'scheduled')
-    .select('id')
-    .maybeSingle();
-  if (error) {
-    logger.error('[studio.schedule] cancel failed', { spaceId: space.id }, error);
+  let canceled: boolean;
+  try {
+    canceled = await convex().mutation(api.studio.posts.cancel, { id, spaceId: space.id });
+  } catch (error) {
+    logger.error('[studio.schedule] cancel failed', { spaceId: space.id }, error as Error);
     return NextResponse.json({ error: 'Could not cancel the post.' }, { status: 500 });
   }
-  if (!data) {
+  if (!canceled) {
     return NextResponse.json(
       { error: 'That post can no longer be canceled.' },
       { status: 409 },

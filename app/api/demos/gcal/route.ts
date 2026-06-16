@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { encrypt, decrypt, decryptOrPassthrough } from '@/lib/crypto';
 
@@ -16,11 +17,9 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { space } = auth;
 
-  const { data: token } = await supabase
-    .from('GoogleCalendarToken')
-    .select('id, calendarId, createdAt')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const token = await convex().query(api.calendar.tokens.getStatusBySpace, {
+    spaceId: space.id,
+  });
 
   if (!GOOGLE_CLIENT_ID) {
     return NextResponse.json({ connected: !!token, configured: false, token: token ?? null });
@@ -77,28 +76,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid token response from Google' }, { status: 400 });
     }
 
-    // Build the upsert payload — only update refreshToken if Google returned one
-    // (Google omits refresh_token on re-authorization if one already exists)
-    const upsertPayload: Record<string, unknown> = {
-      id: crypto.randomUUID(),
+    // Only send refreshToken if Google returned one (it omits refresh_token on
+    // re-authorization when one already exists) — the upsert mutation keeps the
+    // stored value when this is absent.
+    //
+    // Access tokens at rest are encrypted now too — used to be plaintext. A
+    // leaked DB row used to hand the attacker a working Google API session for
+    // ~1 hour with no detection. Encrypted columns mean a DB breach alone is
+    // not enough; the attacker also needs the app server's ENCRYPTION_KEY.
+    // Refresh tokens were already encrypted.
+    await convex().mutation(api.calendar.tokens.upsert, {
       spaceId: space.id,
-      // Access tokens at rest are encrypted now too — used to be plaintext.
-      // A leaked DB row used to hand the attacker a working Google API
-      // session for ~1 hour with no detection. Encrypted columns mean a
-      // DB breach alone is not enough; the attacker also needs the app
-      // server's ENCRYPTION_KEY. Refresh tokens were already encrypted.
       accessToken: encrypt(tokens.access_token),
+      refreshToken: tokens.refresh_token ? encrypt(tokens.refresh_token) : undefined,
       expiresAt: new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    if (tokens.refresh_token) {
-      upsertPayload.refreshToken = encrypt(tokens.refresh_token);
-    }
-
-    const { error } = await supabase
-      .from('GoogleCalendarToken')
-      .upsert(upsertPayload, { onConflict: 'spaceId' });
-    if (error) throw error;
+    });
 
     return NextResponse.json({ connected: true });
   }
@@ -108,11 +100,9 @@ export async function POST(req: NextRequest) {
     const { demoId } = body;
     if (!demoId) return NextResponse.json({ error: 'demoId required' }, { status: 400 });
 
-    const { data: tokenRow } = await supabase
-      .from('GoogleCalendarToken')
-      .select('*')
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const tokenRow = await convex().query(api.calendar.tokens.getBySpace, {
+      spaceId: space.id,
+    });
     if (!tokenRow) return NextResponse.json({ error: 'Google Calendar not connected' }, { status: 400 });
 
     const accessToken = await getValidAccessToken(tokenRow, space.id);
@@ -178,7 +168,7 @@ export async function POST(req: NextRequest) {
 
   // Disconnect
   if (action === 'disconnect') {
-    await supabase.from('GoogleCalendarToken').delete().eq('spaceId', space.id);
+    await convex().mutation(api.calendar.tokens.deleteBySpace, { spaceId: space.id });
     return NextResponse.json({ connected: false });
   }
 
@@ -216,14 +206,11 @@ async function getValidAccessToken(tokenRow: any, spaceId: string): Promise<stri
   const tokens = await res.json();
   if (!tokens.access_token) throw new Error('No access_token in Google refresh response');
 
-  await supabase
-    .from('GoogleCalendarToken')
-    .update({
-      accessToken: encrypt(tokens.access_token),
-      expiresAt: new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
-    .eq('spaceId', spaceId);
+  await convex().mutation(api.calendar.tokens.updateTokens, {
+    spaceId,
+    accessToken: encrypt(tokens.access_token),
+    expiresAt: new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString(),
+  });
 
   return tokens.access_token;
 }

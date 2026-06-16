@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getSpaceForUser, getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 export const runtime = 'nodejs';
 
@@ -65,14 +66,12 @@ export async function POST(req: Request) {
       .limit(15),
     (async () => {
       try {
-        const res = await supabase
-          .from('CalendarEvent')
-          .select('title, date, time, description')
-          .eq('spaceId', space.id)
-          .gte('date', new Date().toISOString().slice(0, 10))
-          .order('date', { ascending: true })
-          .limit(10);
-        return res;
+        const data = await convex().query(api.calendar.events.listUpcoming, {
+          spaceId: space.id,
+          fromDate: new Date().toISOString().slice(0, 10),
+          limit: 10,
+        });
+        return { data };
       } catch {
         return { data: [] as any[] };
       }

@@ -23,7 +23,7 @@ import {
 import { activeToolkits } from '@/lib/integrations/connections';
 import { composioConfigured, executeToolForEntity } from '@/lib/integrations/composio';
 import { logger } from '@/lib/logger';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -241,10 +241,10 @@ async function logCalendarMirrorBestEffort(args: {
     const data = (args.resp.data as { id?: string; eventId?: string } | undefined) ?? undefined;
     const externalEventId = data?.id ?? data?.eventId ?? null;
 
-    await supabase.from('CalendarEventMirror').insert({
+    await convex().mutation(api.calendar.mirrors.create, {
       spaceId: args.spaceId,
       externalProvider: args.provider,
-      externalEventId,
+      externalEventId: externalEventId ?? undefined,
       title,
       start: startsAt,
       end: endsAt,
