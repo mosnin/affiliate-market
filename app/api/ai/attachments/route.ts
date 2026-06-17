@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import crypto from 'crypto';
@@ -200,27 +200,28 @@ export async function POST(req: NextRequest) {
   // else gets extracted on demand by the read_attachment tool inside the sandbox.
   const extractionStatus = isImage ? 'skipped' : 'pending';
 
-  const { error: insertError } = await supabase.from('Attachment').insert({
-    id,
-    spaceId: space.id,
-    userId,
-    conversationId,
-    filename: sanitized,
-    mimeType,
-    sizeBytes: file.size,
-    storagePath,
-    // Stored value isn't used as a long-lived URL anymore — readers always
-    // re-sign from storagePath. Keeping the column populated avoids schema
-    // changes and keeps the migration path open for a follow-up drop.
-    publicUrl: '',
-    extractionStatus,
-  });
-  if (insertError) {
+  try {
+    await convex().mutation(api.infra.attachments.create, {
+      id,
+      spaceId: space.id,
+      userId,
+      conversationId,
+      filename: sanitized,
+      mimeType,
+      sizeBytes: file.size,
+      storagePath,
+      // Stored value isn't used as a long-lived URL anymore — readers always
+      // re-sign from storagePath. Keeping the column populated avoids schema
+      // changes and keeps the migration path open for a follow-up drop.
+      publicUrl: '',
+      extractionStatus,
+    });
+  } catch (insertError) {
     // Best-effort cleanup so we don't orphan the storage object.
     await deleteObject(storagePath).catch(() => {});
-    logger.error('[ai/attachments] insert failed', { spaceId: space.id }, insertError);
+    logger.error('[ai/attachments] insert failed', { spaceId: space.id }, insertError as Error);
     return NextResponse.json(
-      { error: insertError.message || 'Could not save attachment' },
+      { error: insertError instanceof Error ? insertError.message : 'Could not save attachment' },
       { status: 500 },
     );
   }
@@ -247,13 +248,11 @@ export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  const { data, error } = await supabase
-    .from('Attachment')
-    .select('id, spaceId, storagePath')
-    .eq('id', id)
-    .maybeSingle();
-  if (error) {
-    logger.error('[ai/attachments] lookup failed', { spaceId: space.id }, error);
+  let data;
+  try {
+    data = await convex().query(api.infra.attachments.getById, { id });
+  } catch (err) {
+    logger.error('[ai/attachments] lookup failed', { spaceId: space.id }, err);
     return NextResponse.json({ error: 'Lookup failed' }, { status: 500 });
   }
   if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -267,8 +266,9 @@ export async function DELETE(req: NextRequest) {
     logger.warn('[ai/attachments] storage remove failed', { spaceId: space.id }, err);
   });
 
-  const { error: delError } = await supabase.from('Attachment').delete().eq('id', id);
-  if (delError) {
+  try {
+    await convex().mutation(api.infra.attachments.deleteById, { id });
+  } catch (delError) {
     logger.error('[ai/attachments] delete failed', { spaceId: space.id }, delError);
     return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
   }

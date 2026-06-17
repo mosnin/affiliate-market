@@ -14,7 +14,7 @@
 import { notFound } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { formatBytes } from '@/lib/storage/limits';
 import { H1, TITLE_FONT, BODY_MUTED } from '@/lib/typography';
 import { FilesPanel } from './files-panel';
@@ -30,27 +30,14 @@ export default async function FilesPage({
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
-  // Status-sentence data. We pull size + createdAt for the most recent few
-  // rows + a head-count so the sentence stays honest without dragging the
-  // full file list server-side (the client panel already does that).
-  const [{ count: fileCount }, { data: aggregateRows }] = await Promise.all([
-    supabase
-      .from('File')
-      .select('*', { count: 'exact', head: true })
-      .eq('spaceId', space.id),
-    supabase
-      .from('File')
-      .select('sizeBytes, createdAt')
-      .eq('spaceId', space.id)
-      .order('createdAt', { ascending: false })
-      .limit(500),
-  ]);
+  // Status-sentence data. We pull size for the most recent few rows + a
+  // head-count so the sentence stays honest without dragging the full file
+  // list server-side (the client panel already does that).
+  const { count, sizeBytes } = await convex().query(api.infra.files.spaceFileStats, {
+    spaceId: space.id,
+  });
 
-  const totalBytes = (aggregateRows ?? []).reduce(
-    (sum, row) => sum + (row.sizeBytes ?? 0),
-    0,
-  );
-  const count = fileCount ?? 0;
+  const totalBytes = sizeBytes.reduce((sum, n) => sum + (n ?? 0), 0);
 
   const statusSentence =
     count === 0

@@ -13,7 +13,6 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 import { copyObject, getPublicUrl, buildKey } from '@/lib/storage';
@@ -44,33 +43,37 @@ export const attachFileToProductTool = defineTool<typeof parameters, AttachResul
 
   async handler(args, ctx) {
     // Both rows must belong to this space — defensive against id-guessing.
-    // File stays on Supabase; Product is resolved from Convex.
-    const [fileRes, propData] = await Promise.all([
-      supabase
-        .from('File')
-        .select('id, name, mimeType, category, storageKey')
-        .eq('id', args.fileId)
-        .eq('spaceId', ctx.space.id)
-        .maybeSingle(),
-      convex().query(api.marketplace.products.getByIdInSpace, {
-        id: args.productId,
-        spaceId: ctx.space.id,
-      }),
-    ]);
-
-    if (fileRes.error) {
-      return { summary: `File lookup failed: ${fileRes.error.message}`, display: 'error' };
-    }
-    if (!fileRes.data) {
-      return { summary: `No file with id "${args.fileId}".`, display: 'error' };
-    }
-    const file = fileRes.data as {
+    // Both File and Product are resolved from Convex.
+    let fileRows: Array<{
       id: string;
       name: string;
       mimeType: string;
       category: string;
       storageKey: string;
-    };
+    }>;
+    let propData;
+    try {
+      [fileRows, propData] = await Promise.all([
+        convex().query(api.infra.files.listByIdsForSpace, {
+          ids: [args.fileId],
+          spaceId: ctx.space.id,
+        }),
+        convex().query(api.marketplace.products.getByIdInSpace, {
+          id: args.productId,
+          spaceId: ctx.space.id,
+        }),
+      ]);
+    } catch (err) {
+      return {
+        summary: `File lookup failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+        display: 'error',
+      };
+    }
+
+    const file = fileRows[0];
+    if (!file) {
+      return { summary: `No file with id "${args.fileId}".`, display: 'error' };
+    }
 
     if (file.category !== 'image') {
       return {

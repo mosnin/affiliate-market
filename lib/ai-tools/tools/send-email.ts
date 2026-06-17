@@ -20,6 +20,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { sendEmailFromCRM, type SendEmailAttachment } from '@/lib/email';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
@@ -167,21 +168,24 @@ export const sendEmailTool = defineTool<typeof parameters, SendEmailResult>({
     let resolvedAttachments: SendEmailAttachment[] | undefined;
     if (args.attachmentFileIds && args.attachmentFileIds.length > 0) {
       const ids = args.attachmentFileIds;
-      const { data: rows, error: fileErr } = await supabase
-        .from('File')
-        .select('id, name, mimeType, sizeBytes, storageKey')
-        .in('id', ids)
-        .eq('spaceId', ctx.space.id);
-      if (fileErr) {
-        return { summary: `Attachment lookup failed: ${fileErr.message}`, display: 'error' };
-      }
-      const found = (rows ?? []) as Array<{
+      let found: Array<{
         id: string;
         name: string;
         mimeType: string;
         sizeBytes: number;
         storageKey: string;
       }>;
+      try {
+        found = (await convex().query(api.infra.files.listByIdsForSpace, {
+          ids,
+          spaceId: ctx.space.id,
+        })) as typeof found;
+      } catch (err) {
+        return {
+          summary: `Attachment lookup failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+          display: 'error',
+        };
+      }
       const missing = ids.filter((id) => !found.find((r) => r.id === id));
       if (missing.length > 0) {
         return {

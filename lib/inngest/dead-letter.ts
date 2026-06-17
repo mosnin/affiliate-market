@@ -12,7 +12,7 @@
  * partially-attributed failure beats losing it.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 export interface DeadLetterInput {
@@ -33,7 +33,7 @@ export async function recordDeadLetter(input: DeadLetterInput): Promise<void> {
   const stack = err instanceof Error ? err.stack ?? null : null;
 
   try {
-    const { error } = await supabase.from('DeadLetterEvent').insert({
+    await convex().mutation(api.infra.deadLetter.record, {
       spaceId: input.spaceId || 'unknown',
       eventType: input.eventType,
       eventPayload: input.eventPayload ?? {},
@@ -42,14 +42,10 @@ export async function recordDeadLetter(input: DeadLetterInput): Promise<void> {
       taskId: input.taskId ?? null,
       status: 'pending',
     });
-    if (error) {
-      logger.error('[dead-letter] failed to record DLQ event', { eventType: input.eventType }, error);
-    } else {
-      logger.warn('[dead-letter] job dead-lettered after exhausting retries', {
-        eventType: input.eventType,
-        spaceId: input.spaceId,
-      });
-    }
+    logger.warn('[dead-letter] job dead-lettered after exhausting retries', {
+      eventType: input.eventType,
+      spaceId: input.spaceId,
+    });
   } catch (e) {
     // Never let a DLQ write failure escape — the job already failed; we don't
     // want to compound it.

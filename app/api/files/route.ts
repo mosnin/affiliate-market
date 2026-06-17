@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import {
@@ -79,27 +79,34 @@ export async function GET(req: NextRequest) {
   // seller sees every file in one place. Each row carries `source` so
   // the UI can show a small "From chat" badge and the delete path can
   // route to the right endpoint.
-  const [fileRes, attachmentRes] = await Promise.all([
-    (() => {
-      let q = supabase
-        .from('File')
-        .select('id, name, mimeType, category, sizeBytes, isPublic, storageKey, createdAt')
-        .eq('spaceId', space.id)
-        .order('createdAt', { ascending: false })
-        .limit(500);
-      if (category) q = q.eq('category', category);
-      return q;
-    })(),
-    supabase
-      .from('Attachment')
-      .select('id, filename, mimeType, sizeBytes, storagePath, createdAt')
-      .eq('spaceId', space.id)
-      .order('createdAt', { ascending: false })
-      .limit(500),
-  ]);
-
-  if (fileRes.error) {
-    logger.error('[files] list failed', { spaceId: space.id }, fileRes.error);
+  let fileRows0: Array<{
+    id: string;
+    name: string;
+    mimeType: string;
+    category: string;
+    sizeBytes: number | null;
+    isPublic: boolean | null;
+    storageKey: string;
+    createdAt: string;
+  }>;
+  let attachmentRows0: Array<{
+    id: string;
+    filename: string;
+    mimeType: string;
+    sizeBytes: number | null;
+    storagePath: string;
+    createdAt: string;
+  }>;
+  try {
+    [fileRows0, attachmentRows0] = await Promise.all([
+      convex().query(api.infra.files.listForSpace, {
+        spaceId: space.id,
+        category: category ?? undefined,
+      }),
+      convex().query(api.infra.attachments.listForSpace, { spaceId: space.id }),
+    ]);
+  } catch (err) {
+    logger.error('[files] list failed', { spaceId: space.id }, err as Error);
     return NextResponse.json({ error: 'Failed to list files' }, { status: 500 });
   }
 
@@ -130,16 +137,7 @@ export async function GET(req: NextRequest) {
   // that a leaked URL is bounded.
   const PREVIEW_TTL_SECONDS = 60 * 20;
 
-  const fileRowsRaw = (fileRes.data ?? []) as Array<{
-    id: string;
-    name: string;
-    mimeType: string;
-    category: string;
-    sizeBytes: number | null;
-    isPublic: boolean | null;
-    storageKey: string;
-    createdAt: string;
-  }>;
+  const fileRowsRaw = fileRows0;
 
   // Sign all previewable private files in parallel — one round-trip to the
   // signer instead of one per card on the client.
@@ -178,14 +176,7 @@ export async function GET(req: NextRequest) {
   // require a signed URL to read. Sign previewable rows in parallel here,
   // same pattern as the File-table rows above, so the cards render inline
   // without a second client round-trip.
-  const chatRowsRaw = (attachmentRes.data ?? []) as Array<{
-    id: string;
-    filename: string;
-    mimeType: string;
-    sizeBytes: number | null;
-    storagePath: string;
-    createdAt: string;
-  }>;
+  const chatRowsRaw = attachmentRows0;
   const chatRows: ListedFile[] = (
     await Promise.all(
       chatRowsRaw.map(async (r) => {
@@ -283,14 +274,10 @@ export async function POST(req: NextRequest) {
   // Quota check — sum existing rows + new size against the plan limit.
   const planId = ((space as unknown) as { planId?: string }).planId ?? 'free';
   const quota = quotaForPlan(planId);
-  const { data: existing } = await supabase
-    .from('File')
-    .select('sizeBytes')
-    .eq('spaceId', space.id);
-  const usedBytes = (existing ?? []).reduce(
-    (sum, r) => sum + Number(r.sizeBytes ?? 0),
-    0,
-  );
+  const existingSizes = await convex().query(api.infra.files.sizeBytesForSpace, {
+    spaceId: space.id,
+  });
+  const usedBytes = existingSizes.reduce((sum, n) => sum + Number(n ?? 0), 0);
   if (usedBytes + file.size > quota.totalBytes) {
     const remaining = Math.max(quota.totalBytes - usedBytes, 0);
     return NextResponse.json(
@@ -322,9 +309,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: inserted, error: insertError } = await supabase
-    .from('File')
-    .insert({
+  let inserted;
+  try {
+    inserted = await convex().mutation(api.infra.files.create, {
       id,
       spaceId: space.id,
       userId,
@@ -334,14 +321,11 @@ export async function POST(req: NextRequest) {
       category,
       sizeBytes: file.size,
       isPublic: false,
-    })
-    .select('id, name, mimeType, category, sizeBytes, isPublic, createdAt')
-    .single();
-
-  if (insertError) {
+    });
+  } catch (insertError) {
     // Best-effort rollback so we don't leak storage objects.
     await deleteObject(storageKey).catch(() => undefined);
-    logger.error('[files] insert failed', { spaceId: space.id }, insertError);
+    logger.error('[files] insert failed', { spaceId: space.id }, insertError as Error);
     return NextResponse.json({ error: 'Failed to record file' }, { status: 500 });
   }
 

@@ -1,5 +1,5 @@
 import type Stripe from 'stripe';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { encrypt, decrypt } from '@/lib/crypto';
 import { recordPaymentCommission } from '@/lib/affiliates/recurring';
@@ -34,38 +34,20 @@ export interface BridgeStatus {
 }
 
 export async function getBridgeForSpace(spaceId: string): Promise<StripeBridgeRow | null> {
-  const { data } = await supabase
-    .from('StripeBridge')
-    .select('*')
-    .eq('spaceId', spaceId)
-    .maybeSingle();
-  return (data as StripeBridgeRow) ?? null;
+  return (await convex().query(api.infra.stripeBridge.getForSpace, { spaceId })) ?? null;
 }
 
 export async function getBridgeById(bridgeId: string): Promise<StripeBridgeRow | null> {
-  const { data } = await supabase
-    .from('StripeBridge')
-    .select('*')
-    .eq('id', bridgeId)
-    .maybeSingle();
-  return (data as StripeBridgeRow) ?? null;
+  return (await convex().query(api.infra.stripeBridge.getById, { id: bridgeId })) ?? null;
 }
 
 export async function getOrCreateBridge(spaceId: string): Promise<StripeBridgeRow | null> {
-  const existing = await getBridgeForSpace(spaceId);
-  if (existing) return existing;
-  const { data, error } = await supabase
-    .from('StripeBridge')
-    .insert({ spaceId })
-    .select('*')
-    .single();
-  if (error) {
-    const retry = await getBridgeForSpace(spaceId);
-    if (retry) return retry;
-    logger.warn('[affiliates] bridge create failed', { spaceId, error: error.message });
+  try {
+    return await convex().mutation(api.infra.stripeBridge.getOrCreate, { spaceId });
+  } catch (err) {
+    logger.warn('[affiliates] bridge create failed', { spaceId, error: String(err) });
     return null;
   }
-  return data as StripeBridgeRow;
 }
 
 export async function setBridgeSecret(bridgeId: string, secret: string): Promise<boolean> {
@@ -78,11 +60,14 @@ export async function setBridgeSecret(bridgeId: string, secret: string): Promise
     });
     return false;
   }
-  const { error } = await supabase
-    .from('StripeBridge')
-    .update({ webhookSecretEnc: enc })
-    .eq('id', bridgeId);
-  return !error;
+  try {
+    return await convex().mutation(api.infra.stripeBridge.setSecret, {
+      id: bridgeId,
+      webhookSecretEnc: enc,
+    });
+  } catch {
+    return false;
+  }
 }
 
 export function bridgeWebhookUrl(bridgeId: string, base: string): string {
@@ -137,11 +122,10 @@ export async function processBridgeEvent(
   bridge: StripeBridgeRow,
   event: Stripe.Event,
 ): Promise<boolean> {
-  void supabase
-    .from('StripeBridge')
-    .update({ lastEventAt: new Date().toISOString() })
-    .eq('id', bridge.id)
-    .then(() => undefined);
+  void convex()
+    .mutation(api.infra.stripeBridge.touchLastEvent, { id: bridge.id })
+    .then(() => undefined)
+    .catch(() => undefined);
 
   if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
     const invoice = event.data.object as Stripe.Invoice;

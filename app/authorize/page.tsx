@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { AuthorizeClient } from './authorize-client';
 
 /**
@@ -44,11 +45,9 @@ export default async function AuthorizePage({
   }
 
   // Validate client_id exists in our database
-  const { data: mcpKey } = await supabase
-    .from('McpApiKey')
-    .select('id, name, spaceId')
-    .eq('clientId', params.client_id)
-    .maybeSingle();
+  const mcpKey = await convex().query(api.infra.mcpApiKeys.summaryByClientId, {
+    clientId: params.client_id,
+  });
 
   if (!mcpKey) {
     return (

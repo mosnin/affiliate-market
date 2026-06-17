@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,13 +26,10 @@ export async function GET(_req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Invalid event ID' }, { status: 400 });
   }
 
-  const { data: event, error } = await supabase
-    .from('DeadLetterEvent')
-    .select('*')
-    .eq('id', eventId)
-    .maybeSingle();
-
-  if (error) {
+  let event;
+  try {
+    event = await convex().query(api.infra.deadLetter.getById, { id: eventId });
+  } catch (error) {
     console.error('[admin/dlq] get single event failed', error);
     return NextResponse.json({ error: 'Query failed' }, { status: 500 });
   }
@@ -73,13 +70,10 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   // Fetch the current event first to get retryCount
-  const { data: existing, error: fetchError } = await supabase
-    .from('DeadLetterEvent')
-    .select('*')
-    .eq('id', eventId)
-    .maybeSingle();
-
-  if (fetchError) {
+  let existing;
+  try {
+    existing = await convex().query(api.infra.deadLetter.getById, { id: eventId });
+  } catch (fetchError) {
     console.error('[admin/dlq] fetch for patch failed', fetchError);
     return NextResponse.json({ error: 'Query failed' }, { status: 500 });
   }
@@ -87,7 +81,7 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
-  let updatePayload: Record<string, unknown>;
+  let updatePayload: { status?: 'pending' | 'retrying' | 'resolved'; resolvedAt?: string; retryCount?: number };
 
   if (action === 'resolve') {
     updatePayload = {
@@ -97,22 +91,25 @@ export async function PATCH(req: Request, { params }: Params) {
   } else {
     // retry: increment retryCount; use 'retrying' if still under threshold, else back to 'pending'
     const newRetryCount = (existing.retryCount ?? 0) + 1;
-    const newStatus: string = newRetryCount < RETRY_THRESHOLD ? 'retrying' : 'pending';
+    const newStatus = newRetryCount < RETRY_THRESHOLD ? ('retrying' as const) : ('pending' as const);
     updatePayload = {
       retryCount: newRetryCount,
       status: newStatus,
     };
   }
 
-  const { data: event, error: updateError } = await supabase
-    .from('DeadLetterEvent')
-    .update(updatePayload)
-    .eq('id', eventId)
-    .select()
-    .maybeSingle();
-
-  if (updateError || !event) {
+  let event;
+  try {
+    event = await convex().mutation(api.infra.deadLetter.patch, {
+      id: eventId,
+      ...updatePayload,
+    });
+  } catch (updateError) {
     console.error('[admin/dlq] update failed', updateError);
+    return NextResponse.json({ error: 'Update failed' }, { status: 500 });
+  }
+  if (!event) {
+    console.error('[admin/dlq] update failed: event vanished');
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
   }
 

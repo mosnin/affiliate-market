@@ -13,7 +13,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
 const parameters = z
@@ -41,14 +41,17 @@ export const readAttachmentTool = defineTool<typeof parameters, ReadAttachmentRe
   requiresApproval: false,
 
   async handler(args, ctx) {
-    const { data: row, error } = await supabase
-      .from('Attachment')
-      .select('id, filename, mimeType, sizeBytes, extractionStatus, extractedText')
-      .eq('id', args.attachmentId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
-    if (error) {
-      return { summary: `Attachment lookup failed: ${error.message}`, display: 'error' };
+    let row;
+    try {
+      row = await convex().query(api.infra.attachments.getByIdForSpace, {
+        id: args.attachmentId,
+        spaceId: ctx.space.id,
+      });
+    } catch (err) {
+      return {
+        summary: `Attachment lookup failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+        display: 'error',
+      };
     }
     if (!row) {
       return {

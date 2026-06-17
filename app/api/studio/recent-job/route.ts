@@ -17,7 +17,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 
@@ -66,12 +65,10 @@ export async function GET(req: Request) {
   }
 
   if (status === 'completed' && data.fileId) {
-    const { data: file } = await supabase
-      .from('File')
-      .select('storageKey')
-      .eq('id', data.fileId as string)
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const file = await convex().query(api.infra.files.getByIdForSpace, {
+      id: data.fileId as string,
+      spaceId: space.id,
+    });
     if (file?.storageKey) {
       const downloadUrl = await getSignedDownloadUrl(file.storageKey as string, 3600);
       return NextResponse.json({

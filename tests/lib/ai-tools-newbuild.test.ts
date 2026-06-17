@@ -233,18 +233,14 @@ describe('readAttachmentTool', () => {
   });
 
   it('returns metadata without leaking blob content', async () => {
-    mockByTable = {
-      Attachment: {
-        single: {
-          id: 'a_1',
-          filename: 'disclosure.pdf',
-          mimeType: 'application/pdf',
-          sizeBytes: 250_000,
-          extractionStatus: 'done',
-          extractedText: 'Product disclosure for 412 Elm St.\nLine two.',
-        },
-      },
-    };
+    convexQueryMock.mockResolvedValueOnce({
+      id: 'a_1',
+      filename: 'disclosure.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 250_000,
+      extractionStatus: 'done',
+      extractedText: 'Product disclosure for 412 Elm St.\nLine two.',
+    });
     const result = await readAttachmentTool.handler({ attachmentId: 'a_1' }, makeCtx());
     expect(result.display).toBe('plain');
     expect(result.summary).toMatch(/disclosure\.pdf/);
@@ -263,7 +259,7 @@ describe('readAttachmentTool', () => {
   });
 
   it('errors when the attachment is missing in this workspace', async () => {
-    mockByTable = { Attachment: { single: null } };
+    convexQueryMock.mockResolvedValueOnce(null);
     const result = await readAttachmentTool.handler({ attachmentId: 'missing' }, makeCtx());
     expect(result.display).toBe('error');
     expect(result.summary).toMatch(/No attachment/);

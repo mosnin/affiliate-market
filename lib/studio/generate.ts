@@ -6,7 +6,6 @@
  */
 
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
@@ -152,20 +151,21 @@ export async function runStudioGeneration(args: {
     throw new StudioGenerationError("Generation didn't go through — usually temporary.", 500);
   }
 
-  const { error: fileErr } = await supabase.from('File').insert({
-    id: fileId,
-    spaceId: args.spaceId,
-    userId: args.userId,
-    storageKey,
-    name,
-    mimeType: contentType,
-    category: model.kind === 'video' ? 'video' : 'image',
-    sizeBytes: buffer.length,
-    isPublic: false,
-  });
-  if (fileErr) {
+  try {
+    await convex().mutation(api.infra.files.create, {
+      id: fileId,
+      spaceId: args.spaceId,
+      userId: args.userId,
+      storageKey,
+      name,
+      mimeType: contentType,
+      category: model.kind === 'video' ? 'video' : 'image',
+      sizeBytes: buffer.length,
+      isPublic: false,
+    });
+  } catch (fileErr) {
     await deleteObject(storageKey).catch(() => undefined);
-    logger.error('[studio.generate] file insert failed', { spaceId: args.spaceId }, fileErr);
+    logger.error('[studio.generate] file insert failed', { spaceId: args.spaceId }, fileErr as Error);
     await markFailed('Could not record the generated asset.');
     throw new StudioGenerationError("Generation didn't go through — usually temporary.", 500);
   }

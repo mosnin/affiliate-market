@@ -11,7 +11,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { uploadObject, deleteObject, buildKey } from '@/lib/storage';
@@ -156,12 +155,10 @@ export async function POST(req: NextRequest) {
   // Create / Edit / Library, or a fresh upload.
   let fileId: string;
   if (fileIdInput) {
-    const { data: existing } = await supabase
-      .from('File')
-      .select('id')
-      .eq('id', fileIdInput)
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const existing = await convex().query(api.infra.files.getByIdForSpace, {
+      id: fileIdInput,
+      spaceId: space.id,
+    });
     if (!existing) {
       return NextResponse.json({ error: 'That image was not found.' }, { status: 400 });
     }
@@ -192,20 +189,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Couldn't schedule the post — usually temporary." }, { status: 500 });
     }
 
-    const { error: fileErr } = await supabase.from('File').insert({
-      id: fileId,
-      spaceId: space.id,
-      userId,
-      storageKey,
-      name,
-      mimeType: file.type,
-      category: 'image',
-      sizeBytes: buffer.length,
-      isPublic: false,
-    });
-    if (fileErr) {
+    try {
+      await convex().mutation(api.infra.files.create, {
+        id: fileId,
+        spaceId: space.id,
+        userId,
+        storageKey,
+        name,
+        mimeType: file.type,
+        category: 'image',
+        sizeBytes: buffer.length,
+        isPublic: false,
+      });
+    } catch (fileErr) {
       await deleteObject(storageKey).catch(() => undefined);
-      logger.error('[studio.schedule] file insert failed', { spaceId: space.id }, fileErr);
+      logger.error('[studio.schedule] file insert failed', { spaceId: space.id }, fileErr as Error);
       return NextResponse.json({ error: "Couldn't schedule the post — usually temporary." }, { status: 500 });
     }
   }

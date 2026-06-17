@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 
 const VALID_STATUSES = ['pending', 'resolved', 'retrying'] as const;
@@ -45,23 +45,19 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Invalid status. Must be pending, resolved, or retrying' }, { status: 400 });
   }
 
-  let query = supabase
-    .from('DeadLetterEvent')
-    .select('*')
-    .order('createdAt', { ascending: false })
-    .limit(limit);
-
-  if (spaceId) query = query.eq('spaceId', spaceId);
-  if (statusParam) query = query.eq('status', statusParam);
-
-  const { data: events, error } = await query;
-
-  if (error) {
+  let events;
+  try {
+    events = await convex().query(api.infra.deadLetter.list, {
+      spaceId,
+      status: statusParam as DLQStatus | undefined,
+      limit,
+    });
+  } catch (error) {
     console.error('[admin/dlq] list query failed', error);
     return NextResponse.json({ error: 'Query failed' }, { status: 500 });
   }
 
-  return NextResponse.json({ events: events ?? [] });
+  return NextResponse.json({ events });
 }
 
 /** POST /api/admin/dlq — create a DLQ event (platform admin or service-role key) */
@@ -104,20 +100,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'error is required and must be a string' }, { status: 400 });
   }
 
-  const { data: event, error: insertError } = await supabase
-    .from('DeadLetterEvent')
-    .insert({
+  let event;
+  try {
+    event = await convex().mutation(api.infra.deadLetter.createFromAdmin, {
       spaceId,
       eventType,
       payload,
       error: eventError,
-      status: 'pending',
-      retryCount: 0,
-    })
-    .select()
-    .maybeSingle();
-
-  if (insertError || !event) {
+    });
+  } catch (insertError) {
     console.error('[admin/dlq] insert failed', insertError);
     return NextResponse.json({ error: 'Insert failed' }, { status: 500 });
   }

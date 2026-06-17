@@ -15,7 +15,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { defineTool } from '../types';
 
@@ -45,14 +45,17 @@ export const readFileTool = defineTool<typeof parameters, ReadFileResult>({
   requiresApproval: false,
 
   async handler(args, ctx) {
-    const { data: row, error } = await supabase
-      .from('File')
-      .select('id, name, mimeType, category, sizeBytes, storageKey')
-      .eq('id', args.fileId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
-    if (error) {
-      return { summary: `File lookup failed: ${error.message}`, display: 'error' };
+    let row;
+    try {
+      row = await convex().query(api.infra.files.getByIdForSpace, {
+        id: args.fileId,
+        spaceId: ctx.space.id,
+      });
+    } catch (err) {
+      return {
+        summary: `File lookup failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+        display: 'error',
+      };
     }
     if (!row) {
       return {

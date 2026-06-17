@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireManager } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -178,65 +179,46 @@ export async function GET(req: NextRequest) {
   // Over-fetch by 1 to detect whether another page exists.
   const pageSize = limit + 1;
 
+  const sharedFilters = {
+    since: sinceIso,
+    action: actionFilter !== 'all' ? actionFilter : undefined,
+    clerkId: actorClerkId ?? undefined,
+    cursorTs: cursorIso ?? undefined,
+    cursorId: cursorId ?? undefined,
+    limit: pageSize,
+  };
+
   // ── Query A: space-scoped rows ────────────────────────────────────────────
-  // If the company owns zero spaces we skip query A entirely — `.in('spaceId',
-  // [])` would return all rows in some supabase builds, which is the exact
-  // cross-tenant leak we're trying to prevent.
+  // If the company owns zero spaces we skip query A entirely — passing an empty
+  // spaceIds set would scan nothing anyway, but skipping avoids the round-trip.
   let spaceRowsResult: AuditLogRow[] = [];
   if (spaceIds.length > 0) {
-    let q = supabase
-      .from('AuditLog')
-      .select('id, clerkId, ipAddress, action, resource, resourceId, spaceId, metadata, createdAt')
-      .in('spaceId', spaceIds)
-      .gte('createdAt', sinceIso)
-      .order('createdAt', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(pageSize);
-    if (actionFilter !== 'all') q = q.eq('action', actionFilter);
-    if (actorClerkId) q = q.eq('clerkId', actorClerkId);
-    if (cursorIso && cursorId) {
-      // Tuple comparison via PostgREST .or(): (createdAt, id) < (ts, id).
-      q = q.or(`createdAt.lt.${cursorIso},and(createdAt.eq.${cursorIso},id.lt.${cursorId})`);
-    }
-    const { data, error } = await q;
-    if (error) {
+    try {
+      spaceRowsResult = (await convex().query(api.infra.auditLog.listForSpacesScoped, {
+        spaceIds,
+        ...sharedFilters,
+      })) as AuditLogRow[];
+    } catch (error) {
       console.error('[manager/activity] space query failed', error);
       return NextResponse.json({ error: 'Failed to load activity' }, { status: 500 });
     }
-    spaceRowsResult = (data ?? []) as AuditLogRow[];
   }
 
   // ── Query B: company-wide null-space rows ───────────────────────────────
-  // Match via metadata->>'companyId' — safe because it's a strict equality
-  // filter tied to the caller's company id. Rows that lack this metadata
-  // field (older null-space rows, or system events with no tenant) stay
-  // invisible here — that's a deliberate MVP tradeoff: better to hide a log
-  // line than leak one.
+  // Match via metadata.companyId — safe because it's a strict equality filter
+  // tied to the caller's company id. Rows that lack this metadata field (older
+  // null-space rows, or system events with no tenant) stay invisible here —
+  // that's a deliberate MVP tradeoff: better to hide a log line than leak one.
   let nullSpaceResult: AuditLogRow[] = [];
-  {
-    let q = supabase
-      .from('AuditLog')
-      .select('id, clerkId, ipAddress, action, resource, resourceId, spaceId, metadata, createdAt')
-      .is('spaceId', null)
-      .eq('metadata->>companyId', ctx.company.id)
-      .gte('createdAt', sinceIso)
-      .order('createdAt', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(pageSize);
-    if (actionFilter !== 'all') q = q.eq('action', actionFilter);
-    if (actorClerkId) q = q.eq('clerkId', actorClerkId);
-    if (cursorIso && cursorId) {
-      // Tuple comparison via PostgREST .or(): (createdAt, id) < (ts, id).
-      q = q.or(`createdAt.lt.${cursorIso},and(createdAt.eq.${cursorIso},id.lt.${cursorId})`);
-    }
-    const { data, error } = await q;
-    if (error) {
-      // Non-fatal — we'd rather surface space rows than fail outright if the
-      // jsonb operator path isn't indexed. Log and continue.
-      console.error('[manager/activity] null-space query failed', error);
-    } else {
-      nullSpaceResult = (data ?? []) as AuditLogRow[];
-    }
+  try {
+    nullSpaceResult = (await convex().query(api.infra.auditLog.listNullSpaceForCompany, {
+      companyId: ctx.company.id,
+      ...sharedFilters,
+    })) as AuditLogRow[];
+  } catch (error) {
+    // Non-fatal — we'd rather surface space rows than fail outright. Log and
+    // continue.
+    console.error('[manager/activity] null-space query failed', error);
   }
 
   // ── Merge + sort + trim to page ───────────────────────────────────────────

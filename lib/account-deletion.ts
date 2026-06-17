@@ -31,6 +31,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 export function hardDeleteEnabled(): boolean {
   return process.env.ACCOUNT_DELETION_HARD_DELETE === 'true';
@@ -77,11 +78,8 @@ export async function hardDeleteSpaceAndUser(params: {
   const { userDbId, spaceId } = params;
 
   // 1. Non-cascading tables — must go first, while the spaceId still resolves.
-  const { error: attErr } = await supabase.from('Attachment').delete().eq('spaceId', spaceId);
-  if (attErr) throw new Error(`Attachment delete failed: ${attErr.message}`);
-
-  const { error: telErr } = await supabase.from('TelemetryEvent').delete().eq('spaceId', spaceId);
-  if (telErr) throw new Error(`TelemetryEvent delete failed: ${telErr.message}`);
+  await convex().mutation(api.infra.attachments.deleteForSpace, { spaceId });
+  await convex().mutation(api.infra.telemetry.deleteForSpace, { spaceId });
 
   // 2. The User row — cascades to Space → all Space-scoped FK tables.
   const { error: userErr } = await supabase.from('User').delete().eq('id', userDbId);

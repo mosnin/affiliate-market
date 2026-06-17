@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 import { AuditLogClient } from './audit-log-client';
@@ -8,26 +9,22 @@ export default async function AuditLogPage() {
   if (!isAdmin) redirect('/');
 
   // Fetch audit logs and users in parallel
-  const [logsRes, usersRes] = await Promise.all([
-    supabase
-      .from('AuditLog')
-      .select('*')
-      .order('createdAt', { ascending: false })
-      .limit(200),
+  const [logs, usersRes] = await Promise.all([
+    convex().query(api.infra.auditLog.listRecent, { limit: 200 }) as Promise<
+      {
+        id: string;
+        clerkId: string | null;
+        ipAddress: string | null;
+        action: string;
+        resource: string;
+        resourceId: string | null;
+        spaceId: string | null;
+        metadata: Record<string, unknown> | null;
+        createdAt: string;
+      }[]
+    >,
     supabase.from('User').select('clerkId, name, email'),
   ]);
-
-  const logs = (logsRes.data ?? []) as {
-    id: string;
-    clerkId: string | null;
-    ipAddress: string | null;
-    action: string;
-    resource: string;
-    resourceId: string | null;
-    spaceId: string | null;
-    metadata: Record<string, unknown> | null;
-    createdAt: string;
-  }[];
 
   // Build a clerkId -> { name, email } map
   const userMap: Record<string, { name: string | null; email: string }> = {};

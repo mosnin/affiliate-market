@@ -18,6 +18,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { sendSMS } from '@/lib/sms';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
@@ -135,21 +136,24 @@ export const sendSmsTool = defineTool<typeof parameters, SendSMSResult>({
     // prefixes (chat-attachments/, onboarding/, product-photos/) qualify.
     let mediaUrls: string[] | undefined;
     if (args.mediaFileIds && args.mediaFileIds.length > 0) {
-      const { data: rows, error: fileErr } = await supabase
-        .from('File')
-        .select('id, name, storageKey, sizeBytes, isPublic')
-        .in('id', args.mediaFileIds)
-        .eq('spaceId', ctx.space.id);
-      if (fileErr) {
-        return { summary: `Media lookup failed: ${fileErr.message}`, display: 'error' };
-      }
-      const found = (rows ?? []) as Array<{
+      let found: Array<{
         id: string;
         name: string;
         storageKey: string;
         sizeBytes: number;
         isPublic: boolean;
       }>;
+      try {
+        found = (await convex().query(api.infra.files.listByIdsForSpace, {
+          ids: args.mediaFileIds,
+          spaceId: ctx.space.id,
+        })) as typeof found;
+      } catch (err) {
+        return {
+          summary: `Media lookup failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+          display: 'error',
+        };
+      }
       const missing = args.mediaFileIds.filter((id) => !found.find((r) => r.id === id));
       if (missing.length > 0) {
         return { summary: `Media file ids not found: ${missing.join(', ')}`, display: 'error' };

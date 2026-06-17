@@ -25,6 +25,7 @@ import crypto from 'crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { saveUserMessage, saveAssistantMessage } from '@/lib/ai-tools/persistence';
@@ -193,16 +194,7 @@ async function hydrateAttachments(
 ): Promise<AttachmentPayload[]> {
   if (!ids || ids.length === 0) return [];
   try {
-    const { data, error } = await supabase
-      .from('Attachment')
-      .select('id, filename, "mimeType", "extractedText", "storagePath", "extractionStatus"')
-      .in('id', ids)
-      .eq('spaceId', spaceId);
-    if (error) {
-      logger.warn('[ai/task] attachment hydrate failed — continuing empty', { spaceId }, error);
-      return [];
-    }
-    const rows = (data ?? []) as Array<{
+    let rows: Array<{
       id: string;
       filename: string;
       mimeType: string;
@@ -210,6 +202,15 @@ async function hydrateAttachments(
       storagePath: string | null;
       extractionStatus: string;
     }>;
+    try {
+      rows = (await convex().query(api.infra.attachments.listByIdsForSpace, {
+        ids,
+        spaceId,
+      })) as typeof rows;
+    } catch (err) {
+      logger.warn('[ai/task] attachment hydrate failed — continuing empty', { spaceId }, err);
+      return [];
+    }
     // Mint a fresh signed URL per attachment for this task. Each task is a
     // single agent turn — short-lived URLs are correct here. A signing
     // failure for one row drops that row's URL but doesn't poison the rest.

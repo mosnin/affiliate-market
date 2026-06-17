@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import crypto from 'crypto';
 import { SignJWT } from 'jose';
@@ -76,18 +76,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Look up auth code
-    const { data: authCode, error: codeErr } = await supabase
-      .from('McpAuthCode')
-      .select('*')
-      .eq('code', code)
-      .maybeSingle();
-
-    if (codeErr) {
-      console.error('[mcp/token] DB error looking up code:', codeErr.message, codeErr.code);
-      // Table might not exist
-      if (codeErr.code === '42P01' || codeErr.message?.includes('does not exist')) {
-        return NextResponse.json({ error: 'server_error', error_description: 'Auth code table not configured. Run the migration.' }, { status: 500 });
-      }
+    let authCode;
+    try {
+      authCode = await convex().query(api.infra.mcpAuthCodes.getByCode, { code });
+    } catch (codeErr) {
+      console.error('[mcp/token] DB error looking up code:', codeErr);
       return NextResponse.json({ error: 'server_error' }, { status: 500 });
     }
 
@@ -101,7 +94,7 @@ export async function POST(req: NextRequest) {
     // Check expiry
     if (new Date(authCode.expiresAt) < new Date()) {
       console.error('[mcp/token] code expired');
-      await supabase.from('McpAuthCode').delete().eq('code', code);
+      await convex().mutation(api.infra.mcpAuthCodes.deleteByCode, { code });
       return NextResponse.json({ error: 'invalid_grant', error_description: 'Authorization code expired' }, { status: 400 });
     }
 
@@ -115,14 +108,14 @@ export async function POST(req: NextRequest) {
 
     if (expectedChallenge !== authCode.codeChallenge) {
       console.error('[mcp/token] PKCE mismatch');
-      await supabase.from('McpAuthCode').delete().eq('code', code);
+      await convex().mutation(api.infra.mcpAuthCodes.deleteByCode, { code });
       return NextResponse.json({ error: 'invalid_grant', error_description: 'PKCE verification failed' }, { status: 400 });
     }
 
     // Verify redirect_uri if provided
     if (redirect_uri && redirect_uri !== authCode.redirectUri) {
       console.error('[mcp/token] redirect_uri mismatch:', { expected: authCode.redirectUri, got: redirect_uri });
-      await supabase.from('McpAuthCode').delete().eq('code', code);
+      await convex().mutation(api.infra.mcpAuthCodes.deleteByCode, { code });
       return NextResponse.json({ error: 'invalid_grant', error_description: 'redirect_uri mismatch' }, { status: 400 });
     }
 
@@ -132,7 +125,7 @@ export async function POST(req: NextRequest) {
       const state = params.state;
       if (!state) {
         console.error('[mcp/token] state required but missing');
-        await supabase.from('McpAuthCode').delete().eq('code', code);
+        await convex().mutation(api.infra.mcpAuthCodes.deleteByCode, { code });
         return NextResponse.json({ error: 'invalid_grant', error_description: 'state parameter required' }, { status: 400 });
       }
       const expectedStateHash = crypto
@@ -141,17 +134,17 @@ export async function POST(req: NextRequest) {
         .digest('hex');
       if (expectedStateHash !== authCode.stateHash) {
         console.error('[mcp/token] state nonce verification failed');
-        await supabase.from('McpAuthCode').delete().eq('code', code);
+        await convex().mutation(api.infra.mcpAuthCodes.deleteByCode, { code });
         return NextResponse.json({ error: 'invalid_grant', error_description: 'state verification failed' }, { status: 400 });
       }
     }
 
     // Delete code (single-use)
-    await supabase.from('McpAuthCode').delete().eq('code', code);
+    await convex().mutation(api.infra.mcpAuthCodes.deleteByCode, { code });
 
     // Update last used
     if (authCode.clientId) {
-      supabase.from('McpApiKey').update({ lastUsedAt: new Date().toISOString() }).eq('clientId', authCode.clientId).then(() => {});
+      void convex().mutation(api.infra.mcpApiKeys.touchByClientId, { clientId: authCode.clientId }).catch(() => {});
     }
 
     // Issue JWT
@@ -187,11 +180,9 @@ export async function POST(req: NextRequest) {
     }
 
     const secretHash = crypto.createHash('sha256').update(client_secret).digest('hex');
-    const { data: key } = await supabase
-      .from('McpApiKey')
-      .select('spaceId, clientSecretHash, expiresAt')
-      .eq('clientId', client_id)
-      .maybeSingle();
+    const key = await convex().query(api.infra.mcpApiKeys.authByClientId, {
+      clientId: client_id,
+    });
 
     // Constant-time compare on the hash so a remote timing oracle can't
     // be used to discover early-matching prefix bytes. SHA-256 of a
@@ -207,11 +198,11 @@ export async function POST(req: NextRequest) {
 
     // Reject expired keys. NULL expiresAt = legacy key, treated as never
     // expires for backward compat. See 20260607000012 migration.
-    if (key.expiresAt && new Date(key.expiresAt as string).getTime() < Date.now()) {
+    if (key.expiresAt && new Date(key.expiresAt).getTime() < Date.now()) {
       return NextResponse.json({ error: 'invalid_client', error_description: 'key expired' }, { status: 401 });
     }
 
-    supabase.from('McpApiKey').update({ lastUsedAt: new Date().toISOString() }).eq('clientId', client_id).then(() => {});
+    void convex().mutation(api.infra.mcpApiKeys.touchByClientId, { clientId: client_id }).catch(() => {});
 
     let jwtSecret: Uint8Array;
     try {

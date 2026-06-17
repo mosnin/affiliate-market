@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { uploadObject, deleteObject, buildKey } from '@/lib/storage';
 
@@ -36,21 +36,16 @@ export async function GET() {
   const space = await getSpaceForUser(authResult.userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data, error } = await supabase
-    .from('File')
-    .select('id, name, sizeBytes, createdAt')
-    .eq('spaceId', space.id)
-    .eq('mimeType', DOC_MIME)
-    .order('createdAt', { ascending: false })
-    .limit(500);
-
-  if (error) {
-    logger.error('[files/documents] list failed', { spaceId: space.id }, error);
+  let docs;
+  try {
+    docs = await convex().query(api.infra.files.listDocsForSpace, { spaceId: space.id });
+  } catch (err) {
+    logger.error('[files/documents] list failed', { spaceId: space.id }, err as Error);
     return NextResponse.json({ error: 'Failed to list documents' }, { status: 500 });
   }
 
   return NextResponse.json({
-    documents: (data ?? []).map((d) => ({
+    documents: docs.map((d) => ({
       id: d.id,
       title: d.name,
       sizeBytes: Number(d.sizeBytes ?? 0),
@@ -100,9 +95,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to save document' }, { status: 500 });
   }
 
-  const { data: inserted, error } = await supabase
-    .from('File')
-    .insert({
+  let inserted;
+  try {
+    inserted = await convex().mutation(api.infra.files.create, {
       id,
       spaceId: space.id,
       userId,
@@ -112,14 +107,11 @@ export async function POST(req: NextRequest) {
       category: 'document',
       sizeBytes: bytes,
       isPublic: false,
-    })
-    .select('id, name, sizeBytes, createdAt')
-    .single();
-
-  if (error || !inserted) {
+    });
+  } catch (err) {
     // Best-effort rollback so a failed insert doesn't leak a storage object.
     await deleteObject(storageKey).catch(() => undefined);
-    logger.error('[files/documents] insert failed', { spaceId: space.id }, error ?? undefined);
+    logger.error('[files/documents] insert failed', { spaceId: space.id }, err as Error);
     return NextResponse.json({ error: 'Failed to save document' }, { status: 500 });
   }
 

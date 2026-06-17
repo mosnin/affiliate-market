@@ -82,15 +82,10 @@ const PREFIX_SPECS: PrefixSpec[] = [
     prefix: STORAGE_PREFIXES.files,
     label: 'files',
     referencedKeys: async (candidates) => {
-      const { data } = await supabase
-        .from('File')
-        .select('storageKey')
-        .in('storageKey', candidates);
-      return new Set(
-        ((data ?? []) as { storageKey: string }[])
-          .map((r) => r.storageKey)
-          .filter(Boolean),
-      );
+      const keys = await convex().query(api.infra.files.referencedStorageKeys, {
+        candidates,
+      });
+      return new Set(keys.filter(Boolean));
     },
   },
   {
@@ -99,15 +94,10 @@ const PREFIX_SPECS: PrefixSpec[] = [
     prefix: STORAGE_PREFIXES.studio,
     label: 'studio',
     referencedKeys: async (candidates) => {
-      const { data } = await supabase
-        .from('File')
-        .select('storageKey')
-        .in('storageKey', candidates);
-      return new Set(
-        ((data ?? []) as { storageKey: string }[])
-          .map((r) => r.storageKey)
-          .filter(Boolean),
-      );
+      const keys = await convex().query(api.infra.files.referencedStorageKeys, {
+        candidates,
+      });
+      return new Set(keys.filter(Boolean));
     },
   },
   {

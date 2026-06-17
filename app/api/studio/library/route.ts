@@ -6,7 +6,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { getSignedDownloadUrl } from '@/lib/storage';
@@ -45,22 +44,18 @@ export async function GET(req: Request) {
 
   // Resolve a signed URL per asset. S3 presigning is local (no network call),
   // so signing the whole page is cheap.
-  const { data: files, error: filesErr } = await supabase
-    .from('File')
-    .select('id, storageKey')
-    .in('id', rows.map((r) => r.fileId));
-  if (filesErr) {
+  let files: Array<{ id: string; storageKey: string }> = [];
+  try {
+    files = await convex().query(api.infra.files.storageKeysByIds, {
+      ids: rows.map((r) => r.fileId),
+    });
+  } catch (filesErr) {
     // Log loudly — silently returning null URLs for every item is worse than
     // surfacing the failure to the operator. Items still render with null
     // URLs (placeholder tiles) so the page doesn't blank out.
-    logger.error('[studio.library] files query failed', { spaceId: space.id }, filesErr);
+    logger.error('[studio.library] files query failed', { spaceId: space.id }, filesErr as Error);
   }
-  const keyById = new Map(
-    ((files ?? []) as Array<{ id: string; storageKey: string }>).map((f) => [
-      f.id,
-      f.storageKey,
-    ]),
-  );
+  const keyById = new Map(files.map((f) => [f.id, f.storageKey]));
 
   const items = await Promise.all(
     rows.map(async (r) => {

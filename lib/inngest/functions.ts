@@ -85,19 +85,16 @@ export const publishScheduledPost = inngest.createFunction(
     const post = await step.run('load-post', async (): Promise<LoadedPost | null> => {
       const row = await convex().query(api.studio.posts.getForPublish, { id: postId });
       if (!row) return null;
-      // The image's storageKey lives on the File table (a different domain),
-      // so that lookup stays on Supabase.
-      const { data: file } = await supabase
-        .from('File')
-        .select('storageKey')
-        .eq('id', row.fileId)
-        .maybeSingle();
+      // The image's storageKey lives on the File table (a different domain).
+      const files = await convex().query(api.infra.files.storageKeysByIds, {
+        ids: [row.fileId],
+      });
       return {
         status: row.status,
         userId: row.userId,
         caption: row.caption ?? '',
         platforms: row.platforms ?? [],
-        storageKey: (file as { storageKey?: string } | null)?.storageKey ?? null,
+        storageKey: files[0]?.storageKey ?? null,
       };
     });
 

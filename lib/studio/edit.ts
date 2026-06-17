@@ -5,7 +5,6 @@
  */
 
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
@@ -49,12 +48,10 @@ export async function runStudioEdit(args: {
   // fit under fal's input ceiling. Skipping the category check sends fal a
   // PDF or a 4K video and bills the failed call.
   const MAX_EDIT_BYTES = 20 * 1024 * 1024;
-  const { data: source } = await supabase
-    .from('File')
-    .select('storageKey, category, sizeBytes')
-    .eq('id', args.sourceFileId)
-    .eq('spaceId', args.spaceId)
-    .maybeSingle();
+  const source = await convex().query(api.infra.files.getByIdForSpace, {
+    id: args.sourceFileId,
+    spaceId: args.spaceId,
+  });
   if (!source?.storageKey) {
     throw new StudioGenerationError('The image to edit was not found.', 404);
   }
@@ -137,20 +134,21 @@ export async function runStudioEdit(args: {
     throw new StudioGenerationError("Edit didn't go through — usually temporary.", 500);
   }
 
-  const { error: fileErr } = await supabase.from('File').insert({
-    id: fileId,
-    spaceId: args.spaceId,
-    userId: args.userId,
-    storageKey,
-    name,
-    mimeType: contentType,
-    category: 'image',
-    sizeBytes: buffer.length,
-    isPublic: false,
-  });
-  if (fileErr) {
+  try {
+    await convex().mutation(api.infra.files.create, {
+      id: fileId,
+      spaceId: args.spaceId,
+      userId: args.userId,
+      storageKey,
+      name,
+      mimeType: contentType,
+      category: 'image',
+      sizeBytes: buffer.length,
+      isPublic: false,
+    });
+  } catch (fileErr) {
     await deleteObject(storageKey).catch(() => undefined);
-    logger.error('[studio.edit] file insert failed', { spaceId: args.spaceId }, fileErr);
+    logger.error('[studio.edit] file insert failed', { spaceId: args.spaceId }, fileErr as Error);
     await markFailed('Could not record the edited image.');
     throw new StudioGenerationError("Edit didn't go through — usually temporary.", 500);
   }

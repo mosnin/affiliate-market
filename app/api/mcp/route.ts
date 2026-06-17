@@ -41,22 +41,16 @@ async function authenticateKey(req: NextRequest): Promise<{ spaceId: string; ip:
   // 20260607000012_mcp_key_expiry migration. NULL expiresAt = legacy key,
   // never expires (preserves backward compat for existing integrations).
   const keyHash = crypto.createHash('sha256').update(token).digest('hex');
-  const { data } = await supabase
-    .from('McpApiKey')
-    .select('spaceId, expiresAt')
-    .eq('keyHash', keyHash)
-    .maybeSingle();
+  const data = await convex().query(api.infra.mcpApiKeys.authByKeyHash, { keyHash });
 
   if (!data) return null;
-  if (data.expiresAt && new Date(data.expiresAt as string).getTime() < Date.now()) {
+  if (data.expiresAt && new Date(data.expiresAt).getTime() < Date.now()) {
     return null;
   }
 
-  supabase
-    .from('McpApiKey')
-    .update({ lastUsedAt: new Date().toISOString() })
-    .eq('keyHash', keyHash)
-    .then(({ error }) => { if (error) console.error('[mcp] lastUsedAt update failed:', error.message); });
+  void convex()
+    .mutation(api.infra.mcpApiKeys.touchByKeyHash, { keyHash })
+    .catch((error) => { console.error('[mcp] lastUsedAt update failed:', String(error)); });
 
   return { spaceId: data.spaceId, ip };
 }

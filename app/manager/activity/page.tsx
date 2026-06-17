@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getManagerContext } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { ActivityClient, type ActivityRow } from './activity-client';
 
 // Server component: fetch the first page of AuditLog rows scoped to this
@@ -42,29 +43,20 @@ export default async function ManagerActivityPage() {
 
   let spaceScoped: AuditLogRow[] = [];
   if (spaceIds.length > 0) {
-    const { data } = await supabase
-      .from('AuditLog')
-      .select('id, clerkId, ipAddress, action, resource, resourceId, spaceId, metadata, createdAt')
-      .in('spaceId', spaceIds)
-      .gte('createdAt', sinceIso)
-      .order('createdAt', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(PAGE + 1);
-    spaceScoped = (data ?? []) as AuditLogRow[];
+    spaceScoped = (await convex().query(api.infra.auditLog.listForSpacesScoped, {
+      spaceIds,
+      since: sinceIso,
+      limit: PAGE + 1,
+    })) as AuditLogRow[];
   }
 
   let nullSpace: AuditLogRow[] = [];
   {
-    const { data } = await supabase
-      .from('AuditLog')
-      .select('id, clerkId, ipAddress, action, resource, resourceId, spaceId, metadata, createdAt')
-      .is('spaceId', null)
-      .eq('metadata->>companyId', ctx.company.id)
-      .gte('createdAt', sinceIso)
-      .order('createdAt', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(PAGE + 1);
-    nullSpace = (data ?? []) as AuditLogRow[];
+    nullSpace = (await convex().query(api.infra.auditLog.listNullSpaceForCompany, {
+      companyId: ctx.company.id,
+      since: sinceIso,
+      limit: PAGE + 1,
+    })) as AuditLogRow[];
   }
 
   // Stable sort: createdAt desc, then id desc. Matches the route.

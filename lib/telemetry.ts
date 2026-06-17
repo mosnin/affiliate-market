@@ -18,7 +18,7 @@
  *   - hasEmitted() returns false on error so we re-fire rather than silently
  *     skipping a real first-time event when Supabase blips.
  */
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 export type TelemetryEventName =
@@ -45,16 +45,12 @@ export interface EmitArgs {
  */
 export async function emit(args: EmitArgs): Promise<void> {
   try {
-    const { error } = await supabase.from('TelemetryEvent').insert({
-      id: crypto.randomUUID(),
+    await convex().mutation(api.infra.telemetry.emit, {
       spaceId: args.spaceId ?? null,
       userId: args.userId ?? null,
       event: args.event,
       payload: args.payload ?? {},
     });
-    if (error) {
-      logger.warn('[telemetry] emit failed', { event: args.event }, error);
-    }
   } catch (err) {
     logger.warn('[telemetry] emit threw', { event: args.event }, err);
   }
@@ -71,17 +67,7 @@ export async function hasEmitted(
   event: TelemetryEventName,
 ): Promise<boolean> {
   try {
-    const { count, error } = await supabase
-      .from('TelemetryEvent')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', spaceId)
-      .eq('event', event)
-      .limit(1);
-    if (error) {
-      logger.warn('[telemetry] hasEmitted failed', { event, spaceId }, error);
-      return false;
-    }
-    return (count ?? 0) > 0;
+    return await convex().query(api.infra.telemetry.hasEmitted, { spaceId, event });
   } catch (err) {
     logger.warn('[telemetry] hasEmitted threw', { event, spaceId }, err);
     return false;
@@ -98,17 +84,12 @@ export async function getFirstEmittedAt(
   event: TelemetryEventName,
 ): Promise<Date | null> {
   try {
-    const { data, error } = await supabase
-      .from('TelemetryEvent')
-      .select('createdAt')
-      .eq('spaceId', spaceId)
-      .eq('event', event)
-      .order('createdAt', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (error || !data) return null;
-    const row = data as { createdAt: string };
-    const t = new Date(row.createdAt);
+    const createdAt = await convex().query(api.infra.telemetry.firstEmittedAt, {
+      spaceId,
+      event,
+    });
+    if (!createdAt) return null;
+    const t = new Date(createdAt);
     return Number.isNaN(t.getTime()) ? null : t;
   } catch {
     return null;

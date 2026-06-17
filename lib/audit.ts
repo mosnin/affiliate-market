@@ -17,7 +17,7 @@
  *   });
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getClientIp } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import type { NextRequest } from 'next/server';
@@ -67,8 +67,7 @@ export async function audit(params: AuditParams): Promise<void> {
   const ipAddress = req ? getClientIp(req) : null;
 
   try {
-    const { error } = await supabase.from('AuditLog').insert({
-      id: crypto.randomUUID(),
+    await convex().mutation(api.infra.auditLog.insert, {
       clerkId: actorClerkId,
       ipAddress,
       action,
@@ -77,9 +76,6 @@ export async function audit(params: AuditParams): Promise<void> {
       spaceId: spaceId ?? null,
       metadata: metadata ?? null,
     });
-    if (error) {
-      logger.error('[audit] failed to persist audit event', { action, resource, resourceId }, error);
-    }
   } catch (err) {
     logger.error('[audit] unexpected error', { action, resource, resourceId }, err);
   }

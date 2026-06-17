@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
 const CATEGORIES = ['image', 'document', 'video', 'audio', 'other'] as const;
@@ -54,21 +54,20 @@ export const listFilesTool = defineTool<typeof parameters, ListFilesResult>({
   requiresApproval: false,
 
   async handler(args, ctx) {
-    let query = supabase
-      .from('File')
-      .select('id, name, mimeType, category, sizeBytes, createdAt')
-      .eq('spaceId', ctx.space.id)
-      .order('createdAt', { ascending: false })
-      .limit(args.limit ?? 20);
-
-    if (args.category) query = query.eq('category', args.category);
-    if (args.query) query = query.ilike('name', `%${args.query}%`);
-
-    const { data, error } = await query;
-    if (error) {
-      return { summary: `Files lookup failed: ${error.message}`, display: 'error' };
+    let rows: FileRow[];
+    try {
+      rows = (await convex().query(api.infra.files.listForSpaceFiltered, {
+        spaceId: ctx.space.id,
+        category: args.category,
+        query: args.query,
+        limit: args.limit ?? 20,
+      })) as FileRow[];
+    } catch (err) {
+      return {
+        summary: `Files lookup failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+        display: 'error',
+      };
     }
-    const rows = (data ?? []) as FileRow[];
     if (rows.length === 0) {
       const hint = args.query
         ? `No files match "${args.query}"${args.category ? ` in ${args.category}` : ''}.`
