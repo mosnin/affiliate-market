@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requireManager, canEditSettings } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 
 type AssignmentMethod = 'manual' | 'round_robin' | 'score_based';
@@ -66,16 +66,14 @@ async function resolveAutoAssignMeta(companyId: string): Promise<{
   // Explicitly select the new columns so we can detect a missing-column error
   // and degrade gracefully. If the SELECT errors (e.g. columns don't exist
   // yet), we keep the defaults above — the page stays usable for every manager.
-  const { data: extra, error: extraErr } = await supabase
-    .from('Company')
-    .select(
-      'autoAssignEnabled, assignmentMethod, lastAssignedUserId, ' +
-      'slaEnabled, slaFirstResponseMinutes, slaEscalateMinutes'
-    )
-    .eq('id', companyId)
-    .maybeSingle<CompanyAutoAssignFields>();
+  let extra: CompanyAutoAssignFields | null = null;
+  try {
+    extra = await convex().query(api.org.companies.getById, { id: companyId });
+  } catch {
+    extra = null;
+  }
 
-  if (!extraErr && extra) {
+  if (extra) {
     if (typeof extra.autoAssignEnabled === 'boolean') {
       autoAssignEnabled = extra.autoAssignEnabled;
     }
@@ -103,11 +101,12 @@ async function resolveAutoAssignMeta(companyId: string): Promise<{
   // gone we just leave the name null.
   let lastAssignedUserName: string | null = null;
   if (lastAssignedUserId) {
-    const { data: userRow } = await supabase
-      .from('User')
-      .select('name, email')
-      .eq('id', lastAssignedUserId)
-      .maybeSingle<{ name: string | null; email: string | null }>();
+    let userRow: { name: string | null; email: string | null } | null = null;
+    try {
+      userRow = await convex().query(api.org.users.getById, { id: lastAssignedUserId });
+    } catch {
+      userRow = null;
+    }
     if (userRow) {
       lastAssignedUserName = userRow.name?.trim() || userRow.email || null;
     }
@@ -115,11 +114,13 @@ async function resolveAutoAssignMeta(companyId: string): Promise<{
 
   // Count active sellers (seller_member rows) for the company. Safe to run
   // always — this table is not gated on BP7a.
-  const { count } = await supabase
-    .from('CompanyMembership')
-    .select('id', { count: 'exact', head: true })
-    .eq('companyId', companyId)
-    .eq('role', 'seller_member');
+  let count = 0;
+  try {
+    const counts = await convex().query(api.org.memberships.countByCompany, { companyId });
+    count = counts.sellerMembers;
+  } catch {
+    count = 0;
+  }
 
   return {
     autoAssignEnabled,
@@ -332,12 +333,15 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
   }
 
-  const { error: updateErr } = await supabase
-    .from('Company')
-    .update(updates)
-    .eq('id', ctx.company.id);
-
-  if (updateErr) {
+  try {
+    await convex().mutation(api.org.companies.updateById, {
+      id: ctx.company.id,
+      // `updates` is the runtime-validated writable bag; Convex re-validates each
+      // field against the patch validator at the boundary.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      patch: updates as any,
+    });
+  } catch (updateErr) {
     console.error('[manager/settings] update failed', updateErr);
     return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
   }
@@ -353,24 +357,22 @@ export async function PATCH(req: Request) {
   // Return the freshly-updated settings row in the same shape as GET, so the
   // UI can swap in the response without a round-trip refetch.
   const auto = await resolveAutoAssignMeta(ctx.company.id);
-  const { data: company } = await supabase
-    .from('Company')
-    .select(
-      'id, name, websiteUrl, logoUrl, status, privacyPolicyHtml, ' +
-      'companyLicenseNumber, companyFairHousingNotice, companyShowEqualHousingMark'
-    )
-    .eq('id', ctx.company.id)
-    .maybeSingle<{
-      id: string;
-      name: string;
-      websiteUrl: string | null;
-      logoUrl: string | null;
-      status: 'active' | 'suspended';
-      privacyPolicyHtml: string | null;
-      companyLicenseNumber: string | null;
-      companyFairHousingNotice: string | null;
-      companyShowEqualHousingMark: boolean | null;
-    }>();
+  let company: {
+    id: string;
+    name: string;
+    websiteUrl: string | null;
+    logoUrl: string | null;
+    status: 'active' | 'suspended';
+    privacyPolicyHtml: string | null;
+    companyLicenseNumber: string | null;
+    companyFairHousingNotice: string | null;
+    companyShowEqualHousingMark: boolean | null;
+  } | null = null;
+  try {
+    company = await convex().query(api.org.companies.getById, { id: ctx.company.id });
+  } catch {
+    company = null;
+  }
 
   const response: SettingsResponse = {
     id: company?.id ?? ctx.company.id,

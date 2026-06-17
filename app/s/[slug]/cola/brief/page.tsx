@@ -12,7 +12,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { ColaPageShell } from '@/components/cola/cola-page-shell';
 import { DailyBrief } from '@/components/cola/daily-brief';
 
@@ -30,13 +30,10 @@ export default async function ColaBriefPage({
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
-  const { data: spaceOwner } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .eq('id', space.ownerId)
-    .maybeSingle();
-  if (!spaceOwner) notFound();
+  const spaceOwner = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: userId })
+    .catch(() => null);
+  if (!spaceOwner || spaceOwner.id !== space.ownerId) notFound();
 
   return (
     <ColaPageShell greeting="Today.">

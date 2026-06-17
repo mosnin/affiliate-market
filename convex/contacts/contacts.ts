@@ -197,6 +197,122 @@ export const findByEmailInSpace = query({
   },
 });
 
+/** Resolve a contact by exact phone within a space, or null. Mirrors the SMS
+ *  audit-link lookup `.eq('spaceId').is('companyId', null).eq('phone', x)
+ *  .maybeSingle()` (pass requireCompanyIdNull to apply the workspace-only gate). */
+export const findByPhoneInSpace = query({
+  args: {
+    spaceId: v.string(),
+    phone: v.string(),
+    requireCompanyIdNull: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const needle = args.phone.trim();
+    const rows = await ctx.db
+      .query('Contact')
+      .withIndex('by_space', (q) => q.eq('spaceId', args.spaceId))
+      .collect();
+    const hit = rows.find(
+      (c) =>
+        (c.phone ?? '') === needle &&
+        (!args.requireCompanyIdNull || c.companyId == null),
+    );
+    return hit ? toRow(hit) : null;
+  },
+});
+
+/** One contact by id whose email also matches (case-insensitive), or null. The
+ *  client-portal id+email gate (`.eq('id').ilike('email').maybeSingle()`). */
+export const getByIdAndEmail = query({
+  args: { id: v.string(), email: v.string() },
+  handler: async (ctx, args) => {
+    const c = await ctx.db
+      .query('Contact')
+      .withIndex('by_app_id', (q) => q.eq('id', args.id))
+      .unique();
+    if (!c) return null;
+    return (c.email ?? '').toLowerCase() === args.email.trim().toLowerCase() ? toRow(c) : null;
+  },
+});
+
+/** Every contact across ALL spaces whose email matches (case-insensitive),
+ *  newest-first. The client-portal "find my applications by email" read
+ *  (`.ilike('email', x).order(createdAt desc)`, no space scope). Uses the global
+ *  by_email index. */
+export const listByEmailAllSpaces = query({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const needle = args.email.trim().toLowerCase();
+    const rows = await ctx.db.query('Contact').collect();
+    return rows
+      .filter((c) => (c.email ?? '').toLowerCase() === needle)
+      .sort(descByCreated)
+      .map(toRow);
+  },
+});
+
+/** The most-recent application contact in a space matching an email AND carrying
+ *  a tag, or null. The apply-route dedup `.eq('spaceId').ilike('email')
+ *  .contains('tags',[tag]).order(createdAt desc).limit(1)`. */
+export const findApplicationByEmailInSpace = query({
+  args: { spaceId: v.string(), email: v.string(), tag: v.string() },
+  handler: async (ctx, args) => {
+    const needle = args.email.trim().toLowerCase();
+    const rows = await ctx.db
+      .query('Contact')
+      .withIndex('by_space', (q) => q.eq('spaceId', args.spaceId))
+      .collect();
+    const hit = rows
+      .filter((c) => (c.email ?? '').toLowerCase() === needle && c.tags.includes(args.tag))
+      .sort(descByCreated)[0];
+    return hit ? toRow(hit) : null;
+  },
+});
+
+/** Recent contacts in a space matching an exact name AND a tag, created since a
+ *  cutoff, newest-first, capped. The apply-route name-dedup window
+ *  (`.eq('spaceId').eq('name').contains('tags',[tag]).gte('createdAt', cutoff)
+ *  .order(createdAt desc).limit(n)`). */
+export const recentByNameAndTag = query({
+  args: {
+    spaceId: v.string(),
+    name: v.string(),
+    tag: v.string(),
+    sinceIso: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query('Contact')
+      .withIndex('by_space', (q) => q.eq('spaceId', args.spaceId))
+      .collect();
+    return rows
+      .filter(
+        (c) =>
+          c.name === args.name &&
+          c.tags.includes(args.tag) &&
+          c.createdAt >= args.sinceIso,
+      )
+      .sort(descByCreated)
+      .slice(0, args.limit ?? 5)
+      .map(toRow);
+  },
+});
+
+/** Contacts whose followUpAt falls in [from, to], across ALL spaces, for the
+ *  follow-up-reminders cron (`.lte('followUpAt', to).gte('followUpAt', from)`,
+ *  no space scope). Whole-table scan — the cron is infrequent. */
+export const dueFollowUpsInWindow = query({
+  args: { from: v.string(), to: v.string() },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db.query('Contact').collect();
+    return rows
+      .filter((c) => c.followUpAt != null && c.followUpAt >= args.from && c.followUpAt <= args.to)
+      .sort(descByCreated)
+      .map(toRow);
+  },
+});
+
 /** Resolve an applicant by (applicationRef [+ statusPortalToken]) — the public
  *  portal gate. Mirrors `.eq('applicationRef').eq('statusPortalToken').maybeSingle()`
  *  (portal, demo-request, portal/message) and the `.eq('applicationRef').eq('spaceId')`
@@ -614,6 +730,8 @@ export const scanForAnalytics = query({
     requireFormConfigSnapshotNotNull: v.optional(v.boolean()),
     requireSourceLabelNotNull: v.optional(v.boolean()),
     createdGte: v.optional(v.string()),
+    // Tag-overlap (PG `.overlaps('tags', [...])`) — admin form-analytics.
+    tagsAny: v.optional(v.array(v.string())),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -643,6 +761,8 @@ export const scanForAnalytics = query({
       rows = rows.filter((c) => c.formConfigSnapshot != null);
     if (args.requireSourceLabelNotNull) rows = rows.filter((c) => c.sourceLabel != null);
     if (args.createdGte !== undefined) rows = rows.filter((c) => c.createdAt >= args.createdGte!);
+    if (args.tagsAny && args.tagsAny.length > 0)
+      rows = rows.filter((c) => c.tags.some((t) => args.tagsAny!.includes(t)));
     rows.sort(descByCreated);
     return rows.slice(0, args.limit ?? 100000).map(toRow);
   },
@@ -656,12 +776,18 @@ export const countAll = query({
     scoringStatus: v.optional(scoringStatusValidator),
     followUpNotNull: v.optional(v.boolean()),
     createdGte: v.optional(v.string()),
+    // Tag-overlap (PG `.overlaps('tags', [...])`): match if the row carries ANY
+    // of these tags. The admin form-analytics global rollups (application-link /
+    // company-lead populations).
+    tagsAny: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args): Promise<number> => {
     let rows = await ctx.db.query('Contact').collect();
     if (args.scoringStatus) rows = rows.filter((c) => c.scoringStatus === args.scoringStatus);
     if (args.followUpNotNull) rows = rows.filter((c) => c.followUpAt != null);
     if (args.createdGte !== undefined) rows = rows.filter((c) => c.createdAt >= args.createdGte!);
+    if (args.tagsAny && args.tagsAny.length > 0)
+      rows = rows.filter((c) => c.tags.some((t) => args.tagsAny!.includes(t)));
     return rows.length;
   },
 });

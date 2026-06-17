@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 
@@ -30,18 +29,17 @@ export async function GET(req: NextRequest) {
   });
 
   // The PostgREST `Contact(id, name, email, phone)` embed can't ride a Convex
-  // query — batch-resolve the linked contacts (Contact stays on Supabase) and
-  // stitch each onto its demo to preserve the response shape.
+  // query — batch-resolve the linked contacts via Convex and stitch each onto
+  // its demo to preserve the response shape.
   const contactIds = Array.from(
     new Set(rows.map((d) => d.contactId).filter((id): id is string => Boolean(id))),
   );
   const contactMap = new Map<string, { id: string; name: string; email: string | null; phone: string | null }>();
   if (contactIds.length > 0) {
-    const { data: contactRows } = await supabase
-      .from('Contact')
-      .select('id, name, email, phone')
-      .in('id', contactIds);
-    for (const c of (contactRows ?? []) as { id: string; name: string; email: string | null; phone: string | null }[]) {
+    const contactRows = await convex().query(api.contacts.contacts.getManyByIds, {
+      ids: contactIds,
+    });
+    for (const c of contactRows) {
       contactMap.set(c.id, { id: c.id, name: c.name, email: c.email ?? null, phone: c.phone ?? null });
     }
   }
@@ -72,13 +70,10 @@ export async function POST(req: NextRequest) {
   // Verify linked contact belongs to this space
   let validContactId: string | null = null;
   if (contactId) {
-    const { data: contactRow, error: cErr } = await supabase
-      .from('Contact')
-      .select('id')
-      .eq('id', contactId)
-      .eq('spaceId', space.id)
-      .maybeSingle();
-    if (cErr) throw cErr;
+    const contactRow = await convex().query(api.contacts.contacts.getById, {
+      id: contactId,
+      spaceId: space.id,
+    });
     validContactId = contactRow?.id ?? null;
   }
 

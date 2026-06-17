@@ -1,6 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { isReservedConversationTitle } from '@/lib/chat/conversation-access';
@@ -37,23 +36,19 @@ export async function GET(req: NextRequest) {
     }
     if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    const { data: dbUser, error: userErr } = await supabase
-      .from('User')
-      .select('id')
-      .eq('clerkId', userId)
-      .maybeSingle();
-    if (userErr) {
+    let dbUser;
+    try {
+      dbUser = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
+    } catch (userErr) {
       console.error('[messages] User lookup failed:', userErr);
       return NextResponse.json({ error: 'Lookup failed' }, { status: 500 });
     }
     if (!dbUser) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const { data: space, error: spaceErr } = await supabase
-      .from('Space')
-      .select('id, ownerId')
-      .eq('id', conv.spaceId)
-      .maybeSingle();
-    if (spaceErr) {
+    let space;
+    try {
+      space = await convex().query(api.workspace.spaces.getById, { id: conv.spaceId });
+    } catch (spaceErr) {
       console.error('[messages] Space lookup failed:', spaceErr);
       return NextResponse.json({ error: 'Lookup failed' }, { status: 500 });
     }

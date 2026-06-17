@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { audit } from '@/lib/audit';
 
@@ -57,12 +57,13 @@ export async function POST(req: Request) {
   }
 
   // Resolve internal user id
-  const { data: user, error: userErr } = await supabase
-    .from('User')
-    .select('id, onboard, accountType, platformRole')
-    .eq('clerkId', clerkId)
-    .maybeSingle();
-  if (userErr || !user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  let user;
+  try {
+    user = await convex().query(api.org.users.getByClerkId, { clerkId });
+  } catch {
+    user = null;
+  }
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
   // Platform admins bypass the onboarding/account-type gates below. An admin is
   // usually a seller who was promoted, so their accountType is 'seller' — which
@@ -77,65 +78,42 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Upgrade to a manager account to create a company' }, { status: 403 });
   }
 
-  // Check: does this user already own a company?
-  const { data: existing } = await supabase
-    .from('Company')
-    .select('id')
-    .eq('ownerId', user.id)
-    .maybeSingle();
-  if (existing) return NextResponse.json({ error: 'You already own a company' }, { status: 409 });
-
-  // Direct inserts instead of RPC — avoids ambiguous function overload issues
-  // when multiple versions of create_company_with_owner exist in the database.
+  // Create the company AND the owner membership atomically. The one-company-
+  // per-owner invariant + the create/membership rollback are both handled inside
+  // createWithOwner: it returns 'owner_taken' (no write) if the owner already has
+  // a company, and a failed membership insert rolls the company back for free.
   const companyId = crypto.randomUUID();
 
-  const { data: company, error: insertErr } = await supabase
-    .from('Company')
-    .insert({
+  let result;
+  try {
+    result = await convex().mutation(api.org.companies.createWithOwner, {
       id: companyId,
       name: trimmedName,
       ownerId: user.id,
-      ...(logoUrl && { logoUrl: String(logoUrl).slice(0, 500) }),
-      ...(websiteUrl && { websiteUrl: String(websiteUrl).slice(0, 500) }),
-      ...(officeAddress && { officeAddress: String(officeAddress).slice(0, 500) }),
-      ...(officePhone && { officePhone: String(officePhone).slice(0, 40) }),
-      ...(agentCount && { agentCount: String(agentCount).slice(0, 20) }),
-      ...(companyType && { companyType }),
-      ...(primaryMarket && { primaryMarket }),
-      ...(commissionStructure && { commissionStructure }),
-      ...(geographicCoverage && { geographicCoverage: String(geographicCoverage).slice(0, 500) }),
-    })
-    .select()
-    .single();
-
-  if (insertErr) {
-    // Check if user already owns a company (race condition with unique index)
-    const errMsg = insertErr.message || '';
-    if (errMsg.includes('duplicate key') || errMsg.includes('unique') || insertErr.code === '23505') {
-      return NextResponse.json({ error: 'You already own a company' }, { status: 409 });
-    }
-    console.error('[manager/create] Company insert failed:', insertErr);
+      logoUrl: logoUrl ? String(logoUrl).slice(0, 500) : undefined,
+      websiteUrl: websiteUrl ? String(websiteUrl).slice(0, 500) : undefined,
+      officeAddress: officeAddress ? String(officeAddress).slice(0, 500) : undefined,
+      officePhone: officePhone ? String(officePhone).slice(0, 40) : undefined,
+      agentCount: agentCount ? String(agentCount).slice(0, 20) : undefined,
+      companyType: companyType as 'independent' | 'franchise' | 'virtual' | undefined,
+      primaryMarket: primaryMarket as 'residential_rental' | 'commercial' | 'mixed' | undefined,
+      commissionStructure: commissionStructure as
+        | 'flat_fee'
+        | 'percentage_split'
+        | 'hybrid'
+        | undefined,
+      geographicCoverage: geographicCoverage ? String(geographicCoverage).slice(0, 500) : undefined,
+    });
+  } catch (err) {
+    console.error('[manager/create] Company create failed:', err);
     return NextResponse.json({ error: 'Failed to create company' }, { status: 500 });
   }
 
-  // Create the owner membership
-  const { error: membershipErr } = await supabase
-    .from('CompanyMembership')
-    .insert({
-      id: crypto.randomUUID(),
-      companyId,
-      userId: user.id,
-      role: 'manager_owner',
-    });
-
-  if (membershipErr) {
-    console.error('[manager/create] CompanyMembership insert failed:', membershipErr);
-    // Rollback: delete the company we just created since it's unusable without an owner membership
-    await supabase.from('Company').delete().eq('id', companyId);
-    return NextResponse.json({ error: 'Failed to create company membership' }, { status: 500 });
+  if (result.outcome === 'owner_taken') {
+    return NextResponse.json({ error: 'You already own a company' }, { status: 409 });
   }
 
   void audit({ actorClerkId: clerkId, action: 'CREATE', resource: 'Company', resourceId: companyId, metadata: { name: trimmedName } });
 
-  return NextResponse.json({ company }, { status: 201 });
+  return NextResponse.json({ company: result.company }, { status: 201 });
 }

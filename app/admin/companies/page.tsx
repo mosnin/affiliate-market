@@ -1,21 +1,67 @@
 import { redirect } from 'next/navigation';
 import { isPlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { Card, CardContent } from '@/components/ui/card';
 import { Building2, CheckCircle2, XCircle, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
+type CompanyRow = {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  ownerId: string;
+  User: { id: string; name: string | null; email: string } | null;
+};
+
 export default async function AdminCompaniesPage() {
   const isAdmin = await isPlatformAdmin();
   if (!isAdmin) redirect('/');
 
-  const { data: companies, error } = await supabase
-    .from('Company')
-    .select('*, User!Company_ownerId_fkey(id, name, email)')
-    .order('createdAt', { ascending: false });
+  let companies: CompanyRow[];
+  let countMap: Record<string, number> = {};
+  try {
+    // Companies newest-first, then resolve the owner User(...) embed + per-company
+    // member counts lib-side (the Convex fns return single-table rows).
+    const rows = (await convex().query(api.org.companies.listAll, {})) as Array<{
+      id: string;
+      name: string;
+      status: string;
+      createdAt: string;
+      ownerId: string;
+    }>;
 
-  if (error) {
+    const ownerIds = Array.from(new Set(rows.map((b) => b.ownerId).filter(Boolean)));
+    const owners =
+      ownerIds.length > 0
+        ? ((await convex().query(api.org.users.listByIds, { ids: ownerIds })) as Array<{
+            id: string;
+            name: string | null;
+            email: string;
+          }>)
+        : [];
+    const ownerById = new Map(owners.map((o) => [o.id, o]));
+
+    companies = rows.map((b) => ({
+      id: b.id,
+      name: b.name,
+      status: b.status,
+      createdAt: b.createdAt,
+      ownerId: b.ownerId,
+      User: ownerById.get(b.ownerId) ?? null,
+    }));
+
+    const allIds = companies.map((b) => b.id);
+    if (allIds.length > 0) {
+      const memberships = (await convex().query(api.org.memberships.listByCompanyIds, {
+        companyIds: allIds,
+      })) as Array<{ companyId: string }>;
+      for (const m of memberships) {
+        countMap[m.companyId] = (countMap[m.companyId] ?? 0) + 1;
+      }
+    }
+  } catch {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="text-center space-y-2 p-8">
@@ -26,18 +72,8 @@ export default async function AdminCompaniesPage() {
     );
   }
 
-  const allIds = (companies ?? []).map((b) => b.id);
-  const { data: memberships } = allIds.length > 0
-    ? await supabase.from('CompanyMembership').select('companyId').in('companyId', allIds)
-    : { data: [] };
-
-  const countMap: Record<string, number> = {};
-  for (const m of memberships ?? []) {
-    countMap[m.companyId] = (countMap[m.companyId] ?? 0) + 1;
-  }
-
-  const active    = (companies ?? []).filter((b) => b.status === 'active').length;
-  const suspended = (companies ?? []).filter((b) => b.status === 'suspended').length;
+  const active    = companies.filter((b) => b.status === 'active').length;
+  const suspended = companies.filter((b) => b.status === 'suspended').length;
 
   return (
     <div className="space-y-8 pb-12">

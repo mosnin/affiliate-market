@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { sendDemoConfirmation, type DemoEmailData } from '@/lib/demo-emails';
@@ -54,11 +53,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Get duration from settings
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select('demoDuration')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settings = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
   let duration = settings?.demoDuration ?? 30;
 
   // Validate productProfileId belongs to this space before using it,
@@ -86,12 +83,10 @@ export async function POST(req: NextRequest) {
 
   // Try to match to existing contact by email, or create one
   let contactId: string | null = null;
-  const { data: contactRow } = await supabase
-    .from('Contact')
-    .select('id')
-    .eq('spaceId', space.id)
-    .ilike('email', guestEmail.trim())
-    .maybeSingle();
+  const contactRow = await convex().query(api.contacts.contacts.findByEmailInSpace, {
+    spaceId: space.id,
+    email: guestEmail.trim(),
+  });
 
   if (contactRow) {
     contactId = contactRow.id;
@@ -100,35 +95,38 @@ export async function POST(req: NextRequest) {
     // before the update committed, so first-touch attribution was missed
     // intermittently. Cost is one extra serial query; the route already
     // does several.
-    const { error: srcErr } = await supabase
-      .from('Contact')
-      .update({ sourceLabel: 'demo-booking' })
-      .eq('id', contactId)
-      .eq('spaceId', space.id)
-      .is('sourceLabel', null);
-    if (srcErr) console.error('[book] Source update failed:', srcErr);
+    try {
+      await convex().mutation(api.contacts.contacts.update, {
+        id: contactId,
+        spaceId: space.id,
+        patch: { sourceLabel: 'demo-booking' },
+        setSourceLabelOnlyIfNull: true,
+      });
+    } catch (srcErr) {
+      console.error('[book] Source update failed:', srcErr);
+    }
   } else {
     // Auto-create a contact for this demo guest
     const newContactId = crypto.randomUUID();
-    const { error: createErr } = await supabase.from('Contact').insert({
-      id: newContactId,
-      spaceId: space.id,
-      name: guestName.trim(),
-      email: guestEmail.trim().toLowerCase(),
-      phone: guestPhone?.trim() || null,
-      address: productAddress?.trim() || null,
-      type: 'DEMO',
-      tags: ['demo-booking'],
-      sourceLabel: 'demo-booking',
-      // `'unscored'` violated the CHECK constraint
-      // (`contact_scoring_status_check` allows pending/scored/failed only),
-      // so every auto-create silently failed and the demo was booked with
-      // a NULL contactId — losing attribution and breaking follow-ups.
-      scoringStatus: 'pending',
-    });
-    if (!createErr) {
+    try {
+      await convex().mutation(api.contacts.contacts.create, {
+        id: newContactId,
+        spaceId: space.id,
+        name: guestName.trim(),
+        email: guestEmail.trim().toLowerCase(),
+        phone: guestPhone?.trim() || null,
+        address: productAddress?.trim() || null,
+        type: 'DEMO',
+        tags: ['demo-booking'],
+        sourceLabel: 'demo-booking',
+        // `'unscored'` violated the CHECK constraint
+        // (`contact_scoring_status_check` allows pending/scored/failed only),
+        // so every auto-create silently failed and the demo was booked with
+        // a NULL contactId — losing attribution and breaking follow-ups.
+        scoringStatus: 'pending',
+      });
       contactId = newContactId;
-    } else {
+    } catch (createErr) {
       console.error('[book] Auto-create contact failed:', createErr);
     }
   }
@@ -163,11 +161,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Send confirmation email (non-blocking)
-  const { data: settingsFull } = await supabase
-    .from('SpaceSetting')
-    .select('businessName')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settingsFull = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
   const emailData: DemoEmailData = {
     guestName: demo.guestName,
     guestEmail: demo.guestEmail,

@@ -22,7 +22,7 @@
 
 import { redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getComposio } from '@/lib/integrations/composio';
 import { upsertByComposioId, findActive, revoke } from '@/lib/integrations/connections';
 import { findIntegration } from '@/lib/integrations/catalog';
@@ -61,15 +61,15 @@ export default async function IntegrationsCallback({
     return redirect(buildBackUrl({ ok: false, reason: 'no_space' }));
   }
 
-  const { data: spaceRow, error: spaceErr } = await supabase
-    .from('Space')
-    .select('id, slug, ownerId')
-    .eq('ownerId', dbUserId)
-    .maybeSingle();
-  if (spaceErr) {
+  let spaceRow: { id: string; slug: string; ownerId: string } | null = null;
+  try {
+    spaceRow = await convex().query(api.workspace.spaces.getByOwnerId, {
+      ownerId: dbUserId,
+    });
+  } catch (err) {
     logger.error('[integrations.callback] space lookup failed', {
       dbUserId,
-      err: spaceErr.message,
+      err: err instanceof Error ? err.message : String(err),
     });
     return redirect(buildBackUrl({ ok: false, reason: 'no_space' }));
   }
@@ -215,12 +215,8 @@ export default async function IntegrationsCallback({
 }
 
 async function getDbUserId(clerkId: string): Promise<string | null> {
-  const { data } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', clerkId)
-    .maybeSingle();
-  return (data?.id as string | undefined) ?? null;
+  const user = await convex().query(api.org.users.getByClerkId, { clerkId });
+  return user?.id ?? null;
 }
 
 interface CallbackResultArgs {

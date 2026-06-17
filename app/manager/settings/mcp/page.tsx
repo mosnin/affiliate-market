@@ -1,5 +1,5 @@
 import { getManagerContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { redirect } from 'next/navigation';
 import { CompanyMcpSection } from '../mcp-section';
 import {
@@ -38,11 +38,9 @@ export default async function ManagerSettingsMcpPage() {
   }
 
   // Find the manager owner's space slug for MCP key management
-  const { data: ownerSpace } = await supabase
-    .from('Space')
-    .select('slug')
-    .eq('ownerId', company.ownerId)
-    .maybeSingle();
+  const ownerSpace = await convex().query(api.workspace.spaces.getByOwnerId, {
+    ownerId: company.ownerId,
+  });
   const managerSpaceSlug = ownerSpace?.slug ?? null;
 
   if (!managerSpaceSlug) {

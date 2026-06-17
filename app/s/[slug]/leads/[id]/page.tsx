@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,16 +49,13 @@ export default async function LeadDetailPage({
   const userSpace = await getSpaceForUser(userId);
   if (!userSpace || userSpace.id !== space.id) notFound();
 
-  const { data, error } = await supabase
-    .from('Contact')
-    .select('*')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .single();
-  if (error?.code === 'PGRST116') notFound();
-  if (error) throw error;
+  const data = await convex().query(api.contacts.contacts.getById, {
+    id,
+    spaceId: space.id,
+  });
+  if (!data) notFound();
 
-  const lead = data as Contact;
+  const lead = data as unknown as Contact;
   if (!lead.tags?.includes('application-link')) notFound();
 
   const app = lead.applicationData as ApplicationData | null;

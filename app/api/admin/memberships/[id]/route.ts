@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logAdminAction } from '@/lib/admin';
 
@@ -28,27 +28,23 @@ export async function DELETE(_req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
   }
 
-  // Fetch membership first so we can unlink the space
-  const { data: membership } = await supabase
-    .from('CompanyMembership')
-    .select('userId, companyId')
-    .eq('id', id)
-    .maybeSingle();
+  // Fetch membership first so we can unlink the space. getById reads by id alone
+  // (companyId is what we're discovering here).
+  const membership = await convex().query(api.org.memberships.getById, { id });
 
   if (!membership) return NextResponse.json({ error: 'Membership not found' }, { status: 404 });
 
   // Unlink space from company (best-effort)
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id')
-    .eq('ownerId', membership.userId)
-    .maybeSingle();
+  const space = await convex().query(api.workspace.spaces.getByOwnerId, {
+    ownerId: membership.userId,
+  });
   if (space) {
-    await supabase.from('Space').update({ companyId: null }).eq('id', space.id);
+    await convex().mutation(api.workspace.spaces.unlinkCompany, { spaceId: space.id });
   }
 
-  const { error } = await supabase.from('CompanyMembership').delete().eq('id', id);
-  if (error) {
+  try {
+    await convex().mutation(api.org.memberships.deleteById, { id });
+  } catch (error) {
     console.error('[admin/memberships] delete failed', error);
     return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
   }

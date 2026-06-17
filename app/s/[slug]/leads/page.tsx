@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { Phone, Flame, Thermometer, Snowflake, HelpCircle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
@@ -28,16 +28,13 @@ export default async function LeadsPage({
 
   let leads: Contact[] = [];
   try {
-    const { data, error } = await supabase
-      .from('Contact')
-      .select('*')
-      .eq('spaceId', space.id)
-      .is('companyId', null) // Exclude company leads
-      .contains('tags', ['application-link'])
-      .order('createdAt', { ascending: false })
-      .limit(500);
-    if (error) throw error;
-    leads = (data ?? []) as Contact[];
+    const data = await convex().query(api.contacts.contacts.filterForSpaces, {
+      spaceIds: [space.id],
+      requireCompanyIdNull: true, // Exclude company leads
+      tagsAll: ['application-link'],
+      limit: 500,
+    });
+    leads = (data ?? []) as unknown as Contact[];
   } catch (err) {
     console.error('[leads] DB query failed', { slug, error: err });
     return (
@@ -68,11 +65,12 @@ export default async function LeadsPage({
       await Promise.all(
         unreadLeads.map((lead) => {
           const newTags = (lead.tags ?? []).filter((t: string) => t !== 'new-lead');
-          return supabase
-            .from('Contact')
-            .update({ tags: newTags, updatedAt: new Date().toISOString() })
-            .eq('id', lead.id)
-            .eq('spaceId', space.id);
+          return convex().mutation(api.contacts.contacts.update, {
+            id: lead.id,
+            spaceId: space.id,
+            patch: { tags: newTags },
+            updatedAt: new Date().toISOString(),
+          });
         }),
       );
     } catch (err) {

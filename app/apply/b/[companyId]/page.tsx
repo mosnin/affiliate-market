@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { FormUnavailable } from '@/components/form-unavailable';
 import { IntakeChat } from '@/components/intake-chat/intake-chat';
 import { IntakeChatShell } from '@/components/intake-chat/intake-chat-shell';
@@ -11,11 +11,7 @@ export const revalidate = 60;
 
 export async function generateMetadata({ params }: { params: Promise<{ companyId: string }> }): Promise<Metadata> {
   const { companyId } = await params;
-  const { data: company } = await supabase
-    .from('Company')
-    .select('name')
-    .eq('id', companyId)
-    .maybeSingle();
+  const company = await convex().query(api.org.companies.getById, { id: companyId });
 
   const name = company?.name || 'Application';
   return {
@@ -33,57 +29,31 @@ export default async function CompanyApplyPage({
   const { companyId } = await params;
 
   // 1. Look up the company
-  const { data: company } = await supabase
-    .from('Company')
-    .select(
-      'id, name, status, logoUrl, ' +
-      'companyLicenseNumber, companyFairHousingNotice, companyShowEqualHousingMark'
-    )
-    .eq('id', companyId)
-    .maybeSingle<{
-      id: string;
-      name: string;
-      status: 'active' | 'suspended';
-      logoUrl: string | null;
-      companyLicenseNumber: string | null;
-      companyFairHousingNotice: string | null;
-      companyShowEqualHousingMark: boolean | null;
-    }>();
+  const company = await convex().query(api.org.companies.getById, { id: companyId });
 
   if (!company || company.status === 'suspended') notFound();
 
   // 2. Find the manager_owner via CompanyMembership
-  const { data: ownerMembership } = await supabase
-    .from('CompanyMembership')
-    .select('userId')
-    .eq('companyId', company.id)
-    .eq('role', 'manager_owner')
-    .maybeSingle();
+  const ownerMemberships = await convex().query(api.org.memberships.listByCompany, {
+    companyId: company.id,
+    roles: ['manager_owner'],
+  });
+  const ownerMembership = ownerMemberships[0] ?? null;
 
   if (!ownerMembership) notFound();
 
   // 3. Get the company-linked owner Space for branding.
-  // For legacy data (missing Space.companyId), fall back only when the
-  // owner has exactly one space.
-  const { data: linkedSpace } = await supabase
-    .from('Space')
-    .select('id, slug, name, ownerId, stripeSubscriptionStatus')
-    .eq('ownerId', ownerMembership.userId)
-    .eq('companyId', company.id)
-    .maybeSingle();
+  // Space.ownerId is unique, so the owner has at most one space. Use it when
+  // it's linked to this company; for legacy data (missing Space.companyId)
+  // fall back to that same sole space.
+  const ownerSpace = await convex().query(api.workspace.spaces.getByOwnerId, {
+    ownerId: ownerMembership.userId,
+  });
 
-  let space = linkedSpace;
-  if (!space) {
-    const { data: ownerSpaces } = await supabase
-      .from('Space')
-      .select('id, slug, name, ownerId, stripeSubscriptionStatus')
-      .eq('ownerId', ownerMembership.userId)
-      .order('createdAt', { ascending: true })
-      .limit(2);
-    const fallbackSpace = ownerSpaces?.[0] ?? null;
-    if ((ownerSpaces ?? []).length === 1 && fallbackSpace) {
-      space = fallbackSpace;
-    }
+  let space = ownerSpace && ownerSpace.companyId === company.id ? ownerSpace : null;
+  if (!space && ownerSpace) {
+    // Legacy fallback: owner's sole space, regardless of companyId link.
+    space = ownerSpace;
   }
 
   if (!space) notFound();
@@ -92,11 +62,7 @@ export default async function CompanyApplyPage({
   //    company URL see the company's customized intake (or the
   //    library defaults if the company hasn't customized). IntakeChat
   //    falls back to library defaults when all three are null.
-  const { data: companyConfigs } = await supabase
-    .from('Company')
-    .select('companyFormConfig, companyRentalFormConfig, companyBuyerFormConfig')
-    .eq('id', company.id)
-    .maybeSingle();
+  const companyConfigs = await convex().query(api.org.companies.getById, { id: company.id });
 
   const legacySingle = (companyConfigs?.companyFormConfig ?? null) as IntakeFormConfig | null;
   let resolvedRentalFormConfig =
@@ -114,33 +80,12 @@ export default async function CompanyApplyPage({
   }
 
   // 5. Parallel queries for settings and owner info
-  const [{ data: coreSettings }, { data: customSettings }, { data: ownerData }] = await Promise.all([
-    supabase
-      .from('SpaceSetting')
-      .select('intakePageTitle, intakePageIntro, businessName, logoUrl, sellerPhotoUrl')
-      .eq('spaceId', space.id)
-      .maybeSingle(),
-    supabase
-      .from('SpaceSetting')
-      .select(
-        'intakeAccentColor, intakeBorderRadius, intakeFont, intakeDarkMode, ' +
-        'intakeHeaderBgColor, intakeHeaderGradient, intakeVideoUrl, ' +
-        'intakeDisclaimerText, intakeThankYouTitle, intakeThankYouMessage, ' +
-        'intakeFooterLinks, intakeDisabledSteps, intakeCustomQuestions, ' +
-        'intakeFaviconUrl, bio, socialLinks, privacyPolicyUrl, consentCheckboxLabel, ' +
-        'intakeLicenseNumber, intakeFairHousingNotice, intakeShowEqualHousingMark'
-      )
-      .eq('spaceId', space.id)
-      .maybeSingle()
-      .then(r => r),
-    supabase
-      .from('User')
-      .select('name, avatar')
-      .eq('id', space.ownerId)
-      .maybeSingle(),
+  const [settingsRow, ownerData] = await Promise.all([
+    convex().query(api.workspace.settings.getBySpace, { spaceId: space.id }),
+    convex().query(api.org.users.getById, { id: space.ownerId }),
   ]);
 
-  const settingsData = { ...((coreSettings ?? {}) as any), ...((customSettings ?? {}) as any) };
+  const settingsData = { ...((settingsRow ?? {}) as any) };
   const settings = settingsData as {
     intakePageTitle: string | null;
     intakePageIntro: string | null;

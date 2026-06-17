@@ -18,7 +18,7 @@
  * double-pings.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getCompanyMembers } from '@/lib/company-members';
 import { notifyManager } from '@/lib/manager-notify';
 import { sendPushToSpace } from '@/lib/push';
@@ -68,15 +68,16 @@ export async function sweepCompanySla(company: CompanySlaPolicy): Promise<SlaSwe
   // longer than the company allows.
   const firstThreshold = new Date(Date.now() - company.slaFirstResponseMinutes * 60000).toISOString();
 
-  const { data, error } = await supabase
-    .from('Contact')
-    .select('id, name, spaceId, tags, createdAt, lastContactedAt')
-    .in('spaceId', spaceIds)
-    .contains('tags', ['assigned-by-manager'])
-    .is('lastContactedAt', null)
-    .lte('createdAt', firstThreshold)
-    .limit(2000);
-  if (error) {
+  let data;
+  try {
+    data = await convex().query(api.contacts.contacts.filterForSpaces, {
+      spaceIds,
+      tagsAll: ['assigned-by-manager'],
+      lastContactedNull: true,
+      createdLte: firstThreshold,
+      limit: 2000,
+    });
+  } catch (error) {
     logger.error('[manager-sla] breach query failed', { companyId: company.id }, error);
     return result;
   }
@@ -108,10 +109,10 @@ export async function sweepCompanySla(company: CompanySlaPolicy): Promise<SlaSwe
           body: `Assigned to ${seller} ${waited} minutes ago and still no first response. Reassign or step in.`,
           metadata: { kind: 'lead_sla_breach', contactId: c.id, spaceId: c.spaceId, seller, waitedMinutes: waited },
         });
-        await supabase
-          .from('Contact')
-          .update({ tags: [...tags, ESCALATED_TAG] })
-          .eq('id', c.id);
+        await convex().mutation(api.contacts.contacts.update, {
+          id: c.id,
+          patch: { tags: [...tags, ESCALATED_TAG] },
+        });
         result.escalated += 1;
         continue;
       }
@@ -122,10 +123,10 @@ export async function sweepCompanySla(company: CompanySlaPolicy): Promise<SlaSwe
         title: 'A lead is waiting on you',
         body: `${c.name} has been waiting ${waited} minutes. Reach out now.`,
       }).catch(() => 0);
-      await supabase
-        .from('Contact')
-        .update({ tags: [...tags, NUDGED_TAG] })
-        .eq('id', c.id);
+      await convex().mutation(api.contacts.contacts.update, {
+        id: c.id,
+        patch: { tags: [...tags, NUDGED_TAG] },
+      });
       result.nudged += 1;
     } catch (err) {
       logger.warn('[manager-sla] action failed for contact', { companyId: company.id, contactId: c.id }, err);
@@ -140,16 +141,23 @@ export async function sweepCompanySla(company: CompanySlaPolicy): Promise<SlaSwe
  * cron route.
  */
 export async function sweepAllCompanies(): Promise<SlaSweepResult[]> {
-  const { data, error } = await supabase
-    .from('Company')
-    .select('id, name, slaFirstResponseMinutes, slaEscalateMinutes')
-    .eq('slaEnabled', true)
-    .limit(5000);
-  if (error) {
+  let all;
+  try {
+    all = await convex().query(api.org.companies.listAll, {});
+  } catch (error) {
     logger.error('[manager-sla] failed to load companies', {}, error);
     return [];
   }
-  const policies = (data ?? []) as CompanySlaPolicy[];
+  // No slaEnabled-specific index exists; listAll returns every company and we
+  // keep only those with SLA enforcement on (the old `.eq('slaEnabled', true)`).
+  const policies = ((all ?? []) as Array<CompanySlaPolicy & { slaEnabled?: boolean }>)
+    .filter((c) => c.slaEnabled === true)
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      slaFirstResponseMinutes: c.slaFirstResponseMinutes,
+      slaEscalateMinutes: c.slaEscalateMinutes,
+    }));
   const out: SlaSweepResult[] = [];
   for (const p of policies) {
     try {

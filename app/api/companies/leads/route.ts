@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireManager, canManageLeads } from '@/lib/permissions';
 import { getSpaceByOwnerId } from '@/lib/space';
 import { routeCompanyLead } from '@/lib/company-routing';
@@ -87,12 +87,7 @@ export async function POST(req: NextRequest) {
     let assignedAgent: { userId: string; name: string } | null = null;
     if (routing) {
       try {
-        const { data: agentUser } = await supabase
-          .from('User')
-          .select('id, name, email')
-          .eq('id', routing.agentUserId)
-          .maybeSingle();
-        const row = agentUser as { id: string; name: string | null; email: string } | null;
+        const row = await convex().query(api.org.users.getById, { id: routing.agentUserId });
         assignedAgent = row
           ? { userId: row.id, name: row.name ?? row.email ?? row.id }
           : { userId: routing.agentUserId, name: routing.agentUserId };
@@ -106,29 +101,23 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Insert the Contact record ─────────────────────────────────────────
-    const { data: contact, error: insertError } = await supabase
-      .from('Contact')
-      .insert({
-        id: crypto.randomUUID(),
-        spaceId: spaceIdForInsert,
-        companyId: company.id,
-        name: fullName,
-        email: email || null,
-        phone: phone || null,
-        budget: budget ?? null,
-        notes: notes || null,
-        leadType,
-        type: 'QUALIFICATION',
-        products: [],
-        tags: ['company-lead', 'new-lead'],
-        scoringStatus: 'pending',
-        scoreLabel: 'unscored',
-        sourceLabel: 'company-manual',
-      })
-      .select('id, name, email, phone, budget, leadType, tags, createdAt, scoreLabel, leadScore, notes')
-      .single();
-
-    if (insertError) throw insertError;
+    const contact = await convex().mutation(api.contacts.contacts.create, {
+      id: crypto.randomUUID(),
+      spaceId: spaceIdForInsert,
+      companyId: company.id,
+      name: fullName,
+      email: email || null,
+      phone: phone || null,
+      budget: budget ?? null,
+      notes: notes || null,
+      leadType,
+      type: 'QUALIFICATION',
+      products: [],
+      tags: ['company-lead', 'new-lead'],
+      scoringStatus: 'pending',
+      scoreLabel: 'unscored',
+      sourceLabel: 'company-manual',
+    });
 
     logger.info('[companies/leads] manual lead created', {
       contactId: contact.id,

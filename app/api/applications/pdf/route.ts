@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 
 /**
@@ -15,28 +15,17 @@ export async function GET(req: NextRequest) {
   const auth = await requireContactAccess(contactId);
   if (auth instanceof NextResponse) return auth;
 
-  const { data: contact } = await supabase
-    .from('Contact')
-    .select('*')
-    .eq('id', contactId)
-    .single();
+  const contact = await convex().query(api.contacts.contacts.getById, { id: contactId });
 
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const app = contact.applicationData as Record<string, any> | null;
   if (!app) return NextResponse.json({ error: 'No application data' }, { status: 400 });
 
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select('businessName')
-    .eq('spaceId', contact.spaceId)
-    .maybeSingle();
-
-  const { data: space } = await supabase
-    .from('Space')
-    .select('name')
-    .eq('id', contact.spaceId)
-    .maybeSingle();
+  const [settings, space] = await Promise.all([
+    convex().query(api.workspace.settings.getBySpace, { spaceId: contact.spaceId }),
+    convex().query(api.workspace.spaces.getById, { id: contact.spaceId }),
+  ]);
 
   const businessName = settings?.businessName || space?.name || 'Product Management';
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });

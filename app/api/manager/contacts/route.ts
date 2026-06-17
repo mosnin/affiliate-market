@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getCompanyMembers } from '@/lib/company-members';
 
 /**
@@ -37,12 +37,15 @@ export async function GET(req: NextRequest) {
   // Belt-and-suspenders: include owner's own space if memberships resolved empty
   let ownerSpaceIds: string[] = [];
   if (memberSpaceIds.length === 0) {
-    const { data: ownerSpaces } = await supabase
-      .from('Space')
-      .select('id')
-      .eq('ownerId', company.ownerId)
-      .limit(10);
-    ownerSpaceIds = (ownerSpaces ?? []).map((s: { id: string }) => s.id);
+    let ownerSpace: { id: string } | null = null;
+    try {
+      ownerSpace = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: company.ownerId,
+      });
+    } catch {
+      ownerSpace = null;
+    }
+    ownerSpaceIds = ownerSpace ? [ownerSpace.id] : [];
   }
 
   const spaceIds = [...new Set([...memberSpaceIds, ...ownerSpaceIds])];
@@ -68,42 +71,16 @@ export async function GET(req: NextRequest) {
   const offset = Math.max(0, offsetParam || 0);
 
   // ── Build query ───────────────────────────────────────────────────────────
-  let query = supabase
-    .from('Contact')
-    .select(
-      'id, name, email, phone, type, leadType, leadScore, scoreLabel, tags, followUpAt, createdAt, updatedAt, spaceId'
-    )
-    .in('spaceId', spaceIds);
-
-  if (type && type !== 'ALL') {
-    query = query.eq('type', type);
-  }
-
-  if (search) {
-    const limited = search.slice(0, 100).toLowerCase();
-    const tokens = limited
-      .split(/\s+/)
-      .filter((t) => t.length > 0)
-      .slice(0, 8);
-    for (const token of tokens) {
-      const escaped = token
-        .replace(/\\/g, '\\\\')
-        .replace(/%/g, '\\%')
-        .replace(/_/g, '\\_');
-      const sanitized = escaped.replace(/[,()]/g, '');
-      if (!sanitized) continue;
-      const pattern = `%${sanitized}%`;
-      query = query.or(
-        `name.ilike.${pattern},email.ilike.${pattern},phone.ilike.${pattern}`
-      );
-    }
-  }
-
-  const { data, error } = await query
-    .order('updatedAt', { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  if (error) {
+  let data;
+  try {
+    data = await convex().query(api.contacts.contacts.listForSpaces, {
+      spaceIds,
+      type: type && type !== 'ALL' ? type : undefined,
+      search: search || undefined,
+      limit,
+      offset,
+    });
+  } catch (error) {
     console.error('[manager/contacts/GET] query error:', error);
     return NextResponse.json({ error: 'Failed to fetch contacts' }, { status: 500 });
   }

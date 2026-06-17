@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { getManagerContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { ActivityClient, type ActivityRow } from './activity-client';
 
@@ -13,11 +12,10 @@ export default async function ManagerActivityPage() {
   if (!ctx) redirect('/');
 
   // 1. Resolve company spaces.
-  const { data: spaceRows } = await supabase
-    .from('Space')
-    .select('id, slug')
-    .eq('companyId', ctx.company.id);
-  const spaces = (spaceRows ?? []) as Array<{ id: string; slug: string | null }>;
+  const spaceRows = (await convex().query(api.workspace.spaces.listByCompanyId, {
+    companyId: ctx.company.id,
+  })) as Array<{ id: string; slug: string | null }>;
+  const spaces = spaceRows;
   const spaceIds = spaces.map((s) => s.id);
   const spaceMap: Record<string, { slug: string | null }> = {};
   for (const s of spaces) spaceMap[s.id] = { slug: s.slug };
@@ -79,16 +77,15 @@ export default async function ManagerActivityPage() {
   );
   const actorMap: Record<string, { name: string | null; email: string | null }> = {};
   if (clerkIds.length > 0) {
-    const { data: users } = await supabase
-      .from('User')
-      .select('clerkId, name, email')
-      .in('clerkId', clerkIds);
-    for (const u of (users ?? []) as Array<{
-      clerkId: string;
-      name: string | null;
-      email: string | null;
-    }>) {
-      actorMap[u.clerkId] = { name: u.name, email: u.email };
+    // No batch-by-clerkId Convex fn exists; fan out the per-clerkId getByClerkId
+    // point reads for the (small) set of actors actually on this page.
+    const users = await Promise.all(
+      clerkIds.map((clerkId) =>
+        convex().query(api.org.users.getByClerkId, { clerkId }),
+      ),
+    );
+    for (const u of users) {
+      if (u) actorMap[u.clerkId] = { name: u.name, email: u.email };
     }
   }
 

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logAdminAction } from '@/lib/admin';
 
@@ -28,34 +28,16 @@ export async function DELETE(_req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
   }
 
-  // Unlink all member spaces from the company first
-  const { error: spaceError } = await supabase
-    .from('Space')
-    .update({ companyId: null })
-    .eq('companyId', id);
-  if (spaceError) {
-    console.error('[admin/companies] space unlink failed', spaceError);
-    return NextResponse.json({ error: 'Failed to unlink spaces' }, { status: 500 });
-  }
-
-  // Delete all memberships
-  const { error: membershipError } = await supabase.from('CompanyMembership').delete().eq('companyId', id);
-  if (membershipError) {
-    console.error('[admin/companies] membership delete failed', membershipError);
-    return NextResponse.json({ error: 'Failed to delete memberships' }, { status: 500 });
-  }
-
-  // Delete invitations
-  const { error: invitationError } = await supabase.from('Invitation').delete().eq('companyId', id);
-  if (invitationError) {
-    console.error('[admin/companies] invitation delete failed', invitationError);
-    return NextResponse.json({ error: 'Failed to delete invitations' }, { status: 500 });
-  }
-
-  // Delete the company
-  const { error } = await supabase.from('Company').delete().eq('id', id);
-  if (error) {
-    console.error('[admin/companies] delete failed', error);
+  // Full company teardown in one atomic mutation: unlink member spaces
+  // (companyId cleared — spaces survive), delete memberships + invitations,
+  // purge the company's credit rows, then delete the company.
+  try {
+    const deleted = await convex().mutation(api.org.companies.deleteWithCascade, { id });
+    if (!deleted) {
+      return NextResponse.json({ error: 'Company not found' }, { status: 404 });
+    }
+  } catch (err) {
+    console.error('[admin/companies] delete failed', err);
     return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
   }
 
@@ -93,18 +75,20 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'status must be active or suspended' }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from('Company')
-    .update({ status })
-    .eq('id', id)
-    .select()
-    .maybeSingle();
-
-  if (error || !data) {
+  let company;
+  try {
+    company = await convex().mutation(api.org.companies.updateById, {
+      id,
+      patch: { status: status as 'active' | 'suspended' },
+    });
+  } catch {
+    company = null;
+  }
+  if (!company) {
     return NextResponse.json({ error: 'Company not found' }, { status: 404 });
   }
 
   await logAdminAction({ actor: admin.clerkUserId, action: 'update_company_status', target: id, details: { status } });
 
-  return NextResponse.json({ company: data });
+  return NextResponse.json({ company });
 }

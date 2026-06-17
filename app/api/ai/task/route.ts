@@ -24,7 +24,6 @@
 import crypto from 'crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
@@ -547,25 +546,19 @@ export async function POST(req: NextRequest) {
   // reading only the Space let a lapsed company keep premium AI on every seat.
   try {
     const { account } = await resolveBillingAccount(ctx.space.id);
-    const { data: subRow } =
+    const subRow =
       account.type === 'company'
-        ? await supabase
-            .from('Company')
-            .select('stripeSubscriptionStatus')
-            .eq('id', account.id)
-            .maybeSingle()
-        : await supabase
-            .from('Space')
-            .select('stripeSubscriptionStatus')
-            .eq('id', account.id)
-            .maybeSingle();
+        ? await convex()
+            .query(api.org.companies.getById, { id: account.id })
+            .catch(() => null)
+        : await convex()
+            .query(api.workspace.spaces.getById, { id: account.id })
+            .catch(() => null);
     const subStatus = subRow?.stripeSubscriptionStatus ?? 'inactive';
     if (isSubscriptionDelinquent(subStatus)) {
-      const { data: userRow } = await supabase
-        .from('User')
-        .select('platformRole')
-        .eq('clerkId', ctx.userId)
-        .maybeSingle();
+      const userRow = await convex()
+        .query(api.org.users.getByClerkId, { clerkId: ctx.userId })
+        .catch(() => null);
       if (userRow?.platformRole !== 'admin') {
         return NextResponse.json(
           {

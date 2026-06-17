@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { redis } from '@/lib/redis';
 import { scoreLeadApplicationDynamic } from '@/lib/lead-scoring';
 import type { LeadScoringResult } from '@/lib/lead-scoring';
@@ -78,11 +78,7 @@ async function fetchCompanyFormConfig(
 ): Promise<IntakeFormConfig | null> {
   try {
     // First try company-level configs directly
-    const { data: company } = await supabase
-      .from('Company')
-      .select('"companyFormConfig", "companyRentalFormConfig", "companyBuyerFormConfig"')
-      .eq('id', companyId)
-      .maybeSingle();
+    const company = await convex().query(api.org.companies.getById, { id: companyId });
 
     if (company) {
       // Try dual config first
@@ -303,12 +299,7 @@ export async function POST(req: NextRequest) {
 
   try {
     // ── Look up the Company ──────────────────────────────────────────────
-    const { data: company, error: companyError } = await supabase
-      .from('Company')
-      .select('id, name, ownerId, status, privacyPolicyHtml')
-      .eq('id', rawCompanyId)
-      .maybeSingle();
-    if (companyError) throw companyError;
+    const company = await convex().query(api.org.companies.getById, { id: rawCompanyId });
     if (!company || company.status !== 'active') {
       // Return a generic error for both invalid and not-found companies
       // to prevent ID enumeration attacks
@@ -319,26 +310,20 @@ export async function POST(req: NextRequest) {
     // ── Find the company-linked Space owned by the manager owner ──────────
     let space: { id: string; slug: string; name: string; ownerId: string; companyId: string | null } | null = null;
 
-    const { data: linkedSpace, error: spaceError } = await supabase
-      .from('Space')
-      .select('id, slug, name, ownerId, companyId')
-      .eq('ownerId', company.ownerId)
-      .eq('companyId', company.id)
-      .limit(1)
-      .maybeSingle();
-    if (spaceError) throw spaceError;
-    space = linkedSpace;
+    // The company-linked space owned by the manager owner (ownerId + companyId).
+    const linkedSpaces = await convex().query(api.workspace.spaces.listByCompanyId, {
+      companyId: company.id,
+      ownerIds: [company.ownerId],
+    });
+    space = linkedSpaces[0] ?? null;
 
     if (!space) {
-      const { data: ownerSpaces, error: ownerSpacesError } = await supabase
-        .from('Space')
-        .select('id, slug, name, ownerId, companyId')
-        .eq('ownerId', company.ownerId)
-        .order('createdAt', { ascending: true })
-        .limit(2);
-      if (ownerSpacesError) throw ownerSpacesError;
-      const fallbackSpace = ownerSpaces?.[0] ?? null;
-      if ((ownerSpaces ?? []).length === 1 && fallbackSpace) {
+      // Legacy fallback: the owner's single space (Space.ownerId is unique, so
+      // there is at most one — matching the old "exactly one owner space" guard).
+      const fallbackSpace = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: company.ownerId,
+      });
+      if (fallbackSpace) {
         space = fallbackSpace;
         logger.warn('[apply/company] using legacy owner-only space fallback', {
           companyId: company.id,
@@ -379,11 +364,9 @@ export async function POST(req: NextRequest) {
         const scoringColumn = resolvedLeadType === 'buyer'
           ? 'buyerScoringModel'
           : 'rentalScoringModel';
-        const { data: scoringSettings } = await supabase
-          .from('SpaceSetting')
-          .select(scoringColumn)
-          .eq('spaceId', space.id)
-          .maybeSingle();
+        const scoringSettings = await convex().query(api.workspace.settings.getBySpace, {
+          spaceId: space.id,
+        });
         if (scoringSettings) {
           scoringModel = (scoringSettings as Record<string, unknown>)[scoringColumn] as ScoringModel | null;
         }
@@ -510,16 +493,16 @@ export async function POST(req: NextRequest) {
 
     // ── Duplicate detection (5-minute window) ──────────────────────────────
     const duplicateCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: existingRecentLeads, error: dupError } = await supabase
-      .from('Contact')
-      .select('id, phone, email, scoringStatus, leadScore, scoreLabel, scoreSummary, scoreDetails, applicationRef')
-      .eq('spaceId', space.id)
-      .eq('name', contactName)
-      .contains('tags', ['company-lead'])
-      .gte('createdAt', duplicateCutoff)
-      .order('createdAt', { ascending: false })
-      .limit(5);
-    if (dupError) throw dupError;
+    const existingRecentLeads = await convex().query(
+      api.contacts.contacts.recentByNameAndTag,
+      {
+        spaceId: space.id,
+        name: contactName,
+        tag: 'company-lead',
+        sinceIso: duplicateCutoff,
+        limit: 5,
+      },
+    );
 
     const applicationRef = crypto.randomBytes(32).toString('hex');
     const statusPortalToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
@@ -528,7 +511,7 @@ export async function POST(req: NextRequest) {
       const normalizedPhone = normalizePhone(contactPhone ?? '');
       const normalizedEmail = (contactEmail ?? '').trim().toLowerCase();
 
-      const duplicate = (existingRecentLeads as Contact[]).find((lead) => {
+      const duplicate = (existingRecentLeads as unknown as Contact[]).find((lead) => {
         const phoneMatch =
           normalizePhone(lead.phone ?? '') !== '' &&
           normalizePhone(lead.phone ?? '') === normalizedPhone;
@@ -563,11 +546,9 @@ export async function POST(req: NextRequest) {
     let spaceBusinessName: string | null = null;
     let intakeConfirmationEmail: string | null = null;
     try {
-      const { data: spaceSetting } = await supabase
-        .from('SpaceSetting')
-        .select('privacyPolicyUrl, businessName, intakeConfirmationEmail')
-        .eq('spaceId', space.id)
-        .maybeSingle();
+      const spaceSetting = await convex().query(api.workspace.settings.getBySpace, {
+        spaceId: space.id,
+      });
       spacePrivacyPolicyUrl = spaceSetting?.privacyPolicyUrl ?? null;
       spaceBusinessName = spaceSetting?.businessName ?? null;
       intakeConfirmationEmail = spaceSetting?.intakeConfirmationEmail ?? null;
@@ -631,12 +612,12 @@ export async function POST(req: NextRequest) {
       contactInsert.formConfigSnapshot = formConfigSnapshot;
     }
 
-    const { data: contacts, error: insertError } = await supabase
-      .from('Contact')
-      .insert(contactInsert)
-      .select();
-    if (insertError) throw insertError;
-    const contact = contacts![0] as Contact;
+    // contactInsert is a Record<string, unknown> built above; its camelCase keys
+    // are exactly the create-mutation args (id, spaceId, companyId, name, …).
+    const contact = (await convex().mutation(
+      api.contacts.contacts.create,
+      contactInsert as any,
+    )) as unknown as Contact;
 
     logger.info('[apply/company] submission persisted', {
       contactId: contact.id,
@@ -679,41 +660,41 @@ export async function POST(req: NextRequest) {
         scoringModel,
       });
 
-      const { error: scoreUpdateError } = await supabase
-        .from('Contact')
-        .update({
-          scoringStatus: scoring.scoringStatus,
-          leadScore: scoring.leadScore,
-          scoreLabel: scoring.scoreLabel,
-          scoreSummary: scoring.scoreSummary,
-          scoreDetails: scoring.scoreDetails,
+      try {
+        await convex().mutation(api.contacts.contacts.update, {
+          id: contact.id,
+          patch: {
+            scoringStatus: scoring.scoringStatus,
+            leadScore: scoring.leadScore,
+            scoreLabel: scoring.scoreLabel,
+            scoreSummary: scoring.scoreSummary,
+            scoreDetails: scoring.scoreDetails,
+          },
           updatedAt: new Date().toISOString(),
-        })
-        .eq('id', contact.id);
-      if (scoreUpdateError) {
-        logger.error('[apply/company] scoring update failed', {
-          contactId: contact.id,
-        }, scoreUpdateError);
-      } else {
+        });
         logger.info('[apply/company] scoring persisted', {
           contactId: contact.id,
           scoringStatus: scoring.scoringStatus,
           scoreLabel: scoring.scoreLabel,
         });
+      } catch (scoreUpdateError) {
+        logger.error('[apply/company] scoring update failed', {
+          contactId: contact.id,
+        }, scoreUpdateError);
       }
     } catch (error) {
       logger.error('[apply/company] scoring failed', { contactId: contact.id }, error);
       try {
-        await supabase
-          .from('Contact')
-          .update({
+        await convex().mutation(api.contacts.contacts.update, {
+          id: contact.id,
+          patch: {
             scoringStatus: 'failed',
             leadScore: null,
             scoreLabel: 'unscored',
             scoreSummary: 'Scoring unavailable right now. Lead saved.',
-            updatedAt: new Date().toISOString(),
-          })
-          .eq('id', contact.id);
+          },
+          updatedAt: new Date().toISOString(),
+        });
       } catch (fallbackErr) {
         logger.error('[apply/company] fallback scoring state failed', {
           contactId: contact.id,

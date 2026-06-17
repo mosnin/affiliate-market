@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 import type { ScoringModel } from '@/lib/scoring/scoring-model-types';
 
@@ -72,12 +72,12 @@ export async function PUT(req: NextRequest) {
   const column =
     leadType === 'rental' ? 'rentalScoringModel' : 'buyerScoringModel';
 
-  const { error: updateErr } = await supabase
-    .from('SpaceSetting')
-    .update({ [column]: scoringModel })
-    .eq('spaceId', space.id);
-
-  if (updateErr) {
+  try {
+    await convex().mutation(api.workspace.settings.upsertBySpace, {
+      spaceId: space.id,
+      fields: { [column]: scoringModel },
+    });
+  } catch (updateErr) {
     console.error('[save-scoring] Failed to save scoring model', updateErr);
     return NextResponse.json(
       { error: 'Failed to save scoring model' },

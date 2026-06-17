@@ -11,7 +11,6 @@
  */
 
 import { inngest } from './client';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { publishToPlatform } from '@/lib/studio/publish';
@@ -30,7 +29,7 @@ import { recordDeadLetter, originalEventData } from './dead-letter';
 async function spaceIdForOwner(userId: unknown): Promise<string> {
   if (typeof userId !== 'string' || !userId) return 'unknown';
   try {
-    const { data } = await supabase.from('Space').select('id').eq('ownerId', userId).maybeSingle();
+    const data = await convex().query(api.workspace.spaces.getByOwnerId, { ownerId: userId });
     return data?.id ?? 'unknown';
   } catch {
     return 'unknown';

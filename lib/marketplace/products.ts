@@ -1,4 +1,3 @@
-import { supabase } from '@/lib/supabase'; // Space lookup only (Space stays on Supabase — hybrid file)
 import { convex, api } from '@/lib/convex-server';
 import { getRatingForProducts } from '@/lib/marketplace/reviews';
 
@@ -90,10 +89,10 @@ async function decorate(rows: ProductRow[]): Promise<MarketplaceProduct[]> {
   if (rows.length === 0) return [];
   const visible = rows.filter((r) => r.marketplaceSlug);
   const spaceIds = [...new Set(visible.map((r) => r.spaceId))];
-  // Batch the seller lookup (Space — stays on Supabase) and the rating aggregate
+  // Batch the seller lookup (Space — Convex core table) and the rating aggregate
   // (Review — Convex, via getRatingForProducts) together — one round trip each.
-  const [{ data: spaces }, ratings] = await Promise.all([
-    supabase.from('Space').select('id, slug, name').in('id', spaceIds),
+  const [spaces, ratings] = await Promise.all([
+    convex().query(api.workspace.spaces.listByIds, { ids: spaceIds }),
     getRatingForProducts(visible.map((r) => r.id)),
   ]);
   const byId = new Map((spaces ?? []).map((s) => [s.id, s]));
@@ -164,12 +163,10 @@ export async function getProductBySlug(
 }
 
 export async function getProductsForSeller(sellerSlug: string): Promise<MarketplaceProduct[]> {
-  // Space (slug → id) stays on Supabase.
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id')
-    .eq('slug', sellerSlug.toLowerCase())
-    .maybeSingle();
+  // Space (slug → id) is a Convex core table.
+  const space = await convex().query(api.workspace.spaces.getBySlug, {
+    slug: sellerSlug.toLowerCase(),
+  });
   if (!space) return [];
 
   const rows = (await convex().query(api.marketplace.products.listPublishedForSpace, {

@@ -19,7 +19,6 @@
  * extends to channels.
  */
 
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { sendSMS } from '@/lib/sms';
@@ -227,29 +226,15 @@ async function deliverSms(ctx: DeliverContext, isEmpty: boolean): Promise<Delive
 // ── Context loader — pulled out so the cron and the /test endpoint share it ─
 
 export async function loadDeliveryContext(spaceId: string): Promise<DeliverySpaceContext | null> {
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select(
-      'briefEmail, briefSms, notifications, smsNotifications, phoneNumber, businessName, unsubscribeToken',
-    )
-    .eq('spaceId', spaceId)
-    .maybeSingle();
+  const settings = await convex().query(api.workspace.settings.getBySpace, { spaceId });
 
   if (!settings) return null;
 
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id, slug, ownerId')
-    .eq('id', spaceId)
-    .maybeSingle();
+  const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
 
   if (!space) return null;
 
-  const { data: owner } = await supabase
-    .from('User')
-    .select('email')
-    .eq('id', space.ownerId)
-    .maybeSingle();
+  const owner = await convex().query(api.org.users.getById, { id: space.ownerId });
 
   return {
     spaceId,

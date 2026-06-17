@@ -1,5 +1,4 @@
 import { notFound } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { getSignedDownloadUrl } from '@/lib/storage';
@@ -50,11 +49,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const space = await getSpaceFromSlug(slug);
   if (!space) return { title: 'Quote Request — Cola' };
 
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select('businessName')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settings = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
 
   const name = settings?.businessName || space.name;
   return {
@@ -84,35 +81,13 @@ export default async function PublicApplyPage({
   // Use two queries: one for core fields (always exist), one for customization (may not exist yet).
   // ProfilePage is read so the intake hero can reach for the same cover photo
   // the public /p/[slug] surface already renders — single source of identity material.
-  const [{ data: coreSettings }, { data: customSettings }, { data: ownerData }, profileRow] = await Promise.all([
-    supabase
-      .from('SpaceSetting')
-      .select('intakePageTitle, intakePageIntro, businessName, logoUrl, sellerPhotoUrl, privacyPolicyHtml, isVerified')
-      .eq('spaceId', space.id)
-      .maybeSingle(),
-    supabase
-      .from('SpaceSetting')
-      .select(
-        'intakeAccentColor, intakeBorderRadius, intakeFont, intakeDarkMode, ' +
-        'intakeHeaderBgColor, intakeHeaderGradient, intakeVideoUrl, ' +
-        'intakeDisclaimerText, intakeThankYouTitle, intakeThankYouMessage, ' +
-        'intakeFooterLinks, intakeDisabledSteps, intakeCustomQuestions, ' +
-        'intakeFaviconUrl, bio, socialLinks, privacyPolicyUrl, consentCheckboxLabel, ' +
-        'intakeLicenseNumber, intakeFairHousingNotice, intakeShowEqualHousingMark, ' +
-        'formConfig, formConfigSource, rentalFormConfig, buyerFormConfig, trackingPixels'
-      )
-      .eq('spaceId', space.id)
-      .maybeSingle()
-      .then(r => r),
-    supabase
-      .from('User')
-      .select('name, avatar, clerkId')
-      .eq('id', space.ownerId)
-      .maybeSingle(),
+  const [settingsRow, ownerData, profileRow] = await Promise.all([
+    convex().query(api.workspace.settings.getBySpace, { spaceId: space.id }),
+    convex().query(api.org.users.getById, { id: space.ownerId }),
     convex().query(api.marketplace.profiles.getBySpace, { spaceId: space.id }),
   ]);
 
-  const settingsData = { ...((coreSettings ?? {}) as any), ...((customSettings ?? {}) as any) };
+  const settingsData = { ...((settingsRow ?? {}) as any) };
   const settings = settingsData as {
     intakePageTitle: string | null;
     intakePageIntro: string | null;
@@ -170,7 +145,10 @@ export default async function PublicApplyPage({
       if (clerkUser?.imageUrl) {
         agentPhoto = clerkUser.imageUrl;
         // Backfill to DB so we don't fetch from Clerk every time
-        await supabase.from('User').update({ avatar: clerkUser.imageUrl }).eq('id', space.ownerId);
+        await convex().mutation(api.org.users.updateById, {
+          id: space.ownerId,
+          patch: { avatar: clerkUser.imageUrl },
+        });
       }
     } catch {
       // Clerk fetch failed — continue without photo
@@ -200,11 +178,9 @@ export default async function PublicApplyPage({
   if (formConfigSource === 'company' && space.companyId) {
     // Fetch form configs from company template
     try {
-      const { data: companyData } = await supabase
-        .from('Company')
-        .select('companyFormConfig, companyRentalFormConfig, companyBuyerFormConfig')
-        .eq('id', space.companyId)
-        .maybeSingle();
+      const companyData = await convex().query(api.org.companies.getById, {
+        id: space.companyId,
+      });
       if (companyData) {
         const legacySingle = (companyData.companyFormConfig ?? null) as IFC | null;
         const legacySingleLeadType = legacySingle?.leadType === 'buyer' ? 'buyer' : 'rental';

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getManagerContext } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -26,19 +26,23 @@ export async function POST() {
   if (!allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
 
   // Company subscription first; legacy owner-space subscription as fallback.
-  const { data: company } = await supabase
-    .from('Company')
-    .select('stripeSubscriptionId')
-    .eq('id', ctx.company.id)
-    .maybeSingle();
+  let company: { stripeSubscriptionId: string | null } | null = null;
+  try {
+    company = await convex().query(api.org.companies.getById, { id: ctx.company.id });
+  } catch {
+    company = null;
+  }
 
   let subscriptionId = (company?.stripeSubscriptionId as string | null) ?? null;
   if (!subscriptionId) {
-    const { data: ownerSpace } = await supabase
-      .from('Space')
-      .select('stripeSubscriptionId')
-      .eq('ownerId', ctx.company.ownerId)
-      .maybeSingle();
+    let ownerSpace: { stripeSubscriptionId: string | null } | null = null;
+    try {
+      ownerSpace = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: ctx.company.ownerId,
+      });
+    } catch {
+      ownerSpace = null;
+    }
     subscriptionId = (ownerSpace?.stripeSubscriptionId as string | null) ?? null;
   }
 

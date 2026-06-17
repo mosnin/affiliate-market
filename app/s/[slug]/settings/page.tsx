@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { GeneralSettingsForm, DangerZone } from './general-settings-form';
 import { ProfileSection } from './profile-section';
 import { NotificationsSection } from './notifications-section';
@@ -122,13 +122,10 @@ export default async function SettingsPage({
 
   let settings: SpaceSetting | null = null;
   try {
-    const { data, error } = await supabase
-      .from('SpaceSetting')
-      .select('*')
-      .eq('spaceId', space.id)
-      .maybeSingle();
-    if (error) throw error;
-    settings = (data as SpaceSetting) ?? null;
+    const data = await convex().query(api.workspace.settings.getBySpace, {
+      spaceId: space.id,
+    });
+    settings = (data as unknown as SpaceSetting) ?? null;
   } catch (err) {
     console.error('[settings] DB query failed', err);
     return (

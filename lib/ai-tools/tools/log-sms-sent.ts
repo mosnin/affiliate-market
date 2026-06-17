@@ -10,7 +10,7 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
 
@@ -41,12 +41,15 @@ export const logSmsSentTool = defineTool<typeof parameters, LogSmsResult>({
   },
 
   async handler(args, ctx) {
-    const { data: contact } = await supabase
-      .from('Contact')
-      .select('id, name')
-      .eq('id', args.personId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
+    let contact: { id: string; name: string } | null;
+    try {
+      contact = await convex().query(api.contacts.contacts.getById, {
+        id: args.personId,
+        spaceId: ctx.space.id,
+      });
+    } catch {
+      contact = null;
+    }
     if (!contact) {
       return { summary: 'Contact not found in this workspace.', display: 'error' };
     }
@@ -54,17 +57,19 @@ export const logSmsSentTool = defineTool<typeof parameters, LogSmsResult>({
 
     const sentAt = args.sentAt ?? new Date().toISOString();
     const activityId = crypto.randomUUID();
-    const { error } = await supabase.from('ContactActivity').insert({
-      id: activityId,
-      contactId: c.id,
-      spaceId: ctx.space.id,
-      type: 'note',
-      content: `Sent SMS: ${args.body.slice(0, 200)}`,
-      metadata: { kind: 'sms', body: args.body, manualLog: true, sentAt, via: 'on_demand_agent' },
-    });
-    if (error) {
+    try {
+      await convex().mutation(api.contacts.activity.create, {
+        id: activityId,
+        contactId: c.id,
+        spaceId: ctx.space.id,
+        type: 'note',
+        content: `Sent SMS: ${args.body.slice(0, 200)}`,
+        metadata: { kind: 'sms', body: args.body, manualLog: true, sentAt, via: 'on_demand_agent' },
+      });
+    } catch (error) {
       logger.error('[tools.log_sms_sent] insert failed', { contactId: c.id }, error);
-      return { summary: `Logging failed: ${error.message}`, display: 'error' };
+      const message = error instanceof Error ? error.message : 'unknown error';
+      return { summary: `Logging failed: ${message}`, display: 'error' };
     }
 
     return {

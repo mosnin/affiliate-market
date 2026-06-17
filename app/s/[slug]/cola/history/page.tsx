@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { ActivityFeed } from '@/components/cola/activity-feed';
 import { ColaPageShell } from '@/components/cola/cola-page-shell';
 
@@ -20,13 +20,10 @@ export default async function ColaHistoryPage({
   if (!space) notFound();
 
   // Verify ownership before rendering
-  const { data: spaceOwner } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .eq('id', space.ownerId)
-    .maybeSingle();
-  if (!spaceOwner) notFound();
+  const spaceOwner = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: userId })
+    .catch(() => null);
+  if (!spaceOwner || spaceOwner.id !== space.ownerId) notFound();
 
   return (
     <ColaPageShell

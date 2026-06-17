@@ -1,4 +1,3 @@
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
@@ -15,31 +14,25 @@ const SUBSCRIPTION_SEGMENTS: Record<string, string> = {
 
 async function countSegment(segment: SegmentKey): Promise<number> {
   if (segment === 'all') {
-    const { count } = await supabase
-      .from('User')
-      .select('*', { count: 'exact', head: true });
-    return count ?? 0;
+    const { total } = await convex().query(api.org.users.counts, {});
+    return total;
   }
   if (segment === 'onboarded' || segment === 'not_onboarded') {
-    const { count } = await supabase
-      .from('User')
-      .select('*', { count: 'exact', head: true })
-      .eq('onboard', segment === 'onboarded');
-    return count ?? 0;
+    const { total, onboarded } = await convex().query(api.org.users.counts, {});
+    return segment === 'onboarded' ? onboarded : Math.max(0, total - onboarded);
   }
   if (segment in SUBSCRIPTION_SEGMENTS) {
-    const { count } = await supabase
-      .from('Space')
-      .select('*', { count: 'exact', head: true })
-      .eq('stripeSubscriptionStatus', SUBSCRIPTION_SEGMENTS[segment]);
-    return count ?? 0;
+    return convex().query(api.workspace.spaces.countBySubscriptionStatus, {
+      status: SUBSCRIPTION_SEGMENTS[segment],
+    });
   }
   if (segment === 'no_workspace') {
-    const [{ count: totalUsers }, { count: totalSpaces }] = await Promise.all([
-      supabase.from('User').select('*', { count: 'exact', head: true }),
-      supabase.from('Space').select('*', { count: 'exact', head: true }),
+    const [{ total: totalUsers }, allSpaces] = await Promise.all([
+      convex().query(api.org.users.counts, {}),
+      // No "count all spaces" fn — the unfiltered list's length is the total.
+      convex().query(api.workspace.spaces.listBySubscriptionStatus, {}),
     ]);
-    return Math.max(0, (totalUsers ?? 0) - (totalSpaces ?? 0));
+    return Math.max(0, totalUsers - allSpaces.length);
   }
   return 0;
 }

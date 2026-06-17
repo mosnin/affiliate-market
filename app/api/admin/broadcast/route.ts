@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAdmin, logAdminAction } from '@/lib/admin';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -72,57 +71,43 @@ function renderBroadcastHtml(subject: string, body: string): string {
 </html>`;
 }
 
+const projectUser = (u: { id: string; email: string; name: string | null }): UserRow => ({
+  id: u.id,
+  email: u.email,
+  name: u.name ?? null,
+});
+
 async function fetchSegmentUsers(segment: Segment, limit: number): Promise<UserRow[]> {
   if (segment === 'all') {
-    const { data, error } = await supabase
-      .from('User')
-      .select('id, email, name')
-      .limit(limit);
-    if (error) throw error;
-    return (data ?? []) as UserRow[];
+    const rows = await convex().query(api.org.users.listForAdmin, { limit });
+    return rows.map(projectUser);
   }
 
   if (segment === 'onboarded' || segment === 'not_onboarded') {
-    const { data, error } = await supabase
-      .from('User')
-      .select('id, email, name')
-      .eq('onboard', segment === 'onboarded')
-      .limit(limit);
-    if (error) throw error;
-    return (data ?? []) as UserRow[];
+    const rows = await convex().query(api.org.users.listForAdmin, {
+      onboard: segment === 'onboarded',
+      limit,
+    });
+    return rows.map(projectUser);
   }
 
   if (segment in SUBSCRIPTION_SEGMENTS) {
     const status = SUBSCRIPTION_SEGMENTS[segment];
-    const { data: spaces, error: spaceErr } = await supabase
-      .from('Space')
-      .select('ownerId')
-      .eq('stripeSubscriptionStatus', status)
-      .limit(limit);
-    if (spaceErr) throw spaceErr;
-    const ownerIds = (spaces ?? []).map((s: { ownerId: string }) => s.ownerId);
+    const spaces = await convex().query(api.workspace.spaces.listBySubscriptionStatus, {
+      status,
+      limit,
+    });
+    const ownerIds = spaces.map((s) => s.ownerId);
     if (ownerIds.length === 0) return [];
-    const { data, error } = await supabase
-      .from('User')
-      .select('id, email, name')
-      .in('id', ownerIds)
-      .limit(limit);
-    if (error) throw error;
-    return (data ?? []) as UserRow[];
+    const rows = await convex().query(api.org.users.listByIds, { ids: ownerIds });
+    return rows.slice(0, limit).map(projectUser);
   }
 
   if (segment === 'no_workspace') {
-    const { data: spaces, error: spaceErr } = await supabase
-      .from('Space')
-      .select('ownerId');
-    if (spaceErr) throw spaceErr;
-    const owned = new Set((spaces ?? []).map((s: { ownerId: string }) => s.ownerId));
-    const { data, error } = await supabase
-      .from('User')
-      .select('id, email, name')
-      .limit(limit);
-    if (error) throw error;
-    return ((data ?? []) as UserRow[]).filter((u) => !owned.has(u.id));
+    const spaces = await convex().query(api.workspace.spaces.listBySubscriptionStatus, {});
+    const owned = new Set(spaces.map((s) => s.ownerId));
+    const rows = await convex().query(api.org.users.listForAdmin, { limit });
+    return rows.map(projectUser).filter((u) => !owned.has(u.id));
   }
 
   return [];

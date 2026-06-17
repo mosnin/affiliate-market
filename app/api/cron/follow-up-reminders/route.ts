@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { sendFollowUpDigest } from '@/lib/email';
 import { sendSMS, followUpReminderSMS } from '@/lib/sms';
 import { sendPushToSpace } from '@/lib/push';
@@ -41,12 +41,13 @@ async function handler(req: NextRequest) {
   // Get contacts with follow-ups that are overdue or due today (within last 24h)
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const { data: contacts, error: contactError } = await supabase
-    .from('Contact')
-    .select('id, name, phone, followUpAt, spaceId')
-    .lte('followUpAt', now.toISOString())
-    .gte('followUpAt', yesterday.toISOString());
-  if (contactError) {
+  let contacts: Array<{ id: string; name: string; phone: string | null; followUpAt: string | null; spaceId: string }>;
+  try {
+    contacts = await convex().query(api.contacts.contacts.dueFollowUpsInWindow, {
+      from: yesterday.toISOString(),
+      to: now.toISOString(),
+    });
+  } catch (contactError) {
     console.error('[cron/follow-up-reminders] DB query failed', contactError);
     return NextResponse.json({ error: 'DB query failed' }, { status: 500 });
   }
@@ -61,27 +62,15 @@ async function handler(req: NextRequest) {
 
   let sent = 0;
   for (const [spaceId, spaceContacts] of Object.entries(bySpace)) {
-    const { data: space } = await supabase
-      .from('Space')
-      .select('name, slug, ownerId')
-      .eq('id', spaceId)
-      .single();
+    const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
     if (!space) continue;
 
-    const { data: setting } = await supabase
-      .from('SpaceSetting')
-      .select('notifications, smsNotifications, phoneNumber, notifyFollowUps, notifyPush')
-      .eq('spaceId', spaceId)
-      .maybeSingle();
+    const setting = await convex().query(api.workspace.settings.getBySpace, { spaceId });
     // Skip if follow-up notifications are disabled, or all channels are off
     if (setting?.notifyFollowUps === false) continue;
     if (setting?.notifications === false && setting?.smsNotifications !== true) continue;
 
-    const { data: user } = await supabase
-      .from('User')
-      .select('email')
-      .eq('id', space.ownerId)
-      .single();
+    const user = await convex().query(api.org.users.getById, { id: space.ownerId });
     if (!user?.email) continue;
 
     try {

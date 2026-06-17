@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getClientUser } from '@/lib/client-auth';
 import { clientOwnsContact } from '@/lib/client-portal-data';
@@ -65,11 +64,7 @@ export async function POST(req: NextRequest) {
   if (!allowed) return NextResponse.json({ error: 'Too many messages. Slow down.' }, { status: 429 });
 
   // Resolve the contact's space (needed for the row + seller lookup).
-  const { data: contact } = await supabase
-    .from('Contact')
-    .select('spaceId, Space(ownerId)')
-    .eq('id', contactId)
-    .maybeSingle();
+  const contact = await convex().query(api.contacts.contacts.getById, { id: contactId });
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   let inserted;
@@ -86,14 +81,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Best-effort seller notification. Resolve the owner's email via User.
-  const space = contact.Space as { ownerId?: string | null } | null;
+  const space = await convex().query(api.workspace.spaces.getById, { id: contact.spaceId });
   if (space?.ownerId) {
-    const { data: owner } = await supabase
-      .from('User')
-      .select('email')
-      .eq('id', space.ownerId)
-      .maybeSingle();
-    const ownerEmail = (owner as { email?: string | null } | null)?.email;
+    const owner = await convex().query(api.org.users.getById, { id: space.ownerId });
+    const ownerEmail = owner?.email;
     if (ownerEmail) {
       void sendClientNotification({
         to: ownerEmail,

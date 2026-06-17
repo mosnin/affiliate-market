@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { Card, CardContent } from '@/components/ui/card';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
@@ -14,21 +14,8 @@ const statusStyle = (status: string) => {
 export default async function AdminInvitationsPage() {
   const isAdmin = await isPlatformAdmin();
   if (!isAdmin) redirect('/');
-  const { data: invitations, error } = await supabase
-    .from('Invitation')
-    .select('id, email, roleToAssign, status, expiresAt, createdAt, companyId, Company(name)')
-    .order('createdAt', { ascending: false })
-    .limit(200);
 
-  if (error) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <p className="text-sm text-muted-foreground">Couldn&apos;t load invitations.</p>
-      </div>
-    );
-  }
-
-  const invs = (invitations ?? []) as unknown as Array<{
+  let invs: Array<{
     id: string;
     email: string;
     roleToAssign: string;
@@ -38,6 +25,47 @@ export default async function AdminInvitationsPage() {
     companyId: string | null;
     Company: { name: string } | null;
   }>;
+  try {
+    // Invitations newest-first (cap 200), then resolve the embedded Company(name)
+    // lib-side — the Convex fn returns Invitation rows only.
+    const invitations = (await convex().query(api.org.invitations.listAll, {
+      limit: 200,
+    })) as Array<{
+      id: string;
+      email: string;
+      roleToAssign: string;
+      status: string;
+      expiresAt: string;
+      createdAt: string;
+      companyId: string;
+    }>;
+
+    const companyIds = Array.from(new Set(invitations.map((i) => i.companyId).filter(Boolean)));
+    const companies =
+      companyIds.length > 0
+        ? ((await convex().query(api.org.companies.listByIds, {
+            ids: companyIds,
+          })) as Array<{ id: string; name: string }>)
+        : [];
+    const nameById = new Map(companies.map((c) => [c.id, c.name]));
+
+    invs = invitations.map((i) => ({
+      id: i.id,
+      email: i.email,
+      roleToAssign: i.roleToAssign,
+      status: i.status,
+      expiresAt: i.expiresAt,
+      createdAt: i.createdAt,
+      companyId: i.companyId,
+      Company: nameById.has(i.companyId) ? { name: nameById.get(i.companyId)! } : null,
+    }));
+  } catch {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <p className="text-sm text-muted-foreground">Couldn&apos;t load invitations.</p>
+      </div>
+    );
+  }
 
   const roleLabel = (r: string) => r === 'manager_admin' ? 'Admin' : 'Seller';
 

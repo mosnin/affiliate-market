@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireManager, canEditSettings } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 import { formConfigSchema } from '@/lib/form-config-schema';
 import { auth } from '@clerk/nextjs/server';
@@ -21,13 +21,14 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: company, error } = await supabase
-    .from('Company')
-    .select('id, companyFormConfig, companyRentalFormConfig, companyBuyerFormConfig')
-    .eq('id', ctx.company.id)
-    .maybeSingle();
-
-  if (error) {
+  let company: {
+    companyFormConfig: unknown;
+    companyRentalFormConfig: unknown;
+    companyBuyerFormConfig: unknown;
+  } | null;
+  try {
+    company = await convex().query(api.org.companies.getById, { id: ctx.company.id });
+  } catch (error) {
     console.error('[manager/form-config] fetch failed', error);
     return NextResponse.json({ error: 'Failed to fetch form config' }, { status: 500 });
   }
@@ -113,12 +114,14 @@ export async function PUT(req: NextRequest) {
 
   const column = leadType === 'rental' ? 'companyRentalFormConfig' : 'companyBuyerFormConfig';
 
-  const { error: updateErr } = await supabase
-    .from('Company')
-    .update({ [column]: formConfig })
-    .eq('id', ctx.company.id);
-
-  if (updateErr) {
+  try {
+    await convex().mutation(api.org.companies.updateById, {
+      id: ctx.company.id,
+      // The form-config jsonb columns are accepted by the patch validator (v.any()).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      patch: { [column]: formConfig } as any,
+    });
+  } catch (updateErr) {
     console.error('[manager/form-config] update failed', updateErr);
     return NextResponse.json({ error: 'Failed to save form config' }, { status: 500 });
   }
@@ -184,12 +187,15 @@ export async function DELETE(req: NextRequest) {
     updates.companyFormConfig = null; // Also clear legacy column
   }
 
-  const { error: updateErr } = await supabase
-    .from('Company')
-    .update(updates)
-    .eq('id', ctx.company.id);
-
-  if (updateErr) {
+  try {
+    await convex().mutation(api.org.companies.updateById, {
+      id: ctx.company.id,
+      // `updates` is the runtime-built form-config reset bag; the jsonb columns are
+      // accepted by the patch validator (v.any()).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      patch: updates as any,
+    });
+  } catch (updateErr) {
     console.error('[manager/form-config] delete failed', updateErr);
     return NextResponse.json({ error: 'Failed to reset form config' }, { status: 500 });
   }

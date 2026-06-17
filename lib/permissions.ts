@@ -11,7 +11,7 @@
  */
 
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type { Company, CompanyMembership } from '@/lib/types';
 
 // ── Platform admin ────────────────────────────────────────────────────────────
@@ -25,11 +25,7 @@ export async function isPlatformAdmin(): Promise<boolean> {
   if (!session.userId) return false;
 
   // Authoritative check in DB — the single source of truth for admin role
-  const { data } = await supabase
-    .from('User')
-    .select('platformRole, status')
-    .eq('clerkId', session.userId)
-    .maybeSingle();
+  const data = await convex().query(api.org.users.getByClerkId, { clerkId: session.userId });
   // Same offboarding gate as getManagerContext()/requireAuth(): an offboarded
   // user loses admin access immediately, not when their Clerk session expires.
   // Resilient to a missing `status` column (pre-BP1a): undefined !== 'offboarded'.
@@ -67,11 +63,7 @@ export async function getManagerContext(): Promise<ManagerContext | null> {
   const session = await auth();
   if (!session.userId) return null;
 
-  const { data: user } = await supabase
-    .from('User')
-    .select('id, status')
-    .eq('clerkId', session.userId)
-    .maybeSingle();
+  const user = await convex().query(api.org.users.getByClerkId, { clerkId: session.userId });
   if (!user) return null;
   // Same offboarding gate as requireAuth(). Manager routes use this helper
   // (or getManagerMemberContext below) without going through requireAuth,
@@ -84,12 +76,10 @@ export async function getManagerContext(): Promise<ManagerContext | null> {
 
   // Fetch all manager-level memberships. A user may own one company and
   // manage another — prefer manager_owner so they always land on their own company.
-  const { data: memberships } = await supabase
-    .from('CompanyMembership')
-    .select('*')
-    .eq('userId', user.id)
-    .in('role', ['manager_owner', 'manager_admin'])
-    .order('createdAt', { ascending: true });
+  const memberships = await convex().query(api.org.memberships.listByUser, {
+    userId: user.id,
+    roles: ['manager_owner', 'manager_admin'],
+  });
   if (!memberships?.length) return null;
 
   // Deterministic pick for a user who is a manager at more than one company:
@@ -102,16 +92,14 @@ export async function getManagerContext(): Promise<ManagerContext | null> {
     memberships.find((m) => m.role === 'manager_admin') ??
     memberships[0];
 
-  const { data: company } = await supabase
-    .from('Company')
-    .select('*')
-    .eq('id', membership.companyId)
-    .maybeSingle();
+  const company = await convex().query(api.org.companies.getById, { id: membership.companyId });
   if (!company) return null;
 
   return {
-    company: company as Company,
-    membership: membership as CompanyMembership,
+    // Convex returns string timestamps; the legacy types annotate createdAt as
+    // Date (pre-migration fiction). Cast through unknown — no Date reads.
+    company: company as unknown as Company,
+    membership: membership as unknown as CompanyMembership,
     dbUserId: user.id,
   };
 }
@@ -134,21 +122,15 @@ export async function getManagerMemberContext(): Promise<ManagerContext | null> 
   const session = await auth();
   if (!session.userId) return null;
 
-  const { data: user } = await supabase
-    .from('User')
-    .select('id, status')
-    .eq('clerkId', session.userId)
-    .maybeSingle();
+  const user = await convex().query(api.org.users.getByClerkId, { clerkId: session.userId });
   if (!user) return null;
   // Offboarding gate — see getManagerContext above for rationale.
   if ((user as { status?: string }).status === 'offboarded') return null;
 
-  const { data: memberships } = await supabase
-    .from('CompanyMembership')
-    .select('*')
-    .eq('userId', user.id)
-    .in('role', ['manager_owner', 'manager_admin', 'seller_member'])
-    .order('createdAt', { ascending: true });
+  const memberships = await convex().query(api.org.memberships.listByUser, {
+    userId: user.id,
+    roles: ['manager_owner', 'manager_admin', 'seller_member'],
+  });
   if (!memberships?.length) return null;
 
   // Prefer manager_owner > manager_admin > seller_member, oldest within a tier
@@ -160,16 +142,14 @@ export async function getManagerMemberContext(): Promise<ManagerContext | null> 
     memberships.find((m) => m.role === 'seller_member') ??
     memberships[0];
 
-  const { data: company } = await supabase
-    .from('Company')
-    .select('*')
-    .eq('id', membership.companyId)
-    .maybeSingle();
+  const company = await convex().query(api.org.companies.getById, { id: membership.companyId });
   if (!company) return null;
 
   return {
-    company: company as Company,
-    membership: membership as CompanyMembership,
+    // Convex returns string timestamps; the legacy types annotate createdAt as
+    // Date (pre-migration fiction). Cast through unknown — no Date reads.
+    company: company as unknown as Company,
+    membership: membership as unknown as CompanyMembership,
     dbUserId: user.id,
   };
 }
@@ -230,10 +210,6 @@ export async function getCurrentDbUser(): Promise<{ id: string; clerkId: string 
   const session = await auth();
   if (!session.userId) return null;
 
-  const { data } = await supabase
-    .from('User')
-    .select('id, clerkId')
-    .eq('clerkId', session.userId)
-    .maybeSingle();
-  return data ?? null;
+  const data = await convex().query(api.org.users.getByClerkId, { clerkId: session.userId });
+  return data ? { id: data.id, clerkId: data.clerkId } : null;
 }

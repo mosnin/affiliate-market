@@ -27,7 +27,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getManagerMemberContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
@@ -111,12 +110,13 @@ export async function GET(req: NextRequest) {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
   // 1. Seller members of this company
-  const { data: memberships, error: memErr } = await supabase
-    .from('CompanyMembership')
-    .select('userId, role')
-    .eq('companyId', ctx.company.id);
-  if (memErr) {
-    logger.error('[manager/agent-activity] member fetch failed', { companyId: ctx.company.id }, memErr);
+  let memberships: Array<{ userId: string }>;
+  try {
+    memberships = await convex().query(api.org.memberships.listByCompany, {
+      companyId: ctx.company.id,
+    });
+  } catch (memErr) {
+    logger.error('[manager/agent-activity] member fetch failed', { companyId: ctx.company.id }, memErr as Error);
     return NextResponse.json({ error: 'Failed to load activity' }, { status: 500 });
   }
   const memberUserIds = (memberships ?? []).map((m) => m.userId as string);
@@ -131,12 +131,13 @@ export async function GET(req: NextRequest) {
   }
 
   // 2. Spaces owned by those members (the spaceId on AgentActivityLog rows)
-  const { data: spacesData, error: spacesErr } = await supabase
-    .from('Space')
-    .select('id, slug, ownerId')
-    .in('ownerId', memberUserIds);
-  if (spacesErr) {
-    logger.error('[manager/agent-activity] space fetch failed', { companyId: ctx.company.id }, spacesErr);
+  let spacesData: { id: string; slug: string; ownerId: string }[];
+  try {
+    spacesData = await convex().query(api.workspace.spaces.listByOwnerIds, {
+      ownerIds: memberUserIds,
+    });
+  } catch (spacesErr) {
+    logger.error('[manager/agent-activity] space fetch failed', { companyId: ctx.company.id }, spacesErr as Error);
     return NextResponse.json({ error: 'Failed to load activity' }, { status: 500 });
   }
   const spaces = (spacesData ?? []) as { id: string; slug: string; ownerId: string }[];
@@ -152,12 +153,13 @@ export async function GET(req: NextRequest) {
   }
 
   // 3. User display info for the rollup
-  const { data: usersData, error: usersErr } = await supabase
-    .from('User')
-    .select('id, name, email')
-    .in('id', memberUserIds);
-  if (usersErr) {
-    logger.error('[manager/agent-activity] user fetch failed', { companyId: ctx.company.id }, usersErr);
+  let usersData: { id: string; name: string | null; email: string | null }[];
+  try {
+    usersData = await convex().query(api.org.users.listByIds, {
+      ids: memberUserIds,
+    });
+  } catch (usersErr) {
+    logger.error('[manager/agent-activity] user fetch failed', { companyId: ctx.company.id }, usersErr as Error);
     return NextResponse.json({ error: 'Failed to load activity' }, { status: 500 });
   }
   const userById = new Map(

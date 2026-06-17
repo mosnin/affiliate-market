@@ -1,6 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { isReservedConversationTitle } from '@/lib/chat/conversation-access';
@@ -17,22 +16,17 @@ async function getConversationAndVerifyOwner(conversationId: string, userId: str
 
   // Verify the caller owns the conversation's space. The old embedded
   // `Space(ownerId)` join is now two flat lookups: resolve the owning Space's
-  // ownerId (Space stays on Supabase), then confirm a User row matches both the
-  // Clerk id and that owner id.
-  const { data: space } = await supabase
-    .from('Space')
-    .select('ownerId')
-    .eq('id', conv.spaceId)
-    .maybeSingle();
+  // ownerId, then confirm the caller's User row matches both the Clerk id and
+  // that owner id.
+  const space = await convex()
+    .query(api.workspace.spaces.getById, { id: conv.spaceId })
+    .catch(() => null);
   if (!space) return null;
 
-  const { data: user } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .eq('id', (space as { ownerId: string }).ownerId)
-    .maybeSingle();
-  if (!user) return null;
+  const user = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: userId })
+    .catch(() => null);
+  if (!user || user.id !== space.ownerId) return null;
 
   // Surface guard: manager-Cola and team conversations have their own
   // manager-gated routes. A manager_owner also owns their personal seller

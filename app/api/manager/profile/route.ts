@@ -17,7 +17,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 
 interface MemberProfile {
@@ -36,15 +36,14 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data, error } = await supabase
-    .from('CompanyMembership')
-    .select('displayName, title, bio, photoUrl, phone')
-    .eq('id', ctx.membership.id)
-    .maybeSingle<MemberProfile>();
-
-  if (error) {
-    // Degrade gracefully if the profile columns don't exist yet
-    // (pre-20260615000000 migration).
+  let data: MemberProfile | null;
+  try {
+    data = await convex().query(api.org.memberships.getByIdScoped, {
+      id: ctx.membership.id,
+      companyId: ctx.company.id,
+    });
+  } catch {
+    // Degrade gracefully if the lookup fails.
     return NextResponse.json({
       displayName: null,
       title: null,
@@ -126,12 +125,18 @@ export async function PATCH(req: Request) {
 
   // Self-scoped: update the caller's OWN membership row only. The id comes
   // from the resolved manager context, never from the client.
-  const { error: updateErr } = await supabase
-    .from('CompanyMembership')
-    .update(updates)
-    .eq('id', ctx.membership.id);
-
-  if (updateErr) {
+  try {
+    await convex().mutation(api.org.memberships.updateProfile, {
+      id: ctx.membership.id,
+      patch: updates as {
+        displayName?: string | null;
+        title?: string | null;
+        bio?: string | null;
+        photoUrl?: string | null;
+        phone?: string | null;
+      },
+    });
+  } catch (updateErr) {
     console.error('[manager/profile] update failed', updateErr);
     return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 });
   }

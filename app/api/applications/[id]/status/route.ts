@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 import { sendStatusUpdateEmail } from '@/lib/email';
@@ -50,33 +49,34 @@ export async function PATCH(
   }
 
   // Get current status for audit trail
-  const { data: contact, error: fetchError } = await supabase
-    .from('Contact')
-    .select('applicationStatus, email, name, spaceId, applicationRef')
-    .eq('id', contactId)
-    .single();
+  let contact;
+  try {
+    contact = await convex().query(api.contacts.contacts.getById, { id: contactId });
+  } catch (fetchError) {
+    console.error('[status] Contact lookup error:', fetchError);
+    return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+  }
 
-  if (fetchError || !contact) {
+  if (!contact) {
     return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
   }
 
   const fromStatus = contact.applicationStatus ?? null;
 
   // Update contact status
-  const update: Record<string, unknown> = {
+  const patch: Record<string, unknown> = {
     applicationStatus: status,
-    updatedAt: new Date().toISOString(),
   };
   if (note !== undefined) {
-    update.applicationStatusNote = note?.trim() || null;
+    patch.applicationStatusNote = note?.trim() || null;
   }
 
-  const { error: updateError } = await supabase
-    .from('Contact')
-    .update(update)
-    .eq('id', contactId);
-
-  if (updateError) {
+  try {
+    await convex().mutation(api.contacts.contacts.update, {
+      id: contactId,
+      patch,
+    });
+  } catch (updateError) {
     console.error('[status] Update failed:', updateError);
     return NextResponse.json({ error: 'Failed to update status' }, { status: 500 });
   }
@@ -113,22 +113,18 @@ async function sendStatusNotification(
   if (!contact.email) return;
 
   // Fetch business name and slug for the email
-  const [{ data: space }, { data: settings }] = await Promise.all([
-    supabase.from('Space').select('slug, name').eq('id', contact.spaceId).maybeSingle(),
-    supabase
-      .from('SpaceSetting')
-      .select('businessName')
-      .eq('spaceId', contact.spaceId)
-      .maybeSingle(),
+  const [space, settings] = await Promise.all([
+    convex().query(api.workspace.spaces.getById, { id: contact.spaceId }),
+    convex().query(api.workspace.settings.getBySpace, { spaceId: contact.spaceId }),
   ]);
 
   // Look up the portal token so we can include it in the email link
-  const { data: contactRow } = await supabase
-    .from('Contact')
-    .select('statusPortalToken')
-    .eq('spaceId', contact.spaceId)
-    .eq('applicationRef', contact.applicationRef)
-    .maybeSingle();
+  const contactRow = contact.applicationRef
+    ? await convex().query(api.contacts.contacts.findByApplicationRef, {
+        applicationRef: contact.applicationRef,
+        spaceId: contact.spaceId,
+      })
+    : null;
 
   const businessName = settings?.businessName ?? space?.name ?? 'Your Agent';
   const slug = space?.slug ?? '';

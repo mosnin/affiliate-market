@@ -140,6 +140,24 @@ export const listByIds = query({
   },
 });
 
+/** Users for a set of Clerk ids (`.in('clerkId', [...])`) — the manager activity
+ *  log resolves actor clerkIds to names/emails in one shot. Missing ids are
+ *  dropped (same as the IN query). */
+export const listByClerkIds = query({
+  args: { clerkIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const rows = await Promise.all(
+      args.clerkIds.map((clerkId) =>
+        ctx.db
+          .query('User')
+          .withIndex('by_clerk_id', (q) => q.eq('clerkId', clerkId))
+          .unique(),
+      ),
+    );
+    return rows.filter((u): u is Doc<'User'> => u !== null).map(toUserRow);
+  },
+});
+
 /** Admin user list. Mirrors `.select(...).eq(<onboard|platformRole>,?).order(
  *  'createdAt', desc).limit(200)`. The optional `onboard` / `platformRole`
  *  filters cover the onboarded / not-onboarded / banned tabs; absent = all.

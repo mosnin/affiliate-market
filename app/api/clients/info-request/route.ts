@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getClientUser } from '@/lib/client-auth';
 import { clientOwnsContact } from '@/lib/client-portal-data';
@@ -72,15 +71,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Notify the seller (best-effort).
-  const { data: space } = await supabase
-    .from('Space')
-    .select('ownerId')
-    .eq('id', row.spaceId)
-    .maybeSingle();
-  const ownerId = (space as { ownerId?: string | null } | null)?.ownerId;
+  const space = await convex().query(api.workspace.spaces.getById, { id: row.spaceId });
+  const ownerId = space?.ownerId;
   if (ownerId) {
-    const { data: owner } = await supabase.from('User').select('email').eq('id', ownerId).maybeSingle();
-    const ownerEmail = (owner as { email?: string | null } | null)?.email;
+    const owner = await convex().query(api.org.users.getById, { id: ownerId });
+    const ownerEmail = owner?.email;
     if (ownerEmail) {
       void sendClientNotification({
         to: ownerEmail,

@@ -10,7 +10,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type { Space } from '@/lib/types';
 
 /**
@@ -35,11 +35,7 @@ export async function requireAuth(): Promise<{ userId: string } | NextResponse> 
   // missing `status` column (pre-migration) or transient DB issue does not
   // brick auth; we only block on a definitive 'offboarded' signal.
   try {
-    const { data: userRow } = await supabase
-      .from('User')
-      .select('id, status')
-      .eq('clerkId', userId)
-      .maybeSingle();
+    const userRow = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
 
     if (userRow && (userRow as { status?: string }).status === 'offboarded') {
       return NextResponse.json(
@@ -68,11 +64,7 @@ export async function requireActiveSubscription(
 
   // Check if user is a platform admin (admins bypass paywall)
   if (userId) {
-    const { data: userRow } = await supabase
-      .from('User')
-      .select('platformRole')
-      .eq('clerkId', userId)
-      .maybeSingle();
+    const userRow = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
     if (userRow?.platformRole === 'admin') return null;
   }
 
@@ -117,11 +109,7 @@ export async function requireSpaceOwner(
   }
 
   // Manager owner/admin check — allow managing company members' spaces
-  const { data: dbUser } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .maybeSingle();
+  const dbUser = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
 
   if (dbUser) {
     // Check if the space belongs to a company the user is admin/owner of.
@@ -130,12 +118,10 @@ export async function requireSpaceOwner(
     // .maybeSingle() throw (PostgREST errors on >1 row), 500ing a legitimate
     // multi-company admin. Mirror the context helpers in lib/permissions.ts:
     // fetch all, then deterministically prefer manager_owner over manager_admin.
-    const { data: memberships } = await supabase
-      .from('CompanyMembership')
-      .select('role, companyId, createdAt')
-      .eq('userId', dbUser.id)
-      .in('role', ['manager_owner', 'manager_admin'])
-      .order('createdAt', { ascending: true });
+    const memberships = await convex().query(api.org.memberships.listByUser, {
+      userId: dbUser.id,
+      roles: ['manager_owner', 'manager_admin'],
+    });
 
     // The caller may manager-own/admin MORE THAN ONE company. Grant access
     // when the space's owner belongs to ANY of them. The previous code collapsed
@@ -145,13 +131,16 @@ export async function requireSpaceOwner(
     const managerCompanyIds = (memberships ?? []).map((m) => m.companyId);
 
     if (managerCompanyIds.length > 0) {
-      const { data: spaceOwnerMembership } = await supabase
-        .from('CompanyMembership')
-        .select('id')
-        .in('companyId', managerCompanyIds)
-        .eq('userId', space.ownerId)
-        .limit(1)
-        .maybeSingle();
+      // Does the space's owner share a company with the caller's managed set?
+      // Resolve the owner's memberships and intersect with managerCompanyIds —
+      // mirrors the old `.in('companyId', ids).eq('userId', space.ownerId)`.
+      const ownerMemberships = await convex().query(api.org.memberships.listByUser, {
+        userId: space.ownerId,
+      });
+      const managerSet = new Set(managerCompanyIds);
+      const spaceOwnerMembership = (ownerMemberships ?? []).some((m) =>
+        managerSet.has(m.companyId),
+      );
 
       if (spaceOwnerMembership) {
         return { userId, space };
@@ -192,15 +181,13 @@ export async function requireContactAccess(
   const space = await getSpaceForUser(userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data: rows, error } = await supabase
-    .from('Contact')
-    .select('spaceId')
-    .eq('id', contactId)
-    .eq('spaceId', space.id)
-    .limit(1)
-    .maybeSingle();
+  // Convex throws on failure; the contact read returns the row only when it
+  // exists AND lives in this space (spaceId arg enforces the scope), else null.
+  const rows = await convex().query(api.contacts.contacts.getById, {
+    id: contactId,
+    spaceId: space.id,
+  });
 
-  if (error) throw error;
   if (!rows) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   return { userId, space };

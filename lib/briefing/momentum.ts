@@ -17,7 +17,6 @@
  *   - Opens, replies, thread health changes
  */
 
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 
 interface Counts {
@@ -59,23 +58,25 @@ function renderCounts(counts: Counts): string | null {
 export async function composeMomentum(spaceId: string): Promise<string | null> {
   const { start, end } = yesterdayBounds();
 
-  const [sentCount, activityRes] = await Promise.all([
+  const [sentCount, activityRows] = await Promise.all([
     // 'sent' drafts in [start, end) — count lives in Convex now.
     convex()
       .query(api.agent.drafts.countSentInWindow, { spaceId, start, end })
       .catch(() => 0),
-    supabase
-      .from('ContactActivity')
-      .select('type')
-      .eq('spaceId', spaceId)
-      .gte('createdAt', start)
-      .lt('createdAt', end),
+    // ContactActivity rows in [start, end) for this space — Convex.
+    convex()
+      .query(api.contacts.activity.listForSpaces, {
+        spaceIds: [spaceId],
+        createdGte: start,
+        createdLt: end,
+      })
+      .catch(() => [] as { type: string }[]),
   ]);
 
   const counts: Counts = { sent: sentCount ?? 0, calls: 0, notes: 0, meetings: 0 };
 
-  if (activityRes.data) {
-    for (const row of activityRes.data as { type: string }[]) {
+  if (activityRows) {
+    for (const row of activityRows as { type: string }[]) {
       switch (row.type) {
         case 'call':
           counts.calls += 1;

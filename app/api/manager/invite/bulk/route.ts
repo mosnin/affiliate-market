@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { sendCompanyInvitation } from '@/lib/email';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { audit } from '@/lib/audit';
@@ -55,12 +55,15 @@ export async function POST(req: Request) {
   const { company, dbUserId } = ctx;
 
   // Check pending capacity
-  const { count: pendingCount } = await supabase
-    .from('Invitation')
-    .select('*', { count: 'exact', head: true })
-    .eq('companyId', company.id)
-    .eq('status', 'pending')
-    .gt('expiresAt', new Date().toISOString());
+  let pendingCount = 0;
+  try {
+    pendingCount = await convex().query(api.org.invitations.countPending, {
+      companyId: company.id,
+      now: new Date().toISOString(),
+    });
+  } catch {
+    pendingCount = 0;
+  }
   const remaining = 100 - (pendingCount ?? 0);
   if (remaining <= 0) {
     return NextResponse.json({ error: 'Too many pending invitations. Cancel some first.' }, { status: 429 });
@@ -87,11 +90,12 @@ export async function POST(req: Request) {
   }
 
   // Resolve inviter name
-  const { data: inviterUser } = await supabase
-    .from('User')
-    .select('name, email')
-    .eq('id', dbUserId)
-    .maybeSingle();
+  let inviterUser: { name: string | null; email: string | null } | null = null;
+  try {
+    inviterUser = await convex().query(api.org.users.getById, { id: dbUserId });
+  } catch {
+    inviterUser = null;
+  }
   const inviterName = inviterUser?.name ?? inviterUser?.email ?? 'Someone';
 
   const results: Array<{ email: string; status: 'sent' | 'duplicate' | 'error'; error?: string }> = [];
@@ -118,14 +122,22 @@ export async function POST(req: Request) {
     }
 
     // Check if already a member
-    const { data: existingUser } = await supabase.from('User').select('id').eq('email', email).maybeSingle();
+    let existingUser: { id: string } | null = null;
+    try {
+      existingUser = await convex().query(api.org.users.getByEmail, { email });
+    } catch {
+      existingUser = null;
+    }
     if (existingUser) {
-      const { data: existingMember } = await supabase
-        .from('CompanyMembership')
-        .select('id')
-        .eq('companyId', company.id)
-        .eq('userId', existingUser.id)
-        .maybeSingle();
+      let existingMember: { id: string } | null = null;
+      try {
+        existingMember = await convex().query(api.org.memberships.getByCompanyUser, {
+          companyId: company.id,
+          userId: existingUser.id,
+        });
+      } catch {
+        existingMember = null;
+      }
       if (existingMember) {
         results.push({ email, status: 'duplicate' });
         continue;
@@ -133,13 +145,15 @@ export async function POST(req: Request) {
     }
 
     // Check for existing pending invite
-    const { data: existing } = await supabase
-      .from('Invitation')
-      .select('id')
-      .eq('companyId', company.id)
-      .eq('email', email)
-      .eq('status', 'pending')
-      .maybeSingle();
+    let existing: { id: string } | null = null;
+    try {
+      existing = await convex().query(api.org.invitations.pendingForCompanyEmail, {
+        companyId: company.id,
+        email,
+      });
+    } catch {
+      existing = null;
+    }
 
     if (existing) {
       results.push({ email, status: 'duplicate' });
@@ -147,18 +161,20 @@ export async function POST(req: Request) {
     }
 
     // Create invitation
-    const { data: invitation, error: invErr } = await supabase
-      .from('Invitation')
-      .insert({
+    let invitation: { id: string; token: string } | null = null;
+    try {
+      const result = await convex().mutation(api.org.invitations.create, {
         companyId: company.id,
         email,
-        roleToAssign,
+        roleToAssign: roleToAssign as 'manager_admin' | 'seller_member',
         invitedById: dbUserId,
-      })
-      .select()
-      .single();
-
-    if (invErr || !invitation) {
+      });
+      invitation = result.invitation;
+    } catch {
+      results.push({ email, status: 'error', error: 'Insert failed' });
+      continue;
+    }
+    if (!invitation) {
       results.push({ email, status: 'error', error: 'Insert failed' });
       continue;
     }

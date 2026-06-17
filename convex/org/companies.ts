@@ -1,6 +1,7 @@
 import { query, mutation } from '../_generated/server';
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
+import { purgeCreditRowsForAccount } from '../credits/purge';
 
 /**
  * Company data access — the Convex replacement for every `.from('Company')` read
@@ -340,6 +341,84 @@ export const create = mutation({
 });
 
 /**
+ * Self-serve company creation that ALSO seeds the owner's CompanyMembership
+ * (role manager_owner) — both inserts in ONE atomic mutation. Replaces the old
+ * manager/create route's create-company → create-membership → on-failure-delete
+ * rollback dance: Convex makes both writes atomic, so a failed membership rolls
+ * the company back automatically (no orphan company without an owner). Enforces
+ * the one-company-per-owner invariant: returns 'owner_taken' WITHOUT writing.
+ */
+export const createWithOwner = mutation({
+  args: {
+    id: v.string(),
+    name: v.string(),
+    ownerId: v.string(),
+    logoUrl: v.optional(v.union(v.string(), v.null())),
+    websiteUrl: v.optional(v.union(v.string(), v.null())),
+    officeAddress: v.optional(v.union(v.string(), v.null())),
+    officePhone: v.optional(v.union(v.string(), v.null())),
+    agentCount: v.optional(v.union(v.string(), v.null())),
+    companyType: v.optional(v.union(companyTypeValidator, v.null())),
+    primaryMarket: v.optional(v.union(primaryMarketValidator, v.null())),
+    commissionStructure: v.optional(v.union(commissionStructureValidator, v.null())),
+    geographicCoverage: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args): Promise<CreateCompanyResult> => {
+    const existing = await ctx.db
+      .query('Company')
+      .withIndex('by_owner', (q) => q.eq('ownerId', args.ownerId))
+      .first();
+    if (existing) return { outcome: 'owner_taken', company: toCompanyRow(existing) };
+
+    const set = <T>(val: T | null | undefined): val is T => val != null;
+    const doc = {
+      id: args.id,
+      name: args.name,
+      ownerId: args.ownerId,
+      status: 'active' as const,
+      ...(set(args.logoUrl) ? { logoUrl: args.logoUrl } : {}),
+      ...(set(args.websiteUrl) ? { websiteUrl: args.websiteUrl } : {}),
+      ...(set(args.officeAddress) ? { officeAddress: args.officeAddress } : {}),
+      ...(set(args.officePhone) ? { officePhone: args.officePhone } : {}),
+      ...(set(args.agentCount) ? { agentCount: args.agentCount } : {}),
+      ...(set(args.companyType) ? { companyType: args.companyType } : {}),
+      ...(set(args.primaryMarket) ? { primaryMarket: args.primaryMarket } : {}),
+      ...(set(args.commissionStructure)
+        ? { commissionStructure: args.commissionStructure }
+        : {}),
+      ...(set(args.geographicCoverage)
+        ? { geographicCoverage: args.geographicCoverage }
+        : {}),
+      createdAt: new Date().toISOString(),
+      defaultAgentRate: 2.5,
+      defaultManagerRate: 0.5,
+      plan: 'starter' as const,
+      stripeSubscriptionStatus: 'inactive' as const,
+      autoAssignEnabled: false,
+      assignmentMethod: 'manual' as const,
+      companyShowEqualHousingMark: false,
+      leadRoutingRule: 'manual' as const,
+      slaEnabled: false,
+      slaFirstResponseMinutes: 60,
+      slaEscalateMinutes: 120,
+    };
+    const _id = await ctx.db.insert('Company', doc);
+    const created = (await ctx.db.get(_id))!;
+
+    // Owner membership — atomic with the company insert.
+    await ctx.db.insert('CompanyMembership', {
+      id: crypto.randomUUID(),
+      companyId: args.id,
+      userId: args.ownerId,
+      role: 'manager_owner' as const,
+      createdAt: new Date().toISOString(),
+    });
+
+    return { outcome: 'created', company: toCompanyRow(created) };
+  },
+});
+
+/**
  * Patch an arbitrary subset of a Company's columns by app id. ONE mutation covers
  * every `.from('Company').update({...}).eq('id', companyId)`: the join-code regen,
  * the settings PATCH (routing + SLA + profile + fair-housing fields), the
@@ -380,6 +459,10 @@ export const updateById = mutation({
       stripeSubscriptionStatus: v.optional(subStatusValidator),
       stripePeriodEnd: v.optional(v.union(v.string(), v.null())),
       planActivatedAt: v.optional(v.union(v.string(), v.null())),
+      // jsonb form-config columns (manager form-config PUT/DELETE writes).
+      companyFormConfig: v.optional(v.any()),
+      companyRentalFormConfig: v.optional(v.any()),
+      companyBuyerFormConfig: v.optional(v.any()),
     }),
   },
   handler: async (ctx, args) => {
@@ -400,16 +483,40 @@ export const updateById = mutation({
 });
 
 /**
- * Admin hard-delete a company WITH its within-domain cascade. The old route did
- * four sequential writes: unlink member Spaces (companyId→NULL), delete all
- * CompanyMembership for the company, delete all Invitation for the company, then
- * delete the Company. This mutation does the THREE that live in this domain —
- * CompanyMembership + Invitation deletes and the Company delete — atomically.
- *
- * TODO(cross-domain, integrator): Space.companyId unlink (Space is its own
- * domain) cannot be done from this mutation — the lib rewrite must call the
- * Space-domain "unlink company" fn BEFORE this, exactly as the old route
- * unlinked spaces first. Returns true if the company existed and was deleted.
+ * Race-safe Stripe customer claim: set stripeCustomerId only if currently null,
+ * and return the WINNING id (the existing one if another request already set it,
+ * else the one we just wrote, else null if the company is gone). Mirrors the
+ * billing-checkout `.update({stripeCustomerId}).is('stripeCustomerId', null)
+ * .select().single()` CAS + winner re-fetch. The companion to
+ * spaces.claimStripeCustomerId.
+ */
+export const claimStripeCustomerId = mutation({
+  args: { id: v.string(), stripeCustomerId: v.string() },
+  handler: async (ctx, args): Promise<string | null> => {
+    const c = await ctx.db
+      .query('Company')
+      .withIndex('by_app_id', (q) => q.eq('id', args.id))
+      .unique();
+    if (!c) return null;
+    if (c.stripeCustomerId == null) {
+      await ctx.db.patch(c._id, { stripeCustomerId: args.stripeCustomerId });
+      return args.stripeCustomerId;
+    }
+    return c.stripeCustomerId;
+  },
+});
+
+/**
+ * Admin hard-delete a company WITH its full cascade, atomically. The old route
+ * did four sequential writes; this mutation does all four in one transaction:
+ *   1. unlink member Spaces (companyId → cleared) — Space survived in PG too
+ *   2. delete all CompanyMembership for the company
+ *   3. delete all Invitation for the company
+ *   4. purge the company's credit lots + txns (PG trigger parity)
+ *   then delete the Company.
+ * A Convex mutation can write across domains, so the Space unlink lives here
+ * rather than in a separate lib step — one transaction, no partial teardown.
+ * Returns true if the company existed and was deleted.
  */
 export const deleteWithCascade = mutation({
   args: { id: v.string() },
@@ -419,6 +526,15 @@ export const deleteWithCascade = mutation({
       .withIndex('by_app_id', (q) => q.eq('id', args.id))
       .unique();
     if (!c) return false;
+
+    // Unlink member spaces FIRST (PG kept Space alive on company delete — the
+    // FK is SET NULL / RESTRICT, not CASCADE). Clearing companyId detaches each
+    // space without deleting it, matching the admin route's explicit unlink.
+    const linkedSpaces = await ctx.db
+      .query('Space')
+      .withIndex('by_company', (q) => q.eq('companyId', args.id))
+      .collect();
+    for (const s of linkedSpaces) await ctx.db.patch(s._id, { companyId: undefined });
 
     const memberships = await ctx.db
       .query('CompanyMembership')
@@ -431,6 +547,11 @@ export const deleteWithCascade = mutation({
       .withIndex('by_company', (q) => q.eq('companyId', args.id))
       .collect();
     for (const inv of invitations) await ctx.db.delete(inv._id);
+
+    // PG trigger parity: trg_purge_credits_on_company_delete purged the
+    // company's credit lots + txns. No FK cascade in Convex — do it here,
+    // atomically with the company delete.
+    await purgeCreditRowsForAccount(ctx, 'company', args.id);
 
     await ctx.db.delete(c._id);
     return true;

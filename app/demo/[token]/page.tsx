@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation';
 import type { Viewport } from 'next';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';
@@ -42,17 +41,9 @@ export default async function DemoManagePage({
 
   if (!demo) notFound();
 
-  const [{ data: settings }, { data: space }, profileRow] = await Promise.all([
-    supabase
-      .from('SpaceSetting')
-      .select('businessName, logoUrl, sellerPhotoUrl')
-      .eq('spaceId', demo.spaceId)
-      .maybeSingle(),
-    supabase
-      .from('Space')
-      .select('name, slug, ownerId')
-      .eq('id', demo.spaceId)
-      .maybeSingle(),
+  const [settings, space, profileRow] = await Promise.all([
+    convex().query(api.workspace.settings.getBySpace, { spaceId: demo.spaceId }),
+    convex().query(api.workspace.spaces.getById, { id: demo.spaceId }),
     convex().query(api.marketplace.profiles.getBySpace, { spaceId: demo.spaceId }),
   ]);
 

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { isPlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { SpaceListClient } from './space-list-client';
 
 export const metadata = { title: 'Spaces — Admin — Cola' };
@@ -9,32 +9,35 @@ export default async function AdminSpacesPage() {
   const isAdmin = await isPlatformAdmin();
   if (!isAdmin) redirect('/');
 
-  const { data: spaces, error } = await supabase
-    .from('Space')
-    .select(
-      'id, slug, name, emoji, ownerId, companyId, createdAt, stripeCustomerId, stripeSubscriptionId, stripeSubscriptionStatus, stripePeriodEnd'
-    )
-    .order('createdAt', { ascending: false })
-    .limit(200);
+  // listRecent returns full Space rows newest-first (cap 200) — the JSX projects
+  // the columns it reads. Convex throws on failure, matching the old `throw error`.
+  const spaces = (await convex().query(api.workspace.spaces.listRecent, {
+    limit: 200,
+  })) as Array<{
+    id: string;
+    slug: string;
+    name: string;
+    emoji: string;
+    ownerId: string;
+    companyId: string | null;
+    createdAt: string;
+    stripeSubscriptionStatus: string;
+    stripePeriodEnd: string | null;
+  }>;
 
-  if (error) throw error;
+  const ownerIds = [...new Set(spaces.map((s) => s.ownerId).filter(Boolean))];
 
-  const ownerIds = [
-    ...new Set((spaces ?? []).map((s) => s.ownerId).filter(Boolean)),
-  ];
-
-  const { data: owners, error: ownerError } =
+  const owners =
     ownerIds.length > 0
-      ? await supabase
-          .from('User')
-          .select('id, name, email')
-          .in('id', ownerIds)
-      : { data: [], error: null };
-
-  if (ownerError) throw ownerError;
+      ? ((await convex().query(api.org.users.listByIds, { ids: ownerIds })) as Array<{
+          id: string;
+          name: string | null;
+          email: string;
+        }>)
+      : [];
 
   const ownerMap: Record<string, { id: string; name: string | null; email: string }> = {};
-  for (const o of owners ?? []) {
+  for (const o of owners) {
     ownerMap[o.id] = { id: o.id, name: o.name, email: o.email };
   }
 

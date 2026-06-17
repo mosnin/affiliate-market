@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto';
 import { convex, api } from '@/lib/convex-server';
-import { supabase } from '@/lib/supabase'; // Space lookup only (Space stays on Supabase — hybrid file)
 import { logger } from '@/lib/logger';
 import { recordConversion } from '@/lib/affiliates/conversions';
 import { reverseCommissionsForOrder } from '@/lib/affiliates/reversals';
@@ -60,10 +59,10 @@ async function decorateOrders(rows: OrderRow[]): Promise<OrderWithProduct[]> {
   if (rows.length === 0) return [];
   const productIds = [...new Set(rows.map((r) => r.productId))];
   const spaceIds = [...new Set(rows.map((r) => r.spaceId))];
-  // Product is this domain's table (Convex); Space stays on Supabase.
+  // Product is this domain's table (Convex); Space is a core table (Convex).
   const [products, spacesRes] = await Promise.all([
     convex().query(api.marketplace.products.byIds, { ids: productIds }),
-    supabase.from('Space').select('id, name').in('id', spaceIds),
+    convex().query(api.workspace.spaces.listByIds, { ids: spaceIds }),
   ]);
   const productById = new Map(
     (products as Array<{ id: string; name: string | null; address: string | null }>).map((p) => [
@@ -71,7 +70,7 @@ async function decorateOrders(rows: OrderRow[]): Promise<OrderWithProduct[]> {
       p,
     ]),
   );
-  const spaces = new Map((spacesRes.data ?? []).map((s) => [s.id, s]));
+  const spaces = new Map((spacesRes ?? []).map((s) => [s.id, s]));
 
   return rows.map((r) => {
     const product = productById.get(r.productId);

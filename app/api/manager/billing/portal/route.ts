@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getManagerContext } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -28,19 +28,23 @@ export async function POST() {
   // Prefer the Company's own Stripe customer (company-scoped checkout writes
   // it). Legacy companies that subscribed through the owner's personal Space
   // fall back to that customer so the portal still opens for them.
-  const { data: company } = await supabase
-    .from('Company')
-    .select('stripeCustomerId')
-    .eq('id', ctx.company.id)
-    .maybeSingle();
+  let company: { stripeCustomerId: string | null } | null = null;
+  try {
+    company = await convex().query(api.org.companies.getById, { id: ctx.company.id });
+  } catch {
+    company = null;
+  }
 
   let customerId = (company?.stripeCustomerId as string | null) ?? null;
   if (!customerId) {
-    const { data: ownerSpace } = await supabase
-      .from('Space')
-      .select('stripeCustomerId')
-      .eq('ownerId', ctx.company.ownerId)
-      .maybeSingle();
+    let ownerSpace: { stripeCustomerId: string | null } | null = null;
+    try {
+      ownerSpace = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: ctx.company.ownerId,
+      });
+    } catch {
+      ownerSpace = null;
+    }
     customerId = (ownerSpace?.stripeCustomerId as string | null) ?? null;
   }
 

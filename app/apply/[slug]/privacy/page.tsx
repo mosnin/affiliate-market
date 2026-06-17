@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { generatePrivacyPolicy } from '@/lib/privacy-policy-template';
 import DOMPurify from 'isomorphic-dompurify';
@@ -52,17 +52,9 @@ export default async function SellerPrivacyPolicyPage({
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
-  const [{ data: settings }, { data: owner }] = await Promise.all([
-    supabase
-      .from('SpaceSetting')
-      .select('privacyPolicyHtml, businessName')
-      .eq('spaceId', space.id)
-      .maybeSingle(),
-    supabase
-      .from('User')
-      .select('name')
-      .eq('id', space.ownerId)
-      .maybeSingle(),
+  const [settings, owner] = await Promise.all([
+    convex().query(api.workspace.settings.getBySpace, { spaceId: space.id }),
+    convex().query(api.org.users.getById, { id: space.ownerId }),
   ]);
 
   const businessName = settings?.businessName || space.name;

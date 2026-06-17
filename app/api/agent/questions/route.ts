@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
@@ -37,11 +36,13 @@ export async function GET(req: NextRequest) {
   const contactIds = Array.from(
     new Set(rows.map((r) => r.contactId).filter((id): id is string => !!id)),
   );
-  const contactsRes = contactIds.length
-    ? await supabase.from('Contact').select('id, name').in('id', contactIds)
-    : { data: [] as { id: string; name: string }[] };
+  // Hydrate (id, name) for the embed. The old read scoped by id-set only (no
+  // spaceId), so getManyByIds is called without a spaceId to match exactly.
+  const contactRows = contactIds.length
+    ? await convex().query(api.contacts.contacts.getManyByIds, { ids: contactIds })
+    : [];
   const contactById = new Map(
-    (contactsRes.data ?? []).map((c) => [c.id, { id: c.id, name: c.name }]),
+    contactRows.map((c) => [c.id, { id: c.id, name: c.name }]),
   );
 
   const data = rows.map((r) => ({
@@ -80,8 +81,9 @@ export async function POST(req: NextRequest) {
 
   // Validate contactId belongs to this space if provided
   if (contactId) {
-    const { data: c } = await supabase.from('Contact').select('id')
-      .eq('id', contactId).eq('spaceId', space.id).maybeSingle();
+    const c = await convex()
+      .query(api.contacts.contacts.getById, { id: contactId, spaceId: space.id })
+      .catch(() => null);
     if (!c) return NextResponse.json({ error: 'Contact not found' }, { status: 400 });
   }
 

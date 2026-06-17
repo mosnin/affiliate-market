@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 
 type Params = { params: Promise<{ id: string }> };
@@ -21,12 +21,10 @@ export async function PATCH(_req: Request, { params }: Params) {
 
   const { id: invitationId } = await params;
 
-  const { data: inv } = await supabase
-    .from('Invitation')
-    .select('id, status')
-    .eq('id', invitationId)
-    .eq('companyId', ctx.company.id)
-    .maybeSingle();
+  const inv = await convex().query(api.org.invitations.getByIdScoped, {
+    id: invitationId,
+    companyId: ctx.company.id,
+  });
 
   if (!inv) {
     return NextResponse.json({ error: 'Invitation not found' }, { status: 404 });
@@ -38,13 +36,13 @@ export async function PATCH(_req: Request, { params }: Params) {
 
   // Scope the update to companyId as well to prevent a TOCTOU race between
   // the fetch above and this write.
-  const { error } = await supabase
-    .from('Invitation')
-    .update({ status: 'cancelled' })
-    .eq('id', invitationId)
-    .eq('companyId', ctx.company.id);
-
-  if (error) {
+  try {
+    await convex().mutation(api.org.invitations.setStatusScoped, {
+      id: invitationId,
+      companyId: ctx.company.id,
+      status: 'cancelled',
+    });
+  } catch (error) {
     console.error('[manager/invitations/cancel] update failed', error);
     return NextResponse.json({ error: 'Failed to cancel invitation' }, { status: 500 });
   }

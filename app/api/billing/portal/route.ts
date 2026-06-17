@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -17,11 +17,7 @@ export async function POST(req: NextRequest) {
   if (!allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
 
   // Fetch Stripe columns separately (getSpaceFromSlug doesn't include them)
-  const { data: stripeData } = await supabase
-    .from('Space')
-    .select('stripeCustomerId')
-    .eq('id', space.id)
-    .single();
+  const stripeData = await convex().query(api.workspace.spaces.getById, { id: space.id });
 
   if (!stripeData?.stripeCustomerId) {
     return NextResponse.json({ error: 'No billing account found. Please subscribe first.' }, { status: 400 });

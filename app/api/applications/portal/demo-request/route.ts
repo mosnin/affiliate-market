@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
@@ -82,14 +81,13 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify token + application
-  const { data: contact, error: contactError } = await supabase
-    .from('Contact')
-    .select('id, spaceId, name, email')
-    .eq('applicationRef', applicationRef)
-    .eq('statusPortalToken', token)
-    .maybeSingle();
-
-  if (contactError) {
+  let contact;
+  try {
+    contact = await convex().query(api.contacts.contacts.findByApplicationRef, {
+      applicationRef,
+      statusPortalToken: token,
+    });
+  } catch (contactError) {
     console.error('[portal/demo-request] Contact lookup error:', contactError);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
@@ -187,22 +185,14 @@ async function notifySellerOfDemoRequest(
 ): Promise<void> {
   if (!process.env.RESEND_API_KEY) return;
 
-  const [{ data: space }, { data: settings }] = await Promise.all([
-    supabase.from('Space').select('ownerId, name, slug').eq('id', spaceId).maybeSingle(),
-    supabase
-      .from('SpaceSetting')
-      .select('notifications, businessName')
-      .eq('spaceId', spaceId)
-      .maybeSingle(),
+  const [space, settings] = await Promise.all([
+    convex().query(api.workspace.spaces.getById, { id: spaceId }),
+    convex().query(api.workspace.settings.getBySpace, { spaceId }),
   ]);
   if (!space) return;
   if (settings && !settings.notifications) return;
 
-  const { data: owner } = await supabase
-    .from('User')
-    .select('email')
-    .eq('id', space.ownerId)
-    .maybeSingle();
+  const owner = await convex().query(api.org.users.getById, { id: space.ownerId });
   if (!owner?.email) return;
 
   const { Resend } = await import('resend');

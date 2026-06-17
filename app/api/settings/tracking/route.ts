@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import type { TrackingPixels } from '@/lib/types';
 
@@ -138,23 +138,14 @@ function sanitizeCustomScript(value: unknown): string | null {
 
 async function resolveSpaceFromSlug(slug: string, clerkUserId: string) {
   // Get our DB user
-  const { data: user, error: userError } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', clerkUserId)
-    .maybeSingle();
-  if (userError || !user) return null;
+  const user = await convex().query(api.org.users.getByClerkId, { clerkId: clerkUserId });
+  if (!user) return null;
 
-  // Get space and verify ownership
-  const { data: space, error: spaceError } = await supabase
-    .from('Space')
-    .select('id, slug')
-    .eq('slug', slug)
-    .eq('ownerId', user.id)
-    .maybeSingle();
-  if (spaceError || !space) return null;
+  // Get space and verify ownership (the old query scoped by .eq('ownerId', user.id)).
+  const space = await convex().query(api.workspace.spaces.getBySlug, { slug });
+  if (!space || space.ownerId !== user.id) return null;
 
-  return space;
+  return { id: space.id, slug: space.slug };
 }
 
 export async function GET(req: NextRequest) {
@@ -173,13 +164,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: settings, error } = await supabase
-    .from('SpaceSetting')
-    .select('trackingPixels')
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  if (error) {
+  let settings;
+  try {
+    settings = await convex().query(api.workspace.settings.getBySpace, { spaceId: space.id });
+  } catch (error) {
     console.error('[api/settings/tracking] GET error:', error);
     return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 });
   }
@@ -252,12 +240,12 @@ export async function PUT(req: NextRequest) {
     sanitized.customHeadScript = customScript;
   }
 
-  const { error: updateError } = await supabase
-    .from('SpaceSetting')
-    .update({ trackingPixels: sanitized })
-    .eq('spaceId', space.id);
-
-  if (updateError) {
+  try {
+    await convex().mutation(api.workspace.settings.upsertBySpace, {
+      spaceId: space.id,
+      fields: { trackingPixels: sanitized },
+    });
+  } catch (updateError) {
     console.error('[api/settings/tracking] PUT error:', updateError);
     return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
   }

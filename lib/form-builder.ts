@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { formConfigSchema } from '@/lib/form-config-schema';
 import type {
   IntakeFormConfig,
@@ -557,13 +557,14 @@ export async function getFormConfig(
   spaceId: string
 ): Promise<IntakeFormConfig | null> {
   // Fetch the space setting with its form config
-  const { data: setting, error: settingError } = await supabase
-    .from('SpaceSetting')
-    .select('"formConfig", "formConfigSource"')
-    .eq('spaceId', spaceId)
-    .single();
+  let setting;
+  try {
+    setting = await convex().query(api.workspace.settings.getBySpace, { spaceId });
+  } catch {
+    return null; // legacy mode
+  }
 
-  if (settingError || !setting) {
+  if (!setting) {
     return null; // legacy mode
   }
 
@@ -577,18 +578,10 @@ export async function getFormConfig(
 
   // Company-inherited form: fetch from the linked company
   if (source === 'company') {
-    const { data: space } = await supabase
-      .from('Space')
-      .select('"companyId"')
-      .eq('id', spaceId)
-      .single();
+    const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
 
     if (space?.companyId) {
-      const { data: company } = await supabase
-        .from('Company')
-        .select('"companyFormConfig"')
-        .eq('id', space.companyId)
-        .single();
+      const company = await convex().query(api.org.companies.getById, { id: space.companyId });
 
       if (company?.companyFormConfig) {
         const result = formConfigSchema.safeParse(
@@ -635,13 +628,14 @@ export async function getFormConfigs(
   spaceId: string,
   companyId?: string | null,
 ): Promise<DualFormConfigs> {
-  const { data: setting, error: settingError } = await supabase
-    .from('SpaceSetting')
-    .select('"formConfig", "formConfigSource", "rentalFormConfig", "buyerFormConfig"')
-    .eq('spaceId', spaceId)
-    .maybeSingle();
+  let setting;
+  try {
+    setting = await convex().query(api.workspace.settings.getBySpace, { spaceId });
+  } catch {
+    return { rental: null, buyer: null, source: 'legacy' };
+  }
 
-  if (settingError || !setting) {
+  if (!setting) {
     return { rental: null, buyer: null, source: 'legacy' };
   }
 
@@ -672,20 +666,12 @@ export async function getFormConfigs(
     // Resolve companyId if not provided
     let resolvedCompanyId = companyId;
     if (!resolvedCompanyId) {
-      const { data: space } = await supabase
-        .from('Space')
-        .select('"companyId"')
-        .eq('id', spaceId)
-        .maybeSingle();
+      const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
       resolvedCompanyId = space?.companyId ?? null;
     }
 
     if (resolvedCompanyId) {
-      const { data: company } = await supabase
-        .from('Company')
-        .select('"companyFormConfig", "companyRentalFormConfig", "companyBuyerFormConfig"')
-        .eq('id', resolvedCompanyId)
-        .maybeSingle();
+      const company = await convex().query(api.org.companies.getById, { id: resolvedCompanyId });
 
       if (company) {
         let rentalConfig = safeParseConfig(company.companyRentalFormConfig);

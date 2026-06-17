@@ -21,7 +21,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { composeBrief } from '@/lib/briefing/compose';
 import { shouldGenerateFor } from '@/lib/briefing/timing';
@@ -114,14 +113,13 @@ async function handler(req: NextRequest) {
 
   // Read every space's brief settings in one query. SpaceSetting is the
   // truth source — spaces without a settings row get the defaults.
-  const { data: settings, error } = await supabase
-    .from('SpaceSetting')
-    .select('spaceId, timezone, briefEnabled, briefHour')
-    .eq('briefEnabled', true)
-    .limit(MAX_PER_TICK);
-
-  if (error) {
-    console.error('[cron/daily-briefing] settings lookup failed:', error.message);
+  let settings: CandidateRow[];
+  try {
+    settings = (await convex().query(api.workspace.settings.listBriefEnabled, {
+      limit: MAX_PER_TICK,
+    })) as CandidateRow[];
+  } catch (error) {
+    console.error('[cron/daily-briefing] settings lookup failed:', error);
     return NextResponse.json({ error: 'Settings lookup failed' }, { status: 500 });
   }
 
@@ -137,7 +135,7 @@ async function handler(req: NextRequest) {
   // tick. forDate is computed in the space's timezone so the seller's
   // brief is keyed on their local date.
   const due: { spaceId: string; forDate: string }[] = [];
-  for (const row of settings as CandidateRow[]) {
+  for (const row of settings) {
     const timezone = row.timezone ?? DEFAULT_TIMEZONE;
     const briefHour = row.briefHour ?? DEFAULT_BRIEF_HOUR;
     const forDate = shouldGenerateFor(at, timezone, briefHour);

@@ -15,7 +15,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { monitorCron } from '@/lib/cron-monitor';
 
@@ -91,17 +90,17 @@ async function handler(req: NextRequest) {
   // past that page would NEVER get swept. Page through explicitly.
   const allSpaces: { id: string; slug: string }[] = [];
   for (let from = 0; ; from += SPACE_PAGE_SIZE) {
-    const { data, error: spaceErr } = await supabase
-      .from('Space')
-      .select('id, slug')
-      .in('stripeSubscriptionStatus', ['active', 'trialing'])
-      .order('id', { ascending: true })
-      .range(from, from + SPACE_PAGE_SIZE - 1);
-    if (spaceErr) {
+    let page: { id: string; slug: string }[];
+    try {
+      page = await convex().query(api.workspace.spaces.listBySubscriptionStatusesPaged, {
+        statuses: ['active', 'trialing'],
+        from,
+        size: SPACE_PAGE_SIZE,
+      });
+    } catch (spaceErr) {
       console.error('[cron/agent-sweep] Failed to load spaces', spaceErr);
       return NextResponse.json({ error: 'DB query failed' }, { status: 500 });
     }
-    const page = (data ?? []) as { id: string; slug: string }[];
     allSpaces.push(...page);
     if (page.length < SPACE_PAGE_SIZE) break; // last page reached
   }

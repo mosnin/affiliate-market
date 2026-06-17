@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { Building2, AlertTriangle } from 'lucide-react';
 import { JoinCodeAcceptButton } from './join-code-accept-button';
 
@@ -16,11 +16,9 @@ export default async function JoinWithCodePage({ params }: Params) {
 
   const normalizedCode = code.trim().toUpperCase();
 
-  const { data: company } = await supabase
-    .from('Company')
-    .select('id, name, status, logoUrl')
-    .eq('joinCode', normalizedCode)
-    .maybeSingle();
+  const company = await convex().query(api.org.companies.getByJoinCode, {
+    joinCode: normalizedCode,
+  });
 
   const isInvalid = !company;
   const isSuspended = company?.status === 'suspended';

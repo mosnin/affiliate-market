@@ -17,7 +17,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { cn } from '@/lib/utils';
 import { AgentDraftInbox } from '@/components/agent/agent-draft-inbox';
@@ -75,13 +74,10 @@ export default async function ColaInboxPage({
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
-  const { data: spaceOwner } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .eq('id', space.ownerId)
-    .maybeSingle();
-  if (!spaceOwner) notFound();
+  const spaceOwner = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: userId })
+    .catch(() => null);
+  if (!spaceOwner || spaceOwner.id !== space.ownerId) notFound();
 
   // Just the count — AgentDraftInbox fetches the actual draft data
   // client-side, the same way it does on every other page that mounts it.

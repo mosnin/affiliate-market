@@ -37,7 +37,6 @@
 import crypto from 'crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
@@ -86,13 +85,11 @@ const HISTORY_LIMIT = 8;
  * turn to the manager tables.
  */
 async function resolveRuntimeSpaceId(companyOwnerId: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('Space')
-    .select('id')
-    .eq('ownerId', companyOwnerId)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data.id as string;
+  const data = await convex()
+    .query(api.workspace.spaces.getByOwnerId, { ownerId: companyOwnerId })
+    .catch(() => null);
+  if (!data) return null;
+  return data.id;
 }
 
 /**
@@ -406,17 +403,13 @@ export async function POST(req: NextRequest) {
   // unpaid are gated; active / trialing / inactive pass. Platform admins bypass.
   // Fails OPEN so a DB hiccup can't lock out a paying company.
   try {
-    const { data: bRow } = await supabase
-      .from('Company')
-      .select('stripeSubscriptionStatus')
-      .eq('id', companyId)
-      .maybeSingle();
+    const bRow = await convex()
+      .query(api.org.companies.getById, { id: companyId })
+      .catch(() => null);
     if (isSubscriptionDelinquent(bRow?.stripeSubscriptionStatus ?? 'inactive')) {
-      const { data: userRow } = await supabase
-        .from('User')
-        .select('platformRole')
-        .eq('clerkId', clerkUserId)
-        .maybeSingle();
+      const userRow = await convex()
+        .query(api.org.users.getByClerkId, { clerkId: clerkUserId })
+        .catch(() => null);
       if (userRow?.platformRole !== 'admin') {
         return NextResponse.json(
           {

@@ -11,7 +11,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { PostDemoRecorder } from '@/components/cola/post-demo-recorder';
 
 export const metadata = { title: 'Log a demo — Cola' };
@@ -35,13 +35,10 @@ export default async function PostDemoPage({
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
-  const { data: spaceOwner } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .eq('id', space.ownerId)
-    .maybeSingle();
-  if (!spaceOwner) notFound();
+  const spaceOwner = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: userId })
+    .catch(() => null);
+  if (!spaceOwner || spaceOwner.id !== space.ownerId) notFound();
 
   return (
     <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center px-4 py-12">

@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { isPlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { SupportClient, type SupportTicket } from './support-client';
 
@@ -10,8 +9,6 @@ export default async function AdminSupportPage() {
   const ok = await isPlatformAdmin();
   if (!ok) redirect('/');
 
-  // SupportTicket moved to Convex; Space (slug/name resolution below) stays on
-  // Supabase — this page is a hybrid read during the cutover.
   const tickets = (await convex().query(api.support.tickets.listAll, {})) as SupportTicket[];
 
   // Resolve space slugs/names so the admin sees which workspace a ticket came
@@ -21,12 +18,10 @@ export default async function AdminSupportPage() {
   );
   const spaceMap: Record<string, { name: string; slug: string }> = {};
   if (spaceIds.length > 0) {
-    const { data: spaces } = await supabase
-      .from('Space')
-      .select('id, name, slug')
-      .in('id', spaceIds);
-    for (const s of spaces ?? []) {
-      const row = s as { id: string; name: string; slug: string };
+    const spaces = (await convex().query(api.workspace.spaces.listByIds, {
+      ids: spaceIds,
+    })) as { id: string; name: string; slug: string }[];
+    for (const row of spaces) {
       spaceMap[row.id] = { name: row.name, slug: row.slug };
     }
   }

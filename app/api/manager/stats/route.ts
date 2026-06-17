@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 /**
  * GET /api/manager/stats
@@ -17,10 +17,14 @@ export async function GET() {
   const { company } = ctx;
 
   // Get all member user ids in this company
-  const { data: memberships } = await supabase
-    .from('CompanyMembership')
-    .select('userId')
-    .eq('companyId', company.id);
+  let memberships: Array<{ userId: string }> = [];
+  try {
+    memberships = await convex().query(api.org.memberships.listByCompany, {
+      companyId: company.id,
+    });
+  } catch {
+    memberships = [];
+  }
   const memberUserIds = (memberships ?? []).map((m) => m.userId);
 
   if (memberUserIds.length === 0) {
@@ -28,40 +32,40 @@ export async function GET() {
   }
 
   // Get spaces owned by members
-  const { data: spaces } = await supabase
-    .from('Space')
-    .select('id')
-    .in('ownerId', memberUserIds);
+  let spaces: Array<{ id: string }> = [];
+  try {
+    spaces = await convex().query(api.workspace.spaces.listByOwnerIds, {
+      ownerIds: memberUserIds,
+    });
+  } catch {
+    spaces = [];
+  }
   const spaceIds = (spaces ?? []).map((s) => s.id);
 
   // Count leads (new-lead tag) and applications across all member spaces
-  const [leadsRes, appsRes, pendingRes] = await Promise.all([
+  const [leadsCount, appsCount, pendingCount] = await Promise.all([
     spaceIds.length > 0
-      ? supabase
-          .from('Contact')
-          .select('*', { count: 'exact', head: true })
-          .in('spaceId', spaceIds)
-          .contains('tags', ['new-lead'])
-      : { count: 0, error: null },
+      ? convex()
+          .query(api.contacts.contacts.countForSpaces, { spaceIds, tagsAll: ['new-lead'] })
+          .catch(() => 0)
+      : Promise.resolve(0),
     spaceIds.length > 0
-      ? supabase
-          .from('Contact')
-          .select('*', { count: 'exact', head: true })
-          .in('spaceId', spaceIds)
-          .contains('tags', ['application-link'])
-      : { count: 0, error: null },
-    supabase
-      .from('Invitation')
-      .select('*', { count: 'exact', head: true })
-      .eq('companyId', company.id)
-      .eq('status', 'pending')
-      .gt('expiresAt', new Date().toISOString()),
+      ? convex()
+          .query(api.contacts.contacts.countForSpaces, { spaceIds, tagsAll: ['application-link'] })
+          .catch(() => 0)
+      : Promise.resolve(0),
+    convex()
+      .query(api.org.invitations.countPending, {
+        companyId: company.id,
+        now: new Date().toISOString(),
+      })
+      .catch(() => 0),
   ]);
 
   return NextResponse.json({
     memberCount: memberUserIds.length,
-    totalLeads: leadsRes.count ?? 0,
-    totalApplications: appsRes.count ?? 0,
-    pendingInvites: pendingRes.count ?? 0,
+    totalLeads: leadsCount ?? 0,
+    totalApplications: appsCount ?? 0,
+    pendingInvites: pendingCount ?? 0,
   });
 }

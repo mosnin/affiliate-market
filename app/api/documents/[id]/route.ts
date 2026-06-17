@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
 import { getSignedDownloadUrl, deleteObject } from '@/lib/storage';
@@ -27,14 +27,11 @@ export async function GET(
   // Resolve the doc first so we know which contact to check access against.
   // Without this, an attacker could iterate document UUIDs without an obvious
   // contactId; the requireContactAccess call below is what gates them.
-  const { data: doc, error } = await supabase
-    .from('ContactDocument')
-    .select('id, contactId, fileName, fileType, storageKey')
-    .eq('id', id)
-    .maybeSingle();
-
-  if (error) {
-    logger.error('[documents/id] lookup failed', { id }, error);
+  let doc;
+  try {
+    doc = await convex().query(api.contacts.documents.getById, { id });
+  } catch (error) {
+    logger.error('[documents/id] lookup failed', { id }, error as Error);
     return NextResponse.json({ error: 'Failed to load document' }, { status: 500 });
   }
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -81,14 +78,11 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
-  const { data: doc, error } = await supabase
-    .from('ContactDocument')
-    .select('id, contactId, spaceId, storageKey')
-    .eq('id', id)
-    .maybeSingle();
-
-  if (error) {
-    logger.error('[documents/id] delete lookup failed', { id }, error);
+  let doc;
+  try {
+    doc = await convex().query(api.contacts.documents.getById, { id });
+  } catch (error) {
+    logger.error('[documents/id] delete lookup failed', { id }, error as Error);
     return NextResponse.json({ error: 'Failed to load document' }, { status: 500 });
   }
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -96,14 +90,10 @@ export async function DELETE(
   const auth = await requireContactAccess(doc.contactId);
   if (auth instanceof NextResponse) return auth;
 
-  const { error: dbError } = await supabase
-    .from('ContactDocument')
-    .delete()
-    .eq('id', id)
-    .eq('spaceId', doc.spaceId);
-
-  if (dbError) {
-    logger.error('[documents/id] delete failed', { id }, dbError);
+  try {
+    await convex().mutation(api.contacts.documents.remove, { id, spaceId: doc.spaceId });
+  } catch (dbError) {
+    logger.error('[documents/id] delete failed', { id }, dbError as Error);
     return NextResponse.json({ error: 'Failed to delete document' }, { status: 500 });
   }
 

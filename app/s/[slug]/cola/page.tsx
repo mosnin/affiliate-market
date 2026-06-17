@@ -1,7 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { ColaWorkspace } from '@/components/cola/cola-workspace';
 import type { Conversation } from '@/lib/types';
@@ -42,13 +41,10 @@ export default async function ColaPage({
   if (!space) notFound();
 
   // Verify the authenticated user owns this space
-  const { data: spaceOwner } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .eq('id', space.ownerId)
-    .maybeSingle();
-  if (!spaceOwner) notFound();
+  const spaceOwner = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: userId })
+    .catch(() => null);
+  if (!spaceOwner || spaceOwner.id !== space.ownerId) notFound();
 
   // Load conversations for this space
   let conversations: Conversation[] = [];

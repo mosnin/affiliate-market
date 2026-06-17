@@ -1,5 +1,5 @@
 import { getManagerContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { redirect } from 'next/navigation';
 import ImportExportClient from './import-export-client';
 
@@ -12,28 +12,23 @@ export default async function ImportExportPage() {
   const { company } = ctx;
 
   // Get total lead count across all member spaces
-  const { data: memberships } = await supabase
-    .from('CompanyMembership')
-    .select('userId')
-    .eq('companyId', company.id);
+  const memberships = (await convex().query(api.org.memberships.listByCompany, {
+    companyId: company.id,
+  })) as Array<{ userId: string }>;
 
-  const memberUserIds = (memberships ?? []).map((m: { userId: string }) => m.userId);
+  const memberUserIds = memberships.map((m) => m.userId);
 
   let totalLeads = 0;
   if (memberUserIds.length > 0) {
-    const { data: spaces } = await supabase
-      .from('Space')
-      .select('id')
-      .in('ownerId', memberUserIds);
+    const spaces = (await convex().query(api.workspace.spaces.listByOwnerIds, {
+      ownerIds: memberUserIds,
+    })) as Array<{ id: string }>;
 
-    const spaceIds = (spaces ?? []).map((s: { id: string }) => s.id);
+    const spaceIds = spaces.map((s) => s.id);
     if (spaceIds.length > 0) {
-      const { count } = await supabase
-        .from('Contact')
-        .select('id', { count: 'exact', head: true })
-        .in('spaceId', spaceIds);
-
-      totalLeads = count ?? 0;
+      totalLeads = await convex().query(api.contacts.contacts.countForSpaces, {
+        spaceIds,
+      });
     }
   }
 

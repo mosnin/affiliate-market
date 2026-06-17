@@ -10,7 +10,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
@@ -28,15 +27,14 @@ export async function GET(
 
   const { id: contactId } = await params;
 
-  // Verify contact belongs to this space
-  const { data: contact, error: contactError } = await supabase
-    .from('Contact')
-    .select('id, name')
-    .eq('id', contactId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  // Verify contact belongs to this space. Convex throws on infra failure
+  // (matching the old `throw contactError`) and returns null when the row
+  // isn't in this space (matching the old `!contact` 404).
+  const contact = await convex().query(api.contacts.contacts.getById, {
+    id: contactId,
+    spaceId: space.id,
+  });
 
-  if (contactError) throw contactError;
   if (!contact) return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
 
   const [memories, drafts, activity] = await Promise.all([

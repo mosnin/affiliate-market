@@ -15,7 +15,7 @@
  * All functions are non-blocking and never throw.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { sendNewLeadNotification } from '@/lib/email';
 import { sendNewDealNotification } from '@/lib/email';
 import { sendAgentNotification, type DemoEmailData } from '@/lib/demo-emails';
@@ -47,18 +47,14 @@ interface SpaceOwnerInfo {
  */
 async function getSpaceOwnerInfo(spaceId: string): Promise<SpaceOwnerInfo | null> {
   try {
-    const [{ data: space }, { data: settings }] = await Promise.all([
-      supabase.from('Space').select('ownerId, name, slug').eq('id', spaceId).maybeSingle(),
-      supabase
-        .from('SpaceSetting')
-        .select('notifications, smsNotifications, phoneNumber, notifyNewLeads, notifyDemoBookings, notifyNewDeals, notifyFollowUps, notifyPush')
-        .eq('spaceId', spaceId)
-        .maybeSingle(),
+    const [space, settings] = await Promise.all([
+      convex().query(api.workspace.spaces.getById, { id: spaceId }),
+      convex().query(api.workspace.settings.getBySpace, { spaceId }),
     ]);
 
     if (!space) return null;
 
-    const { data: owner } = await supabase.from('User').select('email').eq('id', space.ownerId).maybeSingle();
+    const owner = await convex().query(api.org.users.getById, { id: space.ownerId });
     if (!owner?.email) return null;
 
     const smsEnabled = settings?.smsNotifications ?? false;

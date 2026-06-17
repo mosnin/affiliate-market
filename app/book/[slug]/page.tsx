@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
 import type { Viewport } from 'next';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';
@@ -45,29 +44,12 @@ export default async function PublicBookingPage({
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
-  const [{ data: settingsData }, { data: customSettings }, { data: ownerData }] = await Promise.all([
-    supabase
-      .from('SpaceSetting')
-      .select('demoBookingPageTitle, demoBookingPageIntro, businessName, demoDuration, timezone, logoUrl, sellerPhotoUrl')
-      .eq('spaceId', space.id)
-      .maybeSingle(),
-    supabase
-      .from('SpaceSetting')
-      .select(
-        'intakeAccentColor, intakeFont, intakeDarkMode, ' +
-        'intakeHeaderBgColor, intakeHeaderGradient, ' +
-        'intakeFooterLinks, bio, socialLinks, trackingPixels'
-      )
-      .eq('spaceId', space.id)
-      .maybeSingle(),
-    supabase
-      .from('User')
-      .select('name, avatar')
-      .eq('id', space.ownerId)
-      .maybeSingle(),
+  const [settingsRow, ownerData] = await Promise.all([
+    convex().query(api.workspace.settings.getBySpace, { spaceId: space.id }),
+    convex().query(api.org.users.getById, { id: space.ownerId }),
   ]);
 
-  const allSettings = { ...((settingsData ?? {}) as any), ...((customSettings ?? {}) as any) };
+  const allSettings = { ...((settingsRow ?? {}) as any) };
   const settings = allSettings as {
     demoBookingPageTitle: string | null;
     demoBookingPageIntro: string | null;

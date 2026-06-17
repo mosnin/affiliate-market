@@ -1,9 +1,9 @@
 import { notFound } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { ApplicationStatusClient } from './application-status-client';
 import { PublicPageMinimalShell } from '@/components/public-page-shell';
+import type { IntakeFormConfig } from '@/lib/types';
 
 // Disable caching so status updates show immediately
 export const dynamic = 'force-dynamic';
@@ -77,29 +77,19 @@ export default async function ApplicationStatusPage({
   if (!space) notFound();
 
   // Fetch settings early so we can use them in error pages too
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select('businessName, logoUrl')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settings = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
 
   const businessName = settings?.businessName || space.name;
 
-  // Build query — if token is provided, validate both ref AND token (portal mode)
-  let query = supabase
-    .from('Contact')
-    .select(
-      'id, name, email, applicationStatus, applicationStatusNote, applicationData, formConfigSnapshot, applicationRef, statusPortalToken, scoringStatus, createdAt',
-    )
-    .eq('applicationRef', ref)
-    .eq('spaceId', space.id);
-
-  // If token provided, enforce it must match (defense in depth)
-  if (token) {
-    query = query.eq('statusPortalToken', token);
-  }
-
-  const { data: contact } = await query.maybeSingle();
+  // Resolve the applicant by ref (+ spaceId), and — when a token is present —
+  // require it to match too (defense in depth / portal mode).
+  const contact = await convex().query(api.contacts.contacts.findByApplicationRef, {
+    applicationRef: ref,
+    spaceId: space.id,
+    ...(token ? { statusPortalToken: token } : {}),
+  });
 
   // Show a helpful, branded error page instead of generic 404
   if (!contact) {
@@ -181,8 +171,8 @@ export default async function ApplicationStatusPage({
           status: contact.applicationStatus ?? 'received',
           statusNote: contact.applicationStatusNote,
           applicationRef: contact.applicationRef ?? ref,
-          applicationData: contact.applicationData,
-          formConfigSnapshot: contact.formConfigSnapshot,
+          applicationData: contact.applicationData as Record<string, unknown> | null,
+          formConfigSnapshot: contact.formConfigSnapshot as IntakeFormConfig | null,
           createdAt: contact.createdAt,
         }}
         businessName={businessName}

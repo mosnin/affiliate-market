@@ -7,7 +7,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import type { ToolContext } from './types';
 
@@ -28,20 +28,22 @@ export async function resolveToolContext(
   const { userId } = authResult;
 
   // Look up the internal user id to scope the space check.
-  const { data: userRow } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .maybeSingle();
+  let userRow: { id: string } | null = null;
+  try {
+    userRow = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
+  } catch {
+    userRow = null;
+  }
   if (!userRow) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id, slug, name, ownerId')
-    .eq('slug', spaceSlug)
-    .maybeSingle();
+  let space: { id: string; slug: string; name: string; ownerId: string } | null = null;
+  try {
+    space = await convex().query(api.workspace.spaces.getBySlug, { slug: spaceSlug });
+  } catch {
+    space = null;
+  }
   if (!space) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 });
   }

@@ -13,7 +13,7 @@
  *   - New lead under 24h old (untouched): 0.78
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { HOT_LEAD_THRESHOLD } from '@/lib/constants';
 import type { Signal, SignalGatherer, SignalKind } from '../types';
 
@@ -48,14 +48,17 @@ export const leadsSource: SignalGatherer = {
     today.setHours(0, 0, 0, 0);
     const fiveDaysAgo = new Date(today.getTime() - STALE_HOT_LEAD_DAYS * MS_PER_DAY);
 
-    const { data, error } = await supabase
-      .from('Contact')
-      .select('id, name, leadScore, followUpAt, lastContactedAt, phone, email, type, tags')
-      .eq('spaceId', spaceId)
-      .is('companyId', null)
-      .in('type', ['QUALIFICATION', 'DEMO', 'APPLICATION', 'LEASE_REVIEW']);
-
-    if (error || !data) return [];
+    let data;
+    try {
+      data = await convex().query(api.contacts.contacts.filterForSpaces, {
+        spaceIds: [spaceId],
+        requireCompanyIdNull: true,
+        typeIn: ['QUALIFICATION', 'DEMO', 'APPLICATION', 'LEASE_REVIEW'],
+      });
+    } catch {
+      return [];
+    }
+    if (!data) return [];
 
     const signals: Signal[] = [];
 

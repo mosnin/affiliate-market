@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClerkClient } from '@clerk/nextjs/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { audit } from '@/lib/audit';
 import {
@@ -62,11 +62,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Resolve the internal User row — needed for the cascade root.
-  const { data: userRow } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .maybeSingle();
+  const userRow = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
   if (!userRow) {
     return NextResponse.json({ error: 'account not found.' }, { status: 404 });
   }

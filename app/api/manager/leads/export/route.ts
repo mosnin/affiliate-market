@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 /**
  * GET /api/manager/leads/export
@@ -18,10 +18,14 @@ export async function GET() {
   const { company } = ctx;
 
   // ── Fetch all member user IDs ──────────────────────────────────────────
-  const { data: memberships } = await supabase
-    .from('CompanyMembership')
-    .select('userId')
-    .eq('companyId', company.id);
+  let memberships: Array<{ userId: string }> = [];
+  try {
+    memberships = await convex().query(api.org.memberships.listByCompany, {
+      companyId: company.id,
+    });
+  } catch {
+    memberships = [];
+  }
 
   const memberUserIds = (memberships ?? []).map((m: { userId: string }) => m.userId);
 
@@ -36,12 +40,15 @@ export async function GET() {
   }
 
   // ── Get spaces owned by members + user profiles in parallel ───────────
-  const [spacesRes, usersRes] = await Promise.all([
-    supabase.from('Space').select('id, ownerId').in('ownerId', memberUserIds),
-    supabase.from('User').select('id, name, email').in('id', memberUserIds),
+  const [spaces, users] = await Promise.all([
+    convex()
+      .query(api.workspace.spaces.listByOwnerIds, { ownerIds: memberUserIds })
+      .catch(() => [] as Array<{ id: string; ownerId: string }>),
+    convex()
+      .query(api.org.users.listByIds, { ids: memberUserIds })
+      .catch(() => [] as Array<{ id: string; name: string | null; email: string }>),
   ]);
 
-  const spaces = spacesRes.data ?? [];
   const spaceIds = spaces.map((s) => s.id);
   if (spaceIds.length === 0) {
     const csv = 'Name,Email,Phone,Lead Type,Budget,Score,Score Label,Status,Product Address,Notes,Move-in Date,Employment,Income,Assigned To,Created At\n';
@@ -55,7 +62,7 @@ export async function GET() {
 
   // Build lookup: spaceId -> member name
   const userMap = new Map(
-    (usersRes.data ?? []).map((u: { id: string; name: string | null; email: string }) => [u.id, u]),
+    (users ?? []).map((u: { id: string; name: string | null; email: string }) => [u.id, u]),
   );
   const spaceToMember: Record<string, string> = {};
   for (const sp of spaces) {
@@ -64,21 +71,18 @@ export async function GET() {
   }
 
   // ── Fetch all contacts from member spaces ──────────────────────────────
-  const { data: contacts, error } = await supabase
-    .from('Contact')
-    .select(
-      'name, email, phone, "leadType", budget, "leadScore", "scoreLabel", "scoringStatus", address, notes, "applicationData", "spaceId", "createdAt"',
-    )
-    .in('spaceId', spaceIds)
-    .order('createdAt', { ascending: false })
-    .limit(10000);
-
-  if (error) {
+  let contacts;
+  try {
+    contacts = await convex().query(api.contacts.contacts.filterForSpaces, {
+      spaceIds,
+      limit: 10000,
+    });
+  } catch (error) {
     console.error('[manager/leads/export] query error', error);
     return NextResponse.json({ error: 'Failed to fetch leads' }, { status: 500 });
   }
 
-  const rows = contacts ?? [];
+  const rows = (contacts ?? []) as Array<Record<string, unknown>>;
 
   // ── Build CSV ──────────────────────────────────────────────────────────
   const headers = [

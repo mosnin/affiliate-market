@@ -1,7 +1,7 @@
 import { BrandLogo } from '@/components/brand-logo';
 import { ThemedSignUp } from '@/components/auth/clerk-sign-up';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = { title: 'Join Company — Cola' };
@@ -13,16 +13,16 @@ export default async function InviteSignUpPage({
 }) {
   const { token } = await params;
 
-  // Fetch invitation details to show company name
+  // Fetch invitation details to show company name. getByToken returns the
+  // Invitation row only; the Company name is composed via a follow-up read.
   let companyName = 'a company';
   try {
-    const { data } = await supabase
-      .from('Invitation')
-      .select('Company(name)')
-      .eq('token', token)
-      .maybeSingle();
-    if (data?.Company && typeof data.Company === 'object' && 'name' in data.Company) {
-      companyName = (data.Company as { name: string }).name;
+    const data = await convex().query(api.org.invitations.getByToken, { token });
+    if (data) {
+      const company = await convex().query(api.org.companies.getById, { id: data.companyId });
+      if (company?.name) {
+        companyName = company.name;
+      }
     }
   } catch {
     // Non-blocking

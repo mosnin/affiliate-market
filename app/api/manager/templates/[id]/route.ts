@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { getManagerMemberContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 import { logger } from '@/lib/logger';
 
@@ -27,9 +27,6 @@ type CompanyTemplateRow = {
   createdAt: string;
   updatedAt: string;
 };
-
-const TEMPLATE_COLUMNS =
-  'id, companyId, name, category, channel, subject, body, version, publishedAt, publishedVersion, publishedCount, createdByUserId, createdAt, updatedAt';
 
 // Every field optional — PATCH is a partial update. subject is explicitly
 // nullable so callers can clear a previously-set subject by sending null.
@@ -87,18 +84,17 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
   // Confirm the template is in the caller's company before touching it.
   // A missing row is a 404 regardless of whether it exists for another
   // company — we don't want to leak cross-company existence.
-  const { data: existing, error: loadErr } = await supabase
-    .from('CompanyTemplate')
-    .select(TEMPLATE_COLUMNS)
-    .eq('id', templateId)
-    .eq('companyId', ctx.company.id)
-    .maybeSingle<CompanyTemplateRow>();
-
-  if (loadErr) {
+  let existing: CompanyTemplateRow | null;
+  try {
+    existing = (await convex().query(api.org.templates.getByIdScoped, {
+      id: templateId,
+      companyId: ctx.company.id,
+    })) as CompanyTemplateRow | null;
+  } catch (loadErr) {
     logger.error(
       '[manager/templates/PATCH] load failed',
       { templateId, companyId: ctx.company.id },
-      loadErr,
+      loadErr as Error,
     );
     return NextResponse.json({ error: 'Failed to load template' }, { status: 500 });
   }
@@ -158,19 +154,26 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
 
   patch.version = existing.version + 1;
 
-  const { data: updated, error: updateErr } = await supabase
-    .from('CompanyTemplate')
-    .update(patch)
-    .eq('id', templateId)
-    .eq('companyId', ctx.company.id)
-    .select(TEMPLATE_COLUMNS)
-    .maybeSingle<CompanyTemplateRow>();
-
-  if (updateErr) {
+  let updated: CompanyTemplateRow | null;
+  try {
+    updated = (await convex().mutation(api.org.templates.applyPatch, {
+      id: templateId,
+      companyId: ctx.company.id,
+      patch: patch as {
+        name?: string;
+        category?: TemplateCategory;
+        channel?: TemplateChannel;
+        subject?: string | null;
+        body?: string;
+        version?: number;
+        updatedAt: string;
+      },
+    })) as CompanyTemplateRow | null;
+  } catch (updateErr) {
     logger.error(
       '[manager/templates/PATCH] update failed',
       { templateId, companyId: ctx.company.id },
-      updateErr,
+      updateErr as Error,
     );
     return NextResponse.json({ error: 'Failed to update template' }, { status: 500 });
   }
@@ -222,19 +225,17 @@ export async function DELETE(req: NextRequest, { params }: Params): Promise<Next
 
   const { id: templateId } = await params;
 
-  const { data: deleted, error: deleteErr } = await supabase
-    .from('CompanyTemplate')
-    .delete()
-    .eq('id', templateId)
-    .eq('companyId', ctx.company.id)
-    .select('id')
-    .maybeSingle<{ id: string }>();
-
-  if (deleteErr) {
+  let deleted: string | null;
+  try {
+    deleted = await convex().mutation(api.org.templates.deleteByIdScoped, {
+      id: templateId,
+      companyId: ctx.company.id,
+    });
+  } catch (deleteErr) {
     logger.error(
       '[manager/templates/DELETE] delete failed',
       { templateId, companyId: ctx.company.id },
-      deleteErr,
+      deleteErr as Error,
     );
     return NextResponse.json({ error: 'Failed to delete template' }, { status: 500 });
   }

@@ -1,5 +1,5 @@
 import { getManagerContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { redirect } from 'next/navigation';
 import { MembersClient } from './members-client';
 
@@ -7,24 +7,21 @@ export default async function ManagerMembersPage() {
   const ctx = await getManagerContext();
   if (!ctx) redirect('/');
 
-  const { data: memberships } = await supabase
-    .from('CompanyMembership')
-    .select('id, role, createdAt, userId')
-    .eq('companyId', ctx.company.id)
-    .order('createdAt', { ascending: true });
-
-  const rawMembers = (memberships ?? []) as Array<{ id: string; role: string; createdAt: string; userId: string }>;
+  // listByCompany returns memberships createdAt-ASC (matches the old order).
+  const rawMembers = (await convex().query(api.org.memberships.listByCompany, {
+    companyId: ctx.company.id,
+  })) as Array<{ id: string; role: string; createdAt: string; userId: string }>;
   const userIds = rawMembers.map((m) => m.userId).filter(Boolean);
 
   let users: any[] = [];
   let spaces: any[] = [];
   if (userIds.length > 0) {
-    const [userRes, spaceRes] = await Promise.all([
-      supabase.from('User').select('id, name, email, onboard').in('id', userIds),
-      supabase.from('Space').select('ownerId, slug').in('ownerId', userIds),
+    const [userRows, spaceRows] = await Promise.all([
+      convex().query(api.org.users.listByIds, { ids: userIds }),
+      convex().query(api.workspace.spaces.listByOwnerIds, { ownerIds: userIds }),
     ]);
-    users = userRes.data ?? [];
-    spaces = spaceRes.data ?? [];
+    users = userRows ?? [];
+    spaces = spaceRows ?? [];
   }
 
   const userMap = new Map(users.map((u: any) => [u.id, u]));

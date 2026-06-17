@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { requireSpaceOwner } from '@/lib/api-auth';
@@ -114,11 +113,7 @@ export async function POST(req: NextRequest) {
   // Always return 202 Accepted to prevent space ID enumeration
   const spaceId = events[0].spaceId;
   try {
-    const { data: space } = await supabase
-      .from('Space')
-      .select('id')
-      .eq('id', spaceId)
-      .maybeSingle();
+    const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
     if (!space) {
       console.warn('[form-analytics] event received for invalid spaceId', { spaceId });
       return NextResponse.json({ accepted: true }, { status: 202 });
@@ -294,16 +289,14 @@ export async function GET(req: NextRequest) {
     }[] = [];
 
     try {
-      const { data: leads } = await supabase
-        .from('Contact')
-        .select('id, name, email, createdAt, scoreLabel, leadScore, tags')
-        .eq('spaceId', space.id)
-        .contains('tags', ['application-link'])
-        .gte('createdAt', cutoff)
-        .order('createdAt', { ascending: false })
-        .limit(10);
+      const leads = await convex().query(api.contacts.contacts.filterForSpaces, {
+        spaceIds: [space.id],
+        tagsAll: ['application-link'],
+        createdGte: cutoff,
+        limit: 10,
+      });
 
-      recentLeads = (leads ?? []).map((l: any) => ({
+      recentLeads = leads.map((l) => ({
         id: l.id,
         name: l.name,
         email: l.email,

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 
 type Params = { params: Promise<{ id: string }> };
@@ -29,12 +29,15 @@ export async function DELETE(_req: Request, { params }: Params) {
   const { id: membershipId } = await params;
 
   // Fetch the membership to validate it belongs to this company
-  const { data: membership } = await supabase
-    .from('CompanyMembership')
-    .select('id, userId, role')
-    .eq('id', membershipId)
-    .eq('companyId', ctx.company.id)
-    .maybeSingle();
+  let membership: { id: string; userId: string; role: string } | null = null;
+  try {
+    membership = await convex().query(api.org.memberships.getByIdScoped, {
+      id: membershipId,
+      companyId: ctx.company.id,
+    });
+  } catch {
+    membership = null;
+  }
 
   if (!membership) {
     return NextResponse.json({ error: 'Member not found' }, { status: 404 });
@@ -51,13 +54,12 @@ export async function DELETE(_req: Request, { params }: Params) {
 
   // Delete the membership — scope to companyId as well to prevent a TOCTOU
   // race between the fetch above and this write.
-  const { error: deleteErr } = await supabase
-    .from('CompanyMembership')
-    .delete()
-    .eq('id', membershipId)
-    .eq('companyId', ctx.company.id);
-
-  if (deleteErr) {
+  try {
+    await convex().mutation(api.org.memberships.deleteByIdScoped, {
+      id: membershipId,
+      companyId: ctx.company.id,
+    });
+  } catch (deleteErr) {
     console.error('[manager/members/delete] delete failed', deleteErr);
     return NextResponse.json({ error: 'Failed to remove member' }, { status: 500 });
   }
@@ -75,35 +77,42 @@ export async function DELETE(_req: Request, { params }: Params) {
   // field rather than failing the removal.
   let actorDbId: string | null = null;
   if (clerkId) {
-    const { data: actorUser } = await supabase
-      .from('User')
-      .select('id')
-      .eq('clerkId', clerkId)
-      .maybeSingle();
-    actorDbId = (actorUser as { id?: string } | null)?.id ?? null;
+    let actorUser: { id: string } | null = null;
+    try {
+      actorUser = await convex().query(api.org.users.getByClerkId, { clerkId });
+    } catch {
+      actorUser = null;
+    }
+    actorDbId = actorUser?.id ?? null;
   }
-  const { error: removalErr } = await supabase
-    .from('CompanyRemoval')
-    .upsert(
-      {
-        companyId: ctx.company.id,
-        userId: membership.userId,
-        removedById: actorDbId,
-      },
-      { onConflict: 'companyId,userId' },
-    );
-  if (removalErr) {
+  try {
+    await convex().mutation(api.org.memberships.recordRemoval, {
+      companyId: ctx.company.id,
+      userId: membership.userId,
+      removedById: actorDbId,
+    });
+  } catch (removalErr) {
     // Non-fatal: the membership is already deleted, so the visible
     // outcome the manager requested is done. Log so we can chase it.
     console.error('[manager/members/delete] removal deny-list insert failed', removalErr);
   }
 
-  // Best-effort: unlink their Space from this company
-  await supabase
-    .from('Space')
-    .update({ companyId: null })
-    .eq('ownerId', membership.userId)
-    .eq('companyId', ctx.company.id);
+  // Best-effort: unlink their Space from this company. Resolve the leaving
+  // member's space and unlink ONLY when it is linked to THIS company (the old
+  // `.eq('ownerId').eq('companyId')` two-predicate scope — a dual-company
+  // seller's space elsewhere is never touched).
+  try {
+    const memberSpace = await convex().query(api.workspace.spaces.getByOwnerId, {
+      ownerId: membership.userId,
+    });
+    if (memberSpace && memberSpace.companyId === ctx.company.id) {
+      await convex().mutation(api.workspace.spaces.unlinkCompany, {
+        spaceId: memberSpace.id,
+      });
+    }
+  } catch {
+    // best-effort, matching the old fire-and-forget unlink.
+  }
 
   void audit({ actorClerkId: clerkId ?? null, action: 'DELETE', resource: 'CompanyMembership', resourceId: membershipId, metadata: { companyId: ctx.company.id, removedUserId: membership.userId, role: membership.role } });
 

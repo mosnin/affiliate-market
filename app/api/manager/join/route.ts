@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { audit } from '@/lib/audit';
@@ -41,20 +41,22 @@ export async function POST(req: NextRequest) {
   }
 
   // Resolve current user
-  const { data: user } = await supabase
-    .from('User')
-    .select('id, onboard')
-    .eq('clerkId', clerkId)
-    .maybeSingle();
+  let user: { id: string; onboard: boolean } | null = null;
+  try {
+    user = await convex().query(api.org.users.getByClerkId, { clerkId });
+  } catch {
+    user = null;
+  }
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
   if (!user.onboard) return NextResponse.json({ error: 'Complete onboarding before joining a company' }, { status: 403 });
 
   // Find company by code
-  const { data: company } = await supabase
-    .from('Company')
-    .select('id, name, status')
-    .eq('joinCode', normalizedCode)
-    .maybeSingle();
+  let company: { id: string; name: string; status: string } | null = null;
+  try {
+    company = await convex().query(api.org.companies.getByJoinCode, { joinCode: normalizedCode });
+  } catch {
+    company = null;
+  }
 
   if (!company) {
     return NextResponse.json({ error: 'Invalid invite code' }, { status: 404 });
@@ -65,12 +67,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Idempotent: already a member?
-  const { data: existing } = await supabase
-    .from('CompanyMembership')
-    .select('id, role')
-    .eq('companyId', company.id)
-    .eq('userId', user.id)
-    .maybeSingle();
+  let existing: { id: string; role: string } | null = null;
+  try {
+    existing = await convex().query(api.org.memberships.getByCompanyUser, {
+      companyId: company.id,
+      userId: user.id,
+    });
+  } catch {
+    existing = null;
+  }
 
   if (existing) {
     return NextResponse.json({ companyName: company.name, alreadyMember: true }, { status: 200 });
@@ -83,13 +88,16 @@ export async function POST(req: NextRequest) {
   // join URL they kept in their email gets a clear 403; the manager
   // doesn't get a silent member_joined notification for someone they
   // already fired.
-  const { data: removalRow } = await supabase
-    .from('CompanyRemoval')
-    .select('companyId')
-    .eq('companyId', company.id)
-    .eq('userId', user.id)
-    .maybeSingle();
-  if (removalRow) {
+  let removed = false;
+  try {
+    removed = await convex().query(api.org.memberships.isRemoved, {
+      companyId: company.id,
+      userId: user.id,
+    });
+  } catch {
+    removed = false;
+  }
+  if (removed) {
     return NextResponse.json(
       { error: 'Your access to this company was removed. Ask the manager to re-invite you by email.' },
       { status: 403 },
@@ -108,11 +116,13 @@ export async function POST(req: NextRequest) {
   }
 
   // Create membership
-  const { error: memberErr } = await supabase
-    .from('CompanyMembership')
-    .insert({ companyId: company.id, userId: user.id, role: 'seller_member' });
-
-  if (memberErr) {
+  try {
+    await convex().mutation(api.org.memberships.create, {
+      companyId: company.id,
+      userId: user.id,
+      role: 'seller_member',
+    });
+  } catch (memberErr) {
     console.error('[manager/join] membership insert failed', memberErr);
     return NextResponse.json({ error: 'Failed to join company' }, { status: 500 });
   }
@@ -122,19 +132,33 @@ export async function POST(req: NextRequest) {
   // is just the intake-config owner — and a seller who belongs to company A
   // joining company B must NOT have B silently steal their workspace. Set it
   // only when currently NULL; never overwrite an existing link.
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id, companyId')
-    .eq('ownerId', user.id)
-    .maybeSingle();
+  let space: { id: string; companyId: string | null } | null = null;
+  try {
+    space = await convex().query(api.workspace.spaces.getByOwnerId, { ownerId: user.id });
+  } catch {
+    space = null;
+  }
   if (space && !space.companyId) {
-    await supabase.from('Space').update({ companyId: company.id }).eq('id', space.id);
+    try {
+      await convex().mutation(api.workspace.spaces.setCompanyById, {
+        id: space.id,
+        companyId: company.id,
+      });
+    } catch {
+      // best-effort: form-config adoption is non-critical, matching the old
+      // fire-and-forget update.
+    }
   }
 
   void audit({ actorClerkId: clerkId, action: 'CREATE', resource: 'CompanyMembership', metadata: { companyId: company.id, role: 'seller_member', method: 'join_code' } });
 
   // Resolve user email for notification
-  const { data: userData } = await supabase.from('User').select('email').eq('id', user.id).maybeSingle();
+  let userData: { email: string | null } | null = null;
+  try {
+    userData = await convex().query(api.org.users.getById, { id: user.id });
+  } catch {
+    userData = null;
+  }
   const joinCopy = notificationForMemberJoined(
     userData?.email ?? 'A new member',
     'seller_member',

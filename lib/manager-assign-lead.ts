@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceByOwnerId } from '@/lib/space';
 import { notifyNewLead } from '@/lib/notify';
 
@@ -31,24 +31,18 @@ export async function assignLeadToSeller(params: {
   // ── Verify the contact belongs to this company ───────────────────────
   // Accept contacts in the manager owner's space (legacy path) OR contacts
   // where companyId is explicitly set (modern intake path).
-  const { data: contactInSpace, error: contactError } = await supabase
-    .from('Contact')
-    .select('*')
-    .eq('id', contactId)
-    .eq('spaceId', managerSpace.id)
-    .maybeSingle();
-  if (contactError) throw contactError;
+  const contactInSpace = await convex().query(api.contacts.contacts.getById, {
+    id: contactId,
+    spaceId: managerSpace.id,
+  });
 
   let contact = contactInSpace;
   if (!contact) {
-    const { data: contactByCompanyId, error: companyContactError } = await supabase
-      .from('Contact')
-      .select('*')
-      .eq('id', contactId)
-      .eq('companyId', company.id)
-      .maybeSingle();
-    if (companyContactError) throw companyContactError;
-    contact = contactByCompanyId;
+    // Modern intake path: contact carries companyId instead of living in the
+    // manager's space. getById has no companyId scope, so fetch by id and match
+    // companyId here — same result as the old `.eq('id').eq('companyId')`.
+    const byId = await convex().query(api.contacts.contacts.getById, { id: contactId });
+    contact = byId && byId.companyId === company.id ? byId : null;
   }
 
   if (!contact) {
@@ -56,13 +50,10 @@ export async function assignLeadToSeller(params: {
   }
 
   // ── Verify the seller is a member of this company ───────────────────
-  const { data: sellerMembership, error: memberError } = await supabase
-    .from('CompanyMembership')
-    .select('id, role, userId')
-    .eq('companyId', company.id)
-    .eq('userId', sellerUserId)
-    .maybeSingle();
-  if (memberError) throw memberError;
+  const sellerMembership = await convex().query(api.org.memberships.getByCompanyUser, {
+    companyId: company.id,
+    userId: sellerUserId,
+  });
   if (!sellerMembership) {
     return { ok: false, error: 'User is not a member of this company', status: 403 };
   }
@@ -74,11 +65,7 @@ export async function assignLeadToSeller(params: {
   }
 
   // ── Fetch the seller's name ───────────────────────────────────────────
-  const { data: sellerUser } = await supabase
-    .from('User')
-    .select('name, email')
-    .eq('id', sellerUserId)
-    .maybeSingle();
+  const sellerUser = await convex().query(api.org.users.getById, { id: sellerUserId });
   const sellerName = sellerUser?.name ?? sellerUser?.email ?? sellerUserId;
 
   // ── Prevent double-assignment ──────────────────────────────────────────
@@ -91,7 +78,8 @@ export async function assignLeadToSeller(params: {
   const newContactId = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  const { error: cloneError } = await supabase.from('Contact').insert({
+  // Convex throws on failure, preserving the old "throw cloneError" contract.
+  await convex().mutation(api.contacts.contacts.create, {
     id: newContactId,
     spaceId: sellerSpace.id,
     name: contact.name,
@@ -114,7 +102,6 @@ export async function assignLeadToSeller(params: {
     applicationRef: contact.applicationRef,
     applicationStatus: contact.applicationStatus,
   });
-  if (cloneError) throw cloneError;
 
   // ── Mark the original contact as assigned ──────────────────────────────
   const assignmentNote = [
@@ -133,17 +120,16 @@ export async function assignLeadToSeller(params: {
     assignedAt: now,
   });
 
-  const { error: updateError } = await supabase
-    .from('Contact')
-    .update({
+  await convex().mutation(api.contacts.contacts.update, {
+    id: contactId,
+    patch: {
       tags: [...existingTags.filter((t: string) => t !== 'new-lead'), 'assigned'],
       notes: assignmentNote,
       applicationStatus: 'assigned',
       applicationStatusNote: assignmentMeta,
-      updatedAt: now,
-    })
-    .eq('id', contactId);
-  if (updateError) throw updateError;
+    },
+    updatedAt: now,
+  });
 
   console.info('[assign-lead] lead assigned', {
     contactId,
@@ -159,7 +145,7 @@ export async function assignLeadToSeller(params: {
       spaceId: sellerSpace.id,
       contactId: newContactId,
       name: contact.name,
-      phone: contact.phone,
+      phone: contact.phone ?? '',
       email: contact.email,
       leadScore: contact.leadScore,
       scoreLabel: contact.scoreLabel,

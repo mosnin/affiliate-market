@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requireManager } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit, type AuditAction } from '@/lib/audit';
 import { logger } from '@/lib/logger';
 
@@ -52,24 +53,30 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // Load the target membership, scoped to this company.
-  const { data: target } = await supabase
-    .from('CompanyMembership')
-    .select('id, userId, role')
-    .eq('id', membershipId)
-    .eq('companyId', ctx.company.id)
-    .maybeSingle();
+  let target: { id: string; userId: string; role: string } | null = null;
+  try {
+    target = await convex().query(api.org.memberships.getByIdScoped, {
+      id: membershipId,
+      companyId: ctx.company.id,
+    });
+  } catch {
+    target = null;
+  }
 
   if (!target) {
     return NextResponse.json({ error: 'Member not found' }, { status: 404 });
   }
 
   // Load the destination membership, scoped to this company.
-  const { data: destination } = await supabase
-    .from('CompanyMembership')
-    .select('id, userId, role')
-    .eq('id', destinationMembershipId)
-    .eq('companyId', ctx.company.id)
-    .maybeSingle();
+  let destination: { id: string; userId: string; role: string } | null = null;
+  try {
+    destination = await convex().query(api.org.memberships.getByIdScoped, {
+      id: destinationMembershipId,
+      companyId: ctx.company.id,
+    });
+  } catch {
+    destination = null;
+  }
 
   if (!destination) {
     return NextResponse.json({ error: 'Destination not found' }, { status: 404 });
@@ -88,10 +95,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // Load both users for name resolution + destination status check.
-  const { data: users } = await supabase
-    .from('User')
-    .select('id, name, email, status')
-    .in('id', [target.userId, destination.userId]);
+  let users: Array<{ id: string; name: string | null; email: string | null; status: string }> = [];
+  try {
+    users = await convex().query(api.org.users.listByIds, {
+      ids: [target.userId, destination.userId],
+    });
+  } catch {
+    users = [];
+  }
 
   const leavingUser = users?.find((u) => u.id === target.userId) ?? null;
   const destinationUser = users?.find((u) => u.id === destination.userId) ?? null;

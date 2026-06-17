@@ -1,5 +1,5 @@
 import { getManagerContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { redirect } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { InviteForm } from '@/components/manager/invite-form';
@@ -54,12 +54,10 @@ export default async function ManagerInvitationsPage() {
   // Pull seat usage alongside invitations so the forms can render capacity
   // inline (and disable submit when at cap) instead of only reacting to the
   // 402 server response. Parallel for speed.
-  const [{ data: invitations }, seatUsage] = await Promise.all([
-    supabase
-      .from('Invitation')
-      .select('*')
-      .eq('companyId', ctx.company.id)
-      .order('createdAt', { ascending: false }),
+  const [invitations, seatUsage] = await Promise.all([
+    convex().query(api.org.invitations.listByCompany, {
+      companyId: ctx.company.id,
+    }),
     getSeatUsage(ctx.company.id),
   ]);
 

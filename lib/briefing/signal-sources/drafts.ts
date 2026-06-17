@@ -25,7 +25,6 @@
  * brief is the morning curated view, the focus card is the working queue.
  */
 
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { HOT_LEAD_THRESHOLD } from '@/lib/constants';
 import type { Signal, SignalGatherer, SignalKind } from '../types';
@@ -97,10 +96,9 @@ export const draftsSource: SignalGatherer = {
     );
     const contactById = new Map<string, { id: string; name: string; leadScore: number | null }>();
     if (contactIds.length > 0) {
-      const { data: contacts } = await supabase
-        .from('Contact')
-        .select('id, name, leadScore')
-        .in('id', contactIds);
+      const contacts = await convex().query(api.contacts.contacts.getManyByIds, {
+        ids: contactIds,
+      });
       for (const c of (contacts ?? []) as Array<{ id: string; name: string; leadScore: number | null }>) {
         contactById.set(c.id, c);
       }

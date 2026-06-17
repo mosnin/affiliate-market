@@ -9,7 +9,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { fireAgentTrigger } from '@/lib/agent/fire-trigger';
 
@@ -52,12 +51,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Validate contact belongs to the stated space
-  const { data: contact } = await supabase
-    .from('Contact')
-    .select('id, name, leadScore')
-    .eq('id', contactId)
-    .eq('spaceId', spaceId)
-    .maybeSingle();
+  const contact = await convex()
+    .query(api.contacts.contacts.getById, { id: contactId, spaceId })
+    .catch(() => null);
 
   if (!contact) {
     return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
@@ -65,30 +61,33 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString();
 
-  // Record as ContactActivity
-  const { error: activityError } = await supabase.from('ContactActivity').insert({
-    id: crypto.randomUUID(),
-    contactId,
-    spaceId,
-    type: 'note',
-    content: `[Inbound ${channel.toUpperCase()}] ${content.slice(0, 500)}`,
-    metadata: {
-      source: 'inbound',
-      channel,
-      draftId: draftId ?? null,
-    },
-  });
-  if (activityError) {
+  // Record as ContactActivity. Convex throws on failure — preserve the old
+  // `if (activityError)` 500 by catching and short-circuiting.
+  try {
+    await convex().mutation(api.contacts.activity.create, {
+      id: crypto.randomUUID(),
+      contactId,
+      spaceId,
+      type: 'note',
+      content: `[Inbound ${channel.toUpperCase()}] ${content.slice(0, 500)}`,
+      metadata: {
+        source: 'inbound',
+        channel,
+        draftId: draftId ?? null,
+      },
+    });
+  } catch (activityError) {
     console.error('[agent/inbound] ContactActivity insert failed', activityError);
     return NextResponse.json({ error: 'Failed to record message' }, { status: 500 });
   }
 
   // Update lastContactedAt
-  await supabase
-    .from('Contact')
-    .update({ lastContactedAt: now, updatedAt: now })
-    .eq('id', contactId)
-    .eq('spaceId', spaceId);
+  await convex().mutation(api.contacts.contacts.update, {
+    id: contactId,
+    spaceId,
+    patch: { lastContactedAt: now },
+    updatedAt: now,
+  });
 
   // Mark draft as responded (Convex; scoped to spaceId, best-effort).
   if (draftId) {

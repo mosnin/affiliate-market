@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import type { FunctionArgs } from 'convex/server';
 import { resolveManagerContext } from '@/lib/agent/manager-context';
@@ -31,16 +30,31 @@ interface MemberSpace {
  *  plus the owner's own Space — the pool's home). Used to validate assignment
  *  targets and to label assigned products. */
 async function loadMemberSpaces(companyId: string, ownerId: string): Promise<MemberSpace[]> {
-  const { data: spaces } = await supabase
-    .from('Space')
-    .select('id, name, ownerId')
-    .or(`companyId.eq.${companyId},ownerId.eq.${ownerId}`)
-    .limit(2000);
-  const rows = (spaces ?? []) as { id: string; name: string; ownerId: string }[];
+  // Reconstruct the old `.or(companyId.eq.X, ownerId.eq.Y)`: every space in the
+  // company, UNION the owner's own space (which may not carry companyId yet).
+  let spaces: { id: string; name: string; ownerId: string }[] = [];
+  try {
+    const [companySpaces, ownerSpace] = await Promise.all([
+      convex().query(api.workspace.spaces.listByCompanyId, { companyId }),
+      convex().query(api.workspace.spaces.getByOwnerId, { ownerId }),
+    ]);
+    const byId = new Map<string, { id: string; name: string; ownerId: string }>();
+    for (const s of companySpaces) byId.set(s.id, { id: s.id, name: s.name, ownerId: s.ownerId });
+    if (ownerSpace) byId.set(ownerSpace.id, { id: ownerSpace.id, name: ownerSpace.name, ownerId: ownerSpace.ownerId });
+    spaces = Array.from(byId.values());
+  } catch {
+    spaces = [];
+  }
+  const rows = spaces;
   if (rows.length === 0) return [];
 
   const ownerIds = Array.from(new Set(rows.map((r) => r.ownerId)));
-  const { data: users } = await supabase.from('User').select('id, name').in('id', ownerIds);
+  let users: Array<{ id: string; name: string | null }> = [];
+  try {
+    users = await convex().query(api.org.users.listByIds, { ids: ownerIds });
+  } catch {
+    users = [];
+  }
   const nameById = new Map((users ?? []).map((u) => [u.id as string, u.name as string | null]));
 
   return rows.map((r) => ({ id: r.id, name: r.name, ownerName: nameById.get(r.ownerId) ?? null }));
@@ -74,11 +88,14 @@ export async function POST(req: NextRequest) {
 
   // The pool's home Space — the manager owner's. Required because Product.spaceId
   // is NOT NULL. A manager with no personal Space can't seed the pool yet.
-  const { data: ownerSpace } = await supabase
-    .from('Space')
-    .select('id')
-    .eq('ownerId', ctx.company.ownerId)
-    .maybeSingle();
+  let ownerSpace: { id: string } | null = null;
+  try {
+    ownerSpace = await convex().query(api.workspace.spaces.getByOwnerId, {
+      ownerId: ctx.company.ownerId,
+    });
+  } catch {
+    ownerSpace = null;
+  }
   if (!ownerSpace?.id) {
     return NextResponse.json(
       { error: 'Set up your own workspace before adding pool products.' },

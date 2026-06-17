@@ -7,7 +7,7 @@
  * label-value pairs for display.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type {
   IntakeFormConfig,
   FormSection,
@@ -46,13 +46,10 @@ export interface ResolvedFormConfig {
 export async function resolveFormConfig(
   spaceId: string,
 ): Promise<ResolvedFormConfig> {
-  const { data: setting, error: settingErr } = await supabase
-    .from('SpaceSetting')
-    .select('formConfig, formConfigSource')
-    .eq('spaceId', spaceId)
-    .maybeSingle();
-
-  if (settingErr) {
+  let setting;
+  try {
+    setting = await convex().query(api.workspace.settings.getBySpace, { spaceId });
+  } catch (settingErr) {
     console.error('[form-versioning] Failed to read SpaceSetting', settingErr);
     return { config: null, source: 'legacy' };
   }
@@ -76,18 +73,10 @@ export async function resolveFormConfig(
     }
 
     // Fall back to company row
-    const { data: space } = await supabase
-      .from('Space')
-      .select('companyId')
-      .eq('id', spaceId)
-      .maybeSingle();
+    const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
 
     if (space?.companyId) {
-      const { data: company } = await supabase
-        .from('Company')
-        .select('companyFormConfig')
-        .eq('id', space.companyId)
-        .maybeSingle();
+      const company = await convex().query(api.org.companies.getById, { id: space.companyId });
 
       if (company?.companyFormConfig) {
         return {

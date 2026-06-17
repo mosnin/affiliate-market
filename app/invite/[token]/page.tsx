@@ -1,6 +1,6 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { Building2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { AcceptButton } from './accept-button';
 
@@ -32,23 +32,17 @@ export default async function AcceptInvitationPage({ params }: Params) {
   const user = await currentUser();
   const currentEmail = user?.emailAddresses?.[0]?.emailAddress ?? '';
 
-  // Fetch invitation directly from DB (avoids server-to-server HTTP which can fail on Vercel)
+  // Fetch invitation directly (avoids server-to-server HTTP which can fail on Vercel).
+  // getByToken returns the Invitation row only; the Company name/logo is composed here.
   let inv: InvitationDetail | null = null;
   let fetchError = '';
   try {
-    const { data, error } = await supabase
-      .from('Invitation')
-      .select('id, status, email, roleToAssign, expiresAt, companyId, Company(name, logoUrl)')
-      .eq('token', token)
-      .maybeSingle();
+    const data = await convex().query(api.org.invitations.getByToken, { token });
 
-    if (error) {
-      console.error('[invite] DB query failed:', error);
-      fetchError = 'Could not load invitation.';
-    } else if (!data) {
+    if (!data) {
       fetchError = 'Invitation not found or has expired.';
     } else {
-      const company = data.Company as unknown as { name: string; logoUrl: string | null } | null;
+      const company = await convex().query(api.org.companies.getById, { id: data.companyId });
       inv = {
         id: data.id,
         status: data.status,

@@ -10,7 +10,7 @@
  * trusted server context (the authed workspace), never raw client input.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type { PlanId } from '@/lib/plans';
 import type { BillingAccount } from '@/lib/billing/credits';
 
@@ -29,31 +29,20 @@ const COMPANY_PLANS = new Set<string>(['team', 'team_plus']);
  * - Otherwise → the space's own balance (free/solo/pro).
  */
 export async function resolveBillingAccount(spaceId: string): Promise<BillingContext> {
-  const { data: space, error } = await supabase
-    .from('Space')
-    .select('id, plan, companyId, ownerId')
-    .eq('id', spaceId)
-    .maybeSingle();
-  if (error) throw error;
+  const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
   if (!space) throw new Error(`resolveBillingAccount: space ${spaceId} not found`);
 
   if (space.companyId) {
-    const { data: company } = await supabase
-      .from('Company')
-      .select('id, plan')
-      .eq('id', space.companyId)
-      .maybeSingle();
+    const company = await convex().query(api.org.companies.getById, { id: space.companyId });
     if (company && COMPANY_PLANS.has(company.plan as string)) {
       // SECURITY (money routing): only pool at the company if the space's
       // owner is a VERIFIED member of it. `Space.companyId` is a loosely-set
       // field — without this check a seller could point their space at any
       // team company and drain its shared credit pool through metered work.
-      const { data: membership } = await supabase
-        .from('CompanyMembership')
-        .select('userId')
-        .eq('companyId', space.companyId)
-        .eq('userId', space.ownerId)
-        .maybeSingle();
+      const membership = await convex().query(api.org.memberships.getByCompanyUser, {
+        companyId: space.companyId,
+        userId: space.ownerId,
+      });
       if (membership) {
         return {
           account: { type: 'company', id: company.id as string },

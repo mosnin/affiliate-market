@@ -1,7 +1,6 @@
 import { redirect, notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { AgentBuilderForm } from '@/components/agents/agent-builder-form';
 import type { CustomAgent } from '@/lib/swarm-types';
@@ -21,13 +20,10 @@ export default async function EditAgentPage({
   if (!space) notFound();
 
   // Verify the authenticated user owns this space.
-  const { data: spaceOwner } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .eq('id', space.ownerId)
-    .maybeSingle();
-  if (!spaceOwner) notFound();
+  const spaceOwner = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: userId })
+    .catch(() => null);
+  if (!spaceOwner || spaceOwner.id !== space.ownerId) notFound();
 
   // Fetch the agent and verify it belongs to this space.
   let agentData: CustomAgent | null = null;

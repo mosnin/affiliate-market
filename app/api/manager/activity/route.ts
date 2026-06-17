@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -165,11 +164,12 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Resolve company spaces ──────────────────────────────────────────────
-  const { data: spaceRows, error: spaceErr } = await supabase
-    .from('Space')
-    .select('id, slug')
-    .eq('companyId', ctx.company.id);
-  if (spaceErr) {
+  let spaceRows: Array<{ id: string; slug: string | null }>;
+  try {
+    spaceRows = await convex().query(api.workspace.spaces.listByCompanyId, {
+      companyId: ctx.company.id,
+    });
+  } catch (spaceErr) {
     console.error('[manager/activity] space lookup failed', spaceErr);
     return NextResponse.json({ error: 'Failed to load activity' }, { status: 500 });
   }
@@ -240,10 +240,7 @@ export async function GET(req: NextRequest) {
   );
   const actorMap: Record<string, { name: string | null; email: string | null }> = {};
   if (clerkIds.length > 0) {
-    const { data: users } = await supabase
-      .from('User')
-      .select('clerkId, name, email')
-      .in('clerkId', clerkIds);
+    const users = await convex().query(api.org.users.listByClerkIds, { clerkIds });
     for (const u of (users ?? []) as Array<{ clerkId: string; name: string | null; email: string | null }>) {
       actorMap[u.clerkId] = { name: u.name, email: u.email };
     }

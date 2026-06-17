@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceForUser } from '@/lib/space';
 import { requireAuth } from '@/lib/api-auth';
 import { scoreLeadApplicationDynamic } from '@/lib/lead-scoring';
@@ -43,25 +43,22 @@ export async function POST(
     throw err;
   }
 
-  const { data: rows, error: fetchError } = await supabase
-    .from('Contact')
-    .select('*')
-    .eq('id', id)
-    .eq('spaceId', space.id);
-  if (fetchError) {
+  let contact: Contact;
+  try {
+    const row = await convex().query(api.contacts.contacts.getById, { id, spaceId: space.id });
+    if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    contact = row as unknown as Contact;
+  } catch (fetchError) {
     console.error('[rescore] Fetch error:', fetchError);
     return NextResponse.json({ error: 'Failed to fetch contact' }, { status: 500 });
   }
-  if (!rows.length) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
-  const contact = rows[0] as Contact;
 
   // Mark as pending while scoring
-  await supabase
-    .from('Contact')
-    .update({ scoringStatus: 'pending' })
-    .eq('id', id)
-    .eq('spaceId', space.id);
+  await convex().mutation(api.contacts.contacts.update, {
+    id,
+    spaceId: space.id,
+    patch: { scoringStatus: 'pending' },
+  });
 
   // Fetch the form config snapshot and scoring model for dynamic scoring.
   // The formConfigSnapshot is stored on the contact at submission time.
@@ -76,11 +73,9 @@ export async function POST(
       const scoringColumn = resolvedLeadType === 'buyer'
         ? 'buyerScoringModel'
         : 'rentalScoringModel';
-      const { data: scoringSettings } = await supabase
-        .from('SpaceSetting')
-        .select(scoringColumn)
-        .eq('spaceId', space.id)
-        .maybeSingle();
+      const scoringSettings = await convex().query(api.workspace.settings.getBySpace, {
+        spaceId: space.id,
+      });
       if (scoringSettings) {
         scoringModel = (scoringSettings as Record<string, unknown>)[scoringColumn] as ScoringModel | null;
       }
@@ -117,29 +112,28 @@ export async function POST(
     });
   } catch (scoringErr) {
     // Reset status to 'failed' so the contact is not stuck in 'pending'
-    await supabase
-      .from('Contact')
-      .update({ scoringStatus: 'failed', updatedAt: new Date().toISOString() })
-      .eq('id', id)
-      .eq('spaceId', space.id);
+    await convex().mutation(api.contacts.contacts.update, {
+      id,
+      spaceId: space.id,
+      patch: { scoringStatus: 'failed' },
+    });
     console.error('[rescore] Scoring failed:', scoringErr);
     return NextResponse.json({ error: 'Scoring failed' }, { status: 500 });
   }
 
-  const { error: updateError } = await supabase
-    .from('Contact')
-    .update({
-      scoringStatus: result.scoringStatus,
-      leadScore: result.leadScore,
-      scoreLabel: result.scoreLabel,
-      scoreSummary: result.scoreSummary,
-      scoreDetails: result.scoreDetails,
-      updatedAt: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .eq('spaceId', space.id);
-
-  if (updateError) {
+  try {
+    await convex().mutation(api.contacts.contacts.update, {
+      id,
+      spaceId: space.id,
+      patch: {
+        scoringStatus: result.scoringStatus,
+        leadScore: result.leadScore,
+        scoreLabel: result.scoreLabel,
+        scoreSummary: result.scoreSummary,
+        scoreDetails: result.scoreDetails,
+      },
+    });
+  } catch (updateError) {
     console.error('[rescore] Update error:', updateError);
     return NextResponse.json({ error: 'Failed to save score' }, { status: 500 });
   }

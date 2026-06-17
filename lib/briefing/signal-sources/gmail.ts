@@ -26,7 +26,6 @@
  * sources in parallel; this one staying tight protects the per-space budget.
  */
 
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { HOT_LEAD_THRESHOLD } from '@/lib/constants';
@@ -224,13 +223,19 @@ async function fetchRecentMessages(args: {
 
 /** Look up the seller's contacts so we can cross-walk participant emails. */
 async function contactsByEmail(spaceId: string): Promise<Map<string, ContactRow>> {
-  const { data, error } = await supabase
-    .from('Contact')
-    .select('id, name, email, leadScore')
-    .eq('spaceId', spaceId)
-    .is('companyId', null)
-    .not('email', 'is', null);
-  if (error || !data) return new Map();
+  // companyId-null contacts for the space. The old `.not('email','is',null)`
+  // filter is unnecessary — the loop below skips rows without an email, so the
+  // result map is identical.
+  let data;
+  try {
+    data = await convex().query(api.contacts.contacts.filterForSpaces, {
+      spaceIds: [spaceId],
+      requireCompanyIdNull: true,
+    });
+  } catch {
+    return new Map();
+  }
+  if (!data) return new Map();
   const map = new Map<string, ContactRow>();
   for (const c of data as ContactRow[]) {
     if (!c.email) continue;

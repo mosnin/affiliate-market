@@ -1,6 +1,6 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { OnboardingFlow } from '@/components/onboarding/onboarding-flow';
 import { OnboardingSeller } from '@/components/onboarding/onboarding-seller';
 import { OnboardingSellerV2 } from '@/components/onboarding/onboarding-seller-v2';
@@ -37,23 +37,16 @@ export default async function SetupPage({
   // form to users who already have one). NEVER throw (generic "Application error").
   let dbUser;
   try {
-    // Two separate queries instead of a join — more robust with PostgREST
-    const { data: row, error } = await supabase
-      .from('User')
-      .select('*')
-      .eq('clerkId', userId)
-      .maybeSingle();
-    if (error) throw error;
+    // Two separate queries instead of a join — User then its owned Space.
+    const row = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
 
     if (row) {
-      const { data: spaceRow } = await supabase
-        .from('Space')
-        .select('id, slug, name')
-        .eq('ownerId', row.id)
-        .maybeSingle();
+      const spaceRow = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: row.id,
+      });
       dbUser = {
         ...row,
-        space: spaceRow ? { id: spaceRow.id as string, slug: spaceRow.slug as string, name: spaceRow.name as string } : null,
+        space: spaceRow ? { id: spaceRow.id, slug: spaceRow.slug } : null,
       };
     } else {
       dbUser = null;
@@ -94,12 +87,17 @@ export default async function SetupPage({
   if (dbUser?.space?.slug) {
     // Check if this user is a manager — redirect to manager dashboard instead
     if (dbUser?.id) {
-      const { data: managerMembership } = await supabase
-        .from('CompanyMembership')
-        .select('id')
-        .eq('userId', dbUser.id)
-        .in('role', ['manager_owner', 'manager_admin'])
-        .maybeSingle();
+      const managerId = dbUser.id;
+      let managerMembership: { id: string } | null = null;
+      try {
+        const rows = await convex().query(api.org.memberships.listByUser, {
+          userId: managerId,
+          roles: ['manager_owner', 'manager_admin'],
+        });
+        managerMembership = rows[0] ?? null;
+      } catch {
+        // non-blocking — fall through to the workspace redirect
+      }
       if (managerMembership) {
         redirect('/manager');
       }
@@ -118,33 +116,23 @@ export default async function SetupPage({
       const name = clerkUser?.fullName ?? clerkUser?.firstName ?? null;
       const now = new Date();
 
-      const { data: upsertedRow, error: upsertError } = await supabase
-        .from('User')
-        .upsert(
-          {
-            id: newId,
-            clerkId: userId,
-            email,
-            name,
-            onboardingStartedAt: now.toISOString(),
-            onboard: false,
-            createdAt: now.toISOString(),
-          },
-          { onConflict: 'clerkId' }
-        )
-        .select()
-        .single();
-      if (upsertError) throw upsertError;
+      const upsertedRow = await convex().mutation(api.org.users.upsertByClerkId, {
+        id: newId,
+        clerkId: userId,
+        email,
+        name,
+        onboardingStartedAt: now.toISOString(),
+        onboard: false,
+        createdAt: now.toISOString(),
+      });
       if (upsertedRow) {
         // Query space separately
-        const { data: spaceRow } = await supabase
-          .from('Space')
-          .select('*')
-          .eq('ownerId', upsertedRow.id)
-          .maybeSingle();
+        const spaceRow = await convex().query(api.workspace.spaces.getByOwnerId, {
+          ownerId: upsertedRow.id,
+        });
         resolvedUser = {
           ...upsertedRow,
-          space: spaceRow ? { id: spaceRow.id as string, slug: spaceRow.slug as string, name: spaceRow.name as string } : null,
+          space: spaceRow ? { id: spaceRow.id, slug: spaceRow.slug } : null,
         };
       }
     } catch (err) {
@@ -176,19 +164,24 @@ export default async function SetupPage({
   // If the user has a manager_admin membership (e.g. accepted an admin invitation),
   // set them as manager_only and redirect to /manager — no workspace needed.
   if (resolvedUser?.id) {
-    const { data: adminMembership } = await supabase
-      .from('CompanyMembership')
-      .select('id')
-      .eq('userId', resolvedUser.id)
-      .eq('role', 'manager_admin')
-      .maybeSingle();
+    const adminUserId = resolvedUser.id;
+    let adminMembership: { id: string } | null = null;
+    try {
+      const rows = await convex().query(api.org.memberships.listByUser, {
+        userId: adminUserId,
+        roles: ['manager_admin'],
+      });
+      adminMembership = rows[0] ?? null;
+    } catch {
+      // non-blocking — fall through to onboarding
+    }
     if (adminMembership) {
       // Ensure accountType is manager_only and onboarding is marked complete
       if (resolvedUser.accountType !== 'manager_only' || !resolvedUser.onboard) {
-        await supabase
-          .from('User')
-          .update({ accountType: 'manager_only', onboard: true })
-          .eq('id', resolvedUser.id);
+        await convex().mutation(api.org.users.updateById, {
+          id: adminUserId,
+          patch: { accountType: 'manager_only', onboard: true },
+        });
       }
       redirect('/manager');
     }

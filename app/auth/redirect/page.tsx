@@ -1,6 +1,6 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 /**
  * /auth/redirect?intent=seller|manager
@@ -23,11 +23,7 @@ export default async function AuthRedirectPage({
   const { intent } = await searchParams;
 
   // Look up the user row
-  const { data: user } = await supabase
-    .from('User')
-    .select('id, accountType')
-    .eq('clerkId', userId)
-    .maybeSingle();
+  const user = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
 
   if (!user) {
     // New user — check if they have a pending invitation before sending to setup.
@@ -37,15 +33,10 @@ export default async function AuthRedirectPage({
       const clerkUser = await currentUser();
       const email = clerkUser?.emailAddresses?.[0]?.emailAddress?.trim().toLowerCase();
       if (email) {
-        const { data: pendingInvite } = await supabase
-          .from('Invitation')
-          .select('token')
-          .eq('email', email)
-          .eq('status', 'pending')
-          .gt('expiresAt', new Date().toISOString())
-          .order('createdAt', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const pendingInvite = await convex().query(api.org.invitations.pendingForEmail, {
+          email,
+          now: new Date().toISOString(),
+        });
         if (pendingInvite?.token) {
           redirect(`/invite/${pendingInvite.token}`);
         }
@@ -59,13 +50,11 @@ export default async function AuthRedirectPage({
   // If user already has manager-level membership, always route to /manager.
   // This prevents invited manager_admin users from being pushed into setup/paywall
   // when they authenticate through non-manager entry points.
-  const { data: managerMembership } = await supabase
-    .from('CompanyMembership')
-    .select('id')
-    .eq('userId', user.id)
-    .in('role', ['manager_owner', 'manager_admin'])
-    .maybeSingle();
-  if (managerMembership) {
+  const managerMemberships = await convex().query(api.org.memberships.listByUser, {
+    userId: user.id,
+    roles: ['manager_owner', 'manager_admin'],
+  });
+  if (managerMemberships.length > 0) {
     redirect('/manager');
   }
 
@@ -76,14 +65,12 @@ export default async function AuthRedirectPage({
 
   if (intent === 'manager') {
     // Check for manager-level membership
-    const { data: membership } = await supabase
-      .from('CompanyMembership')
-      .select('id, role')
-      .eq('userId', user.id)
-      .in('role', ['manager_owner', 'manager_admin'])
-      .maybeSingle();
+    const memberships = await convex().query(api.org.memberships.listByUser, {
+      userId: user.id,
+      roles: ['manager_owner', 'manager_admin'],
+    });
 
-    if (membership) {
+    if (memberships.length > 0) {
       redirect('/manager');
     }
 
@@ -93,11 +80,7 @@ export default async function AuthRedirectPage({
   }
 
   // intent=seller (or no intent) — go to workspace or setup
-  const { data: space } = await supabase
-    .from('Space')
-    .select('slug')
-    .eq('ownerId', user.id)
-    .maybeSingle();
+  const space = await convex().query(api.workspace.spaces.getByOwnerId, { ownerId: user.id });
 
   if (space?.slug) {
     redirect(`/s/${space.slug}`);

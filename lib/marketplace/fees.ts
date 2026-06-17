@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 /**
  * Marketplace economics — the platform's take on GMV.
@@ -15,11 +15,7 @@ export const DEFAULT_MARKETPLACE_FEE_BPS = 1000; // 10%
 /** Resolve the GMV fee rate for a space (override → default). */
 export async function getMarketplaceFeeBps(spaceId: string): Promise<number> {
   try {
-    const { data } = await supabase
-      .from('Space')
-      .select('marketplaceFeeBps')
-      .eq('id', spaceId)
-      .maybeSingle();
+    const data = await convex().query(api.workspace.spaces.getById, { id: spaceId });
     const override = data?.marketplaceFeeBps;
     if (typeof override === 'number' && override >= 0 && override <= 10000) return override;
   } catch {

@@ -6,7 +6,6 @@ import { Sidebar } from '@/components/dashboard/sidebar';
 import { SidebarCollapseProvider } from '@/components/dashboard/sidebar-collapse';
 import { MobileNav } from '@/components/dashboard/mobile-nav';
 import { Header } from '@/components/dashboard/header';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { ensureOnboardingBackfill } from '@/lib/onboarding';
 import { getManagerContext } from '@/lib/permissions';
@@ -46,18 +45,11 @@ export default async function DashboardLayout({
     space: { id: string } | null;
   } | null | undefined;
   try {
-    const { data: row, error } = await supabase
-      .from('User')
-      .select('id, onboard, platformRole, name')
-      .eq('clerkId', userId)
-      .maybeSingle();
-    if (error) throw error;
+    const row = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
     if (row) {
-      const { data: spaceRow } = await supabase
-        .from('Space')
-        .select('id')
-        .eq('ownerId', row.id)
-        .maybeSingle();
+      const spaceRow = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: row.id,
+      });
       dbUser = {
         id: row.id as string,
         name: (row.name as string | null) ?? null,
@@ -145,17 +137,9 @@ export default async function DashboardLayout({
 
   if (!dbUser.isPlatformAdmin) {
     try {
-      const { data: subData, error: subError } = await supabase
-        .from('Space')
-        .select('stripeSubscriptionStatus, stripeSubscriptionId, trialUsedAt')
-        .eq('id', space.id)
-        .maybeSingle();
-
-      if (subError) {
-        console.error('[layout] Subscription check query failed:', subError);
-        // Fail secure — redirect to subscribe rather than granting access
-        redirect(`/subscribe?slug=${slug}`);
-      }
+      const subData = await convex().query(api.workspace.spaces.getById, {
+        id: space.id,
+      });
 
       const status = subData?.stripeSubscriptionStatus ?? 'inactive';
       const hasSubscriptionHistory = !!(subData?.stripeSubscriptionId || subData?.trialUsedAt);
@@ -187,20 +171,18 @@ export default async function DashboardLayout({
   let pendingDraftCount = 0;
   let activeProductCount = 0;
   try {
-    const [leadResult, followUpResult, draftResult, productCount] = await Promise.all([
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .is('companyId', null)
-        .contains('tags', ['new-lead']),
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .is('companyId', null)
-        .not('followUpAt', 'is', null)
-        .lte('followUpAt', new Date().toISOString()),
+    const [leadCount, followUpCount, draftResult, productCount] = await Promise.all([
+      convex().query(api.contacts.contacts.countForSpaces, {
+        spaceIds: [space.id],
+        requireCompanyIdNull: true,
+        tagsAll: ['new-lead'],
+      }),
+      convex().query(api.contacts.contacts.countForSpaces, {
+        spaceIds: [space.id],
+        requireCompanyIdNull: true,
+        followUpNotNull: true,
+        followUpLte: new Date().toISOString(),
+      }),
       convex()
         .query(api.agent.drafts.countBySpaceStatus, { spaceId: space.id, status: 'pending' })
         .then((count) => ({ count })),
@@ -209,9 +191,8 @@ export default async function DashboardLayout({
         listingStatusIn: ['active', 'pending'],
       }),
     ]);
-    if (leadResult.error) throw leadResult.error;
-    unreadLeadCount = leadResult.count ?? 0;
-    overdueFollowUpCount = followUpResult.count ?? 0;
+    unreadLeadCount = leadCount ?? 0;
+    overdueFollowUpCount = followUpCount ?? 0;
     pendingDraftCount = draftResult.count ?? 0;
     activeProductCount = productCount ?? 0;
   } catch {
@@ -227,16 +208,20 @@ export default async function DashboardLayout({
   let companyRole: string | null = null;
   let companyMemberships: { id: string; name: string; role: string }[] = [];
   try {
-    const { data: memberships } = await supabase
-      .from('CompanyMembership')
-      .select('companyId, role, Company(id, name)')
-      .eq('userId', dbUser.id);
+    // Memberships carry companyId only; compose the Company name with a second
+    // read (cross-domain Company embed stays lib-side per the Convex contract).
+    const memberships = await convex().query(api.org.memberships.listByUser, {
+      userId: dbUser.id,
+    });
+    const companyIds = [...new Set(memberships.map((m) => m.companyId))];
+    const companies = companyIds.length
+      ? await convex().query(api.org.companies.listByIds, { ids: companyIds })
+      : [];
+    const nameById = new Map(companies.map((c) => [c.id, c.name]));
 
-    companyMemberships = (memberships ?? []).map((m: any) => ({
-      id: Array.isArray(m.Company) ? m.Company[0]?.id : m.Company?.id,
-      name: Array.isArray(m.Company) ? m.Company[0]?.name : m.Company?.name,
-      role: m.role,
-    })).filter(m => m.id && m.name);
+    companyMemberships = memberships
+      .map((m) => ({ id: m.companyId, name: nameById.get(m.companyId) ?? null, role: m.role as string }))
+      .filter((m): m is { id: string; name: string; role: string } => !!m.id && !!m.name);
 
     if (companyMemberships.length > 0) {
       isManager = companyMemberships.some(m => m.role === 'manager_owner' || m.role === 'manager_admin');

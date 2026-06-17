@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { Building2, ShieldCheck, UserCircle } from 'lucide-react';
 import {
   H1,
@@ -29,12 +29,7 @@ export default async function CompanyInvitesPage({
 
   let userEmail: string | null = null;
   try {
-    const { data: user, error } = await supabase
-      .from('User')
-      .select('email')
-      .eq('clerkId', userId)
-      .maybeSingle();
-    if (error) throw error;
+    const user = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
     userEmail = user?.email?.toLowerCase() ?? null;
   } catch (err) {
     console.error('[settings/company] Failed to fetch user', err);
@@ -76,14 +71,26 @@ export default async function CompanyInvitesPage({
   }> = [];
 
   try {
-    const { data, error } = await supabase
-      .from('Invitation')
-      .select('id, email, roleToAssign, token, status, expiresAt, createdAt, Company(id, name)')
-      .ilike('email', userEmail)
-      .eq('status', 'pending')
-      .order('createdAt', { ascending: false });
-    if (error) throw error;
-    invitations = (data ?? []) as unknown as typeof invitations;
+    // Pending invites for this email (case-insensitive, newest-first), then
+    // compose each Company name with a second read (cross-domain embed lib-side).
+    const rows = await convex().query(api.org.invitations.pendingForEmailList, {
+      email: userEmail,
+    });
+    const companyIds = [...new Set(rows.map((r) => r.companyId))];
+    const companies = companyIds.length
+      ? await convex().query(api.org.companies.listByIds, { ids: companyIds })
+      : [];
+    const companyById = new Map(companies.map((c) => [c.id, { id: c.id, name: c.name }]));
+    invitations = rows.map((r) => ({
+      id: r.id,
+      email: r.email,
+      roleToAssign: r.roleToAssign,
+      token: r.token,
+      status: r.status,
+      expiresAt: r.expiresAt,
+      createdAt: r.createdAt,
+      Company: companyById.get(r.companyId) ?? null,
+    }));
   } catch (err) {
     console.error('[settings/company] Failed to fetch invitations', err);
   }

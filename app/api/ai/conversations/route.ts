@@ -1,6 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -26,13 +25,12 @@ export async function GET(req: NextRequest) {
     const space = await getSpaceFromSlug(slug);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
 
-    const { data: owner } = await supabase
-      .from('User')
-      .select('id')
-      .eq('clerkId', userId)
-      .eq('id', space.ownerId)
-      .maybeSingle();
-    if (!owner) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const owner = await convex()
+      .query(api.org.users.getByClerkId, { clerkId: userId })
+      .catch(() => null);
+    if (!owner || owner.id !== space.ownerId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     let conversations;
     try {
@@ -90,13 +88,12 @@ export async function POST(req: NextRequest) {
     const space = await getSpaceFromSlug(slug);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
 
-    const { data: owner } = await supabase
-      .from('User')
-      .select('id')
-      .eq('clerkId', userId)
-      .eq('id', space.ownerId)
-      .maybeSingle();
-    if (!owner) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const owner = await convex()
+      .query(api.org.users.getByClerkId, { clerkId: userId })
+      .catch(() => null);
+    if (!owner || owner.id !== space.ownerId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     let data;
     try {

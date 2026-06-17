@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 
 /**
@@ -22,15 +22,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'At least 2 IDs required' }, { status: 400 });
   }
 
-  const { data: contacts } = await supabase
-    .from('Contact')
-    .select('id, name, email, phone, budget, leadType, leadScore, scoreLabel, scoreSummary, applicationData, applicationStatus, createdAt')
-    .eq('spaceId', auth.space.id)
-    .in('id', ids);
+  const rows = await convex().query(api.contacts.contacts.getManyByIds, {
+    ids,
+    spaceId: auth.space.id,
+  });
 
-  if (!contacts?.length) {
+  if (!rows?.length) {
     return NextResponse.json({ error: 'No contacts found' }, { status: 404 });
   }
+
+  // Project to the same column set the PostgREST .select() returned, so the
+  // compare client sees an identical shape.
+  const contacts = rows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    email: c.email,
+    phone: c.phone,
+    budget: c.budget,
+    leadType: c.leadType,
+    leadScore: c.leadScore,
+    scoreLabel: c.scoreLabel,
+    scoreSummary: c.scoreSummary,
+    applicationData: c.applicationData,
+    applicationStatus: c.applicationStatus,
+    createdAt: c.createdAt,
+  }));
 
   return NextResponse.json(contacts);
 }

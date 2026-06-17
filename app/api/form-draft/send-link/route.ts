@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { sendDraftResumeEmail } from '@/lib/email';
@@ -56,21 +55,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch space slug and business name
-    const { data: space } = await supabase
-      .from('Space')
-      .select('slug, name')
-      .eq('id', spaceId)
-      .maybeSingle();
+    const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
 
     if (!space) {
       return NextResponse.json({ sent: true });
     }
 
-    const { data: settings } = await supabase
-      .from('SpaceSetting')
-      .select('businessName')
-      .eq('spaceId', spaceId)
-      .maybeSingle();
+    const settings = await convex().query(api.workspace.settings.getBySpace, { spaceId });
 
     const businessName = settings?.businessName || space.name;
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com';

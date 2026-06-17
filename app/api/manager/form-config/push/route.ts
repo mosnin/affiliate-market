@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getManagerMemberContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 import { logger } from '@/lib/logger';
 import { formConfigSchema } from '@/lib/form-config-schema';
@@ -82,14 +82,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const bodyBuyer = formConfigSchema.safeParse(body.buyerFormConfig);
 
   // 1. Load the company's current standard forms (source of truth).
-  const { data: company, error: loadErr } = await supabase
-    .from('Company')
-    .select('id, companyFormConfig, companyRentalFormConfig, companyBuyerFormConfig')
-    .eq('id', ctx.company.id)
-    .maybeSingle();
-
-  if (loadErr) {
-    logger.error('[manager/form-config/push] load failed', { companyId: ctx.company.id }, loadErr);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let company: { companyFormConfig: any; companyRentalFormConfig: any; companyBuyerFormConfig: any } | null;
+  try {
+    company = await convex().query(api.org.companies.getById, { id: ctx.company.id });
+  } catch (loadErr) {
+    logger.error('[manager/form-config/push] load failed', { companyId: ctx.company.id }, loadErr as Error);
     return NextResponse.json({ error: 'Failed to load company form config' }, { status: 500 });
   }
 
@@ -134,15 +132,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // 2. Enumerate seller_member userIds for this company.
-  const { data: memberships, error: memberErr } = await supabase
-    .from('CompanyMembership')
-    .select('userId')
-    .eq('companyId', ctx.company.id)
-    .eq('role', 'seller_member')
-    .returns<MembershipRow[]>();
-
-  if (memberErr) {
-    logger.error('[manager/form-config/push] member fetch failed', { companyId: ctx.company.id }, memberErr);
+  let memberships: MembershipRow[];
+  try {
+    memberships = await convex().query(api.org.memberships.listByCompany, {
+      companyId: ctx.company.id,
+      roles: ['seller_member'],
+    });
+  } catch (memberErr) {
+    logger.error('[manager/form-config/push] member fetch failed', { companyId: ctx.company.id }, memberErr as Error);
     return NextResponse.json({ error: 'Failed to load members' }, { status: 500 });
   }
 
@@ -156,15 +153,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (agentUserIds.length > 0) {
     // 3. Resolve each agent's Space, SCOPED to this company so a
     //    dual-membership seller's Space elsewhere is never written.
-    const { data: spaces, error: spaceErr } = await supabase
-      .from('Space')
-      .select('id, ownerId')
-      .in('ownerId', agentUserIds)
-      .eq('companyId', ctx.company.id)
-      .returns<SpaceRow[]>();
-
-    if (spaceErr) {
-      logger.error('[manager/form-config/push] space fetch failed', { companyId: ctx.company.id }, spaceErr);
+    let spaces: SpaceRow[];
+    try {
+      spaces = await convex().query(api.workspace.spaces.listByCompanyId, {
+        companyId: ctx.company.id,
+        ownerIds: agentUserIds,
+      });
+    } catch (spaceErr) {
+      logger.error('[manager/form-config/push] space fetch failed', { companyId: ctx.company.id }, spaceErr as Error);
       return NextResponse.json({ error: 'Failed to load agent spaces' }, { status: 500 });
     }
 
@@ -185,18 +181,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     //    customisation and (b) decide update-vs-insert per space.
     const settingBySpace = new Map<string, SpaceSettingRow>();
     if (targetSpaceIds.length > 0) {
-      const { data: settings, error: settingErr } = await supabase
-        .from('SpaceSetting')
-        .select('id, spaceId, formConfigSource')
-        .in('spaceId', targetSpaceIds)
-        .returns<SpaceSettingRow[]>();
-
-      if (settingErr) {
-        logger.error('[manager/form-config/push] settings fetch failed', { companyId: ctx.company.id }, settingErr);
+      try {
+        const settings = (
+          await Promise.all(
+            targetSpaceIds.map((spaceId) =>
+              convex().query(api.workspace.settings.getBySpace, { spaceId }),
+            ),
+          )
+        ).filter((s): s is NonNullable<typeof s> => s !== null);
+        for (const row of settings) {
+          settingBySpace.set(row.spaceId, row as unknown as SpaceSettingRow);
+        }
+      } catch (settingErr) {
+        logger.error('[manager/form-config/push] settings fetch failed', { companyId: ctx.company.id }, settingErr as Error);
         return NextResponse.json({ error: 'Failed to load member settings' }, { status: 500 });
-      }
-      for (const row of settings ?? []) {
-        settingBySpace.set(row.spaceId, row);
       }
     }
 
@@ -220,32 +218,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           continue;
         }
 
-        if (setting) {
-          const { error: updateErr } = await supabase
-            .from('SpaceSetting')
-            .update({ ...configUpdate, formConfigSource: 'company' })
-            .eq('spaceId', space.id);
-          if (updateErr) {
-            skipped += 1;
-            logger.error('[manager/form-config/push] update failed', { spaceId: space.id }, updateErr);
-          } else {
-            pushed += 1;
-          }
-        } else {
-          const { error: insertErr } = await supabase
-            .from('SpaceSetting')
-            .insert({
-              id: crypto.randomUUID(),
-              spaceId: space.id,
-              ...configUpdate,
-              formConfigSource: 'company',
-            });
-          if (insertErr) {
-            skipped += 1;
-            logger.error('[manager/form-config/push] insert failed', { spaceId: space.id }, insertErr);
-          } else {
-            pushed += 1;
-          }
+        try {
+          await convex().mutation(api.workspace.settings.upsertBySpace, {
+            spaceId: space.id,
+            fields: { ...configUpdate, formConfigSource: 'company' },
+          });
+          pushed += 1;
+        } catch (writeErr) {
+          skipped += 1;
+          logger.error('[manager/form-config/push] write failed', { spaceId: space.id }, writeErr as Error);
         }
       } catch (err) {
         skipped += 1;

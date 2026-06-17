@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 export interface CompanyMember {
   id: string;
@@ -16,25 +16,21 @@ export interface CompanyMember {
  */
 export async function getCompanyMembers(
   companyId: string,
-  opts?: { includeOnboard?: boolean; includeSpaceName?: boolean }
+  // opts is retained for call-site compatibility; the Convex reads return the
+  // full User/Space rows, so the consumer destructures whichever columns it
+  // needs (onboard / space name) without a per-projection query.
+  _opts?: { includeOnboard?: boolean; includeSpaceName?: boolean }
 ): Promise<CompanyMember[]> {
-  const { data: memberships } = await supabase
-    .from('CompanyMembership')
-    .select('id, role, createdAt, userId')
-    .eq('companyId', companyId)
-    .order('createdAt', { ascending: true });
+  const memberships = await convex().query(api.org.memberships.listByCompany, { companyId });
 
   const raw = memberships ?? [];
   if (raw.length === 0) return [];
 
   const userIds = raw.map((m) => m.userId).filter(Boolean);
 
-  const userSelect = opts?.includeOnboard ? 'id, name, email, onboard' : 'id, name, email';
-  const spaceSelect = opts?.includeSpaceName ? 'ownerId, id, slug, name' : 'ownerId, id, slug';
-
-  const [{ data: users }, { data: spaces }] = await Promise.all([
-    supabase.from('User').select(userSelect).in('id', userIds),
-    supabase.from('Space').select(spaceSelect).in('ownerId', userIds),
+  const [users, spaces] = await Promise.all([
+    convex().query(api.org.users.listByIds, { ids: userIds }),
+    convex().query(api.workspace.spaces.listByOwnerIds, { ownerIds: userIds }),
   ]);
 
   const userMap = new Map((users ?? []).map((u: any) => [u.id, u]));

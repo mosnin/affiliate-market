@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -99,16 +99,23 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Fetch members & spaces for assignment ──────────────────────────────
-  const { data: memberships } = await supabase
-    .from('CompanyMembership')
-    .select('userId')
-    .eq('companyId', company.id);
+  let memberships: Array<{ userId: string }> = [];
+  try {
+    memberships = await convex().query(api.org.memberships.listByCompany, {
+      companyId: company.id,
+    });
+  } catch {
+    memberships = [];
+  }
 
   const memberUserIds = (memberships ?? []).map((m: any) => m.userId).filter(Boolean);
   let memberUsers: any[] = [];
   if (memberUserIds.length > 0) {
-    const { data } = await supabase.from('User').select('id, email').in('id', memberUserIds);
-    memberUsers = data ?? [];
+    try {
+      memberUsers = await convex().query(api.org.users.listByIds, { ids: memberUserIds });
+    } catch {
+      memberUsers = [];
+    }
   }
   const userEmailMap = new Map(memberUsers.map((u: any) => [u.id, u.email]));
 
@@ -122,10 +129,14 @@ export async function POST(req: NextRequest) {
 
   // Get all member user IDs and their spaces
   const allMemberUserIds = (memberships ?? []).map((m: { userId: string }) => m.userId);
-  const { data: allSpaces } = await supabase
-    .from('Space')
-    .select('id, ownerId')
-    .in('ownerId', allMemberUserIds.length > 0 ? allMemberUserIds : ['__none__']);
+  let allSpaces: Array<{ id: string; ownerId: string }> = [];
+  try {
+    allSpaces = await convex().query(api.workspace.spaces.listByOwnerIds, {
+      ownerIds: allMemberUserIds,
+    });
+  } catch {
+    allSpaces = [];
+  }
 
   const spaceByOwner: Record<string, string> = {};
   for (const sp of allSpaces ?? []) {
@@ -227,20 +238,22 @@ export async function POST(req: NextRequest) {
 
   // ── Batch insert ──────────────────────────────────────────────────────
   if (contactsToInsert.length > 0) {
-    // Insert in batches of 100 to stay within Supabase limits
+    // Insert in batches of 100, preserving the per-batch error reporting.
     const BATCH_SIZE = 100;
     for (let i = 0; i < contactsToInsert.length; i += BATCH_SIZE) {
       const batch = contactsToInsert.slice(i, i + BATCH_SIZE);
-      const { error: insertError } = await supabase.from('Contact').insert(batch);
-      if (insertError) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await convex().mutation(api.contacts.contacts.createMany, { rows: batch as any });
+        imported += batch.length;
+      } catch (insertError) {
         console.error('[manager/leads/import] insert error', insertError);
         const batchStart = i + 2;
         const batchEnd = Math.min(i + BATCH_SIZE, contactsToInsert.length) + 1;
-        errors.push(`Failed to insert rows ${batchStart}-${batchEnd}: ${insertError.message}`);
+        const message = insertError instanceof Error ? insertError.message : String(insertError);
+        errors.push(`Failed to insert rows ${batchStart}-${batchEnd}: ${message}`);
         skipped += batch.length;
-        continue;
       }
-      imported += batch.length;
     }
   }
 

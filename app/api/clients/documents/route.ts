@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getClientUser } from '@/lib/client-auth';
 import { clientOwnsContact } from '@/lib/client-portal-data';
@@ -105,13 +104,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'File content does not match declared type' }, { status: 400 });
   }
 
-  const { data: contact } = await supabase
-    .from('Contact')
-    .select('spaceId')
-    .eq('id', contactId)
-    .maybeSingle();
+  const contact = await convex().query(api.contacts.contacts.getById, { id: contactId });
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const spaceId = (contact as { spaceId: string }).spaceId;
+  const spaceId = contact.spaceId;
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
   // Reuse the contact-documents prefix so it lands beside seller-uploaded docs

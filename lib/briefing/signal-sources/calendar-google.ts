@@ -20,7 +20,6 @@
  * external API.
  */
 
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { executeToolForEntity, composioConfigured } from '@/lib/integrations/composio';
 import type { Signal, SignalGatherer } from '../types';
@@ -215,16 +214,17 @@ export const calendarGoogleSource: SignalGatherer = {
     const now = new Date();
     const [events, contactRows] = await Promise.all([
       listEventsWithTimeout(connection.userId, now),
-      supabase
-        .from('Contact')
-        .select('id, name, email')
-        .eq('spaceId', spaceId)
-        .not('email', 'is', null),
+      // Seller's contacts for the space (Convex). The old `.not('email','is',
+      // null)` filter is unnecessary — the loop below skips rows without an
+      // email, so the resulting map is identical.
+      convex()
+        .query(api.contacts.contacts.filterForSpaces, { spaceIds: [spaceId] })
+        .catch(() => [] as ContactLite[]),
     ]);
     if (events.length === 0) return [];
 
     const contactsByEmail = new Map<string, ContactLite>();
-    for (const c of (contactRows.data ?? []) as ContactLite[]) {
+    for (const c of (contactRows ?? []) as ContactLite[]) {
       const email = (c.email ?? '').trim().toLowerCase();
       if (email) contactsByEmail.set(email, c);
     }

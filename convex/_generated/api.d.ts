@@ -46,6 +46,7 @@ import type * as conversations_managerConversations from "../conversations/manag
 import type * as conversations_managerMessages from "../conversations/managerMessages.js";
 import type * as conversations_messages from "../conversations/messages.js";
 import type * as credits_lots from "../credits/lots.js";
+import type * as credits_purge from "../credits/purge.js";
 import type * as credits_txns from "../credits/txns.js";
 import type * as deals_activity from "../deals/activity.js";
 import type * as deals_checklist from "../deals/checklist.js";
@@ -183,6 +184,7 @@ declare const fullApi: ApiFromModules<{
   "conversations/managerMessages": typeof conversations_managerMessages;
   "conversations/messages": typeof conversations_messages;
   "credits/lots": typeof credits_lots;
+  "credits/purge": typeof credits_purge;
   "credits/txns": typeof credits_txns;
   "deals/activity": typeof deals_activity;
   "deals/checklist": typeof deals_checklist;

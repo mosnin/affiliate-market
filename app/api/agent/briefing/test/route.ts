@@ -11,7 +11,6 @@
  */
 
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
@@ -100,10 +99,8 @@ export async function POST() {
 }
 
 async function getSpaceTimezone(spaceId: string): Promise<string> {
-  const { data } = await supabase
-    .from('SpaceSetting')
-    .select('timezone')
-    .eq('spaceId', spaceId)
-    .maybeSingle();
+  const data = await convex()
+    .query(api.workspace.settings.getBySpace, { spaceId })
+    .catch(() => null);
   return (data?.timezone as string | undefined) ?? DEFAULT_TIMEZONE;
 }

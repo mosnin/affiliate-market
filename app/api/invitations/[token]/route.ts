@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 import { notifyManager } from '@/lib/manager-notify';
 import { notificationForMemberJoined } from '@/lib/notification-voice';
@@ -31,15 +31,12 @@ export async function GET(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
   }
 
-  const { data: inv } = await supabase
-    .from('Invitation')
-    .select('id, status, email, roleToAssign, expiresAt, companyId, Company(name, logoUrl)')
-    .eq('token', token)
-    .maybeSingle();
+  const inv = await convex().query(api.org.invitations.getByToken, { token });
 
   if (!inv) return NextResponse.json({ error: 'Invitation not found' }, { status: 404 });
 
-  const company = inv.Company as unknown as { name: string; logoUrl: string | null } | null;
+  // Compose Company(name, logoUrl) lib-side (the old PostgREST embed).
+  const company = await convex().query(api.org.companies.getById, { id: inv.companyId });
   return NextResponse.json({
     id: inv.id,
     status: inv.status,
@@ -62,11 +59,7 @@ export async function POST(_req: Request, { params }: Params) {
   }
 
   // Fetch the invitation with its company
-  const { data: inv } = await supabase
-    .from('Invitation')
-    .select('*')
-    .eq('token', token)
-    .maybeSingle();
+  const inv = await convex().query(api.org.invitations.getByToken, { token });
 
   if (!inv) return NextResponse.json({ error: 'Invitation not found' }, { status: 404 });
   if (inv.status !== 'pending') {
@@ -74,16 +67,12 @@ export async function POST(_req: Request, { params }: Params) {
   }
   if (new Date(inv.expiresAt) < new Date()) {
     // Mark expired
-    await supabase.from('Invitation').update({ status: 'expired' }).eq('id', inv.id);
+    await convex().mutation(api.org.invitations.setStatus, { id: inv.id, status: 'expired' });
     return NextResponse.json({ error: 'Invitation has expired' }, { status: 410 });
   }
 
   // Check company is still active
-  const { data: company } = await supabase
-    .from('Company')
-    .select('id, status')
-    .eq('id', inv.companyId)
-    .maybeSingle();
+  const company = await convex().query(api.org.companies.getById, { id: inv.companyId });
   if (!company) return NextResponse.json({ error: 'Company not found' }, { status: 404 });
   if (company.status === 'suspended') {
     return NextResponse.json({ error: 'This company has been suspended' }, { status: 403 });
@@ -92,39 +81,29 @@ export async function POST(_req: Request, { params }: Params) {
   // Resolve current user — auto-create the DB record if they just signed up
   // (e.g. a new user clicking an invite link who hasn't gone through /setup yet).
   let user: { id: string; email: string } | null = null;
-  const { data: existingUser } = await supabase
-    .from('User')
-    .select('id, email')
-    .eq('clerkId', clerkId)
-    .maybeSingle();
+  const existingUser = await convex().query(api.org.users.getByClerkId, { clerkId });
   if (existingUser) {
-    user = existingUser;
+    user = { id: existingUser.id, email: existingUser.email };
   } else {
     // Auto-provision: fetch profile from Clerk and create the DB record
     const clerkUser = await currentUser();
     if (!clerkUser) return NextResponse.json({ error: 'User not found — complete sign-up first' }, { status: 404 });
     const email = clerkUser.emailAddresses?.[0]?.emailAddress ?? '';
     const name = clerkUser.fullName ?? clerkUser.firstName ?? null;
-    const { data: newUser, error: insertErr } = await supabase
-      .from('User')
-      .upsert(
-        {
-          id: crypto.randomUUID(),
-          clerkId,
-          email,
-          name,
-          onboardingStartedAt: new Date().toISOString(),
-          onboard: false,
-        },
-        { onConflict: 'clerkId' }
-      )
-      .select('id, email')
-      .single();
-    if (insertErr || !newUser) {
+    try {
+      const newUser = await convex().mutation(api.org.users.upsertByClerkId, {
+        id: crypto.randomUUID(),
+        clerkId,
+        email,
+        name,
+        onboardingStartedAt: new Date().toISOString(),
+        onboard: false,
+      });
+      user = { id: newUser.id, email: newUser.email };
+    } catch (insertErr) {
       console.error('[invitations/accept] auto-provision user failed', insertErr);
       return NextResponse.json({ error: 'Failed to create user account' }, { status: 500 });
     }
-    user = newUser;
   }
   if (!user) return NextResponse.json({ error: 'User not found — complete sign-up first' }, { status: 404 });
 
@@ -137,15 +116,13 @@ export async function POST(_req: Request, { params }: Params) {
   }
 
   // Idempotent: already a member?
-  const { data: existingMembership } = await supabase
-    .from('CompanyMembership')
-    .select('id')
-    .eq('companyId', inv.companyId)
-    .eq('userId', user.id)
-    .maybeSingle();
+  const existingMembership = await convex().query(api.org.memberships.getByCompanyUser, {
+    companyId: inv.companyId,
+    userId: user.id,
+  });
   if (existingMembership) {
     // Mark accepted and return OK
-    await supabase.from('Invitation').update({ status: 'accepted' }).eq('id', inv.id);
+    await convex().mutation(api.org.invitations.setStatus, { id: inv.id, status: 'accepted' });
     return NextResponse.json({ message: 'Already a member', roleToAssign: inv.roleToAssign }, { status: 200 });
   }
 
@@ -164,15 +141,14 @@ export async function POST(_req: Request, { params }: Params) {
   }
 
   // Create membership
-  const { error: memberErr } = await supabase
-    .from('CompanyMembership')
-    .insert({
+  try {
+    await convex().mutation(api.org.memberships.create, {
       companyId: inv.companyId,
       userId: user.id,
       role: inv.roleToAssign,
       invitedById: inv.invitedById,
     });
-  if (memberErr) {
+  } catch (memberErr) {
     console.error('[invitations/accept] membership insert failed', memberErr);
     return NextResponse.json({ error: 'Failed to join company' }, { status: 500 });
   }
@@ -182,41 +158,38 @@ export async function POST(_req: Request, { params }: Params) {
   // revives them. Without this flip, the agent would create the membership
   // row, then bounce at every API call because the auth gate still 403s.
   // Best-effort — a failure here is not fatal (the membership exists, a
-  // future admin action can re-activate).
-  await supabase
-    .from('User')
-    .update({ status: 'active' })
-    .eq('id', user.id)
-    .eq('status', 'offboarded');
+  // future admin action can re-activate). expectedStatus reproduces the
+  // `.eq('status', 'offboarded')` CAS guard.
+  await convex().mutation(api.org.users.updateById, {
+    id: user.id,
+    expectedStatus: 'offboarded',
+    patch: { status: 'active' },
+  });
 
   // Adopt this company's intake form-config ONLY if the Space isn't already
   // linked. Never overwrite an existing link: a seller already in company A
   // accepting an invite to company B keeps A as their workspace's form-config
   // owner. Access comes from the membership row above; Space.companyId is only
   // the intake-config owner.
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id, companyId')
-    .eq('ownerId', user.id)
-    .maybeSingle();
+  const space = await convex().query(api.workspace.spaces.getByOwnerId, { ownerId: user.id });
   if (space && !space.companyId) {
-    await supabase
-      .from('Space')
-      .update({ companyId: inv.companyId })
-      .eq('id', space.id);
+    await convex().mutation(api.workspace.spaces.setCompanyById, {
+      id: space.id,
+      companyId: inv.companyId,
+    });
   }
 
   // For manager_admin invitees without a Space, set them as manager_only
   // so they skip subscription/workspace requirements.
   if (inv.roleToAssign === 'manager_admin' && !space) {
-    await supabase
-      .from('User')
-      .update({ accountType: 'manager_only', onboard: true })
-      .eq('id', user.id);
+    await convex().mutation(api.org.users.updateById, {
+      id: user.id,
+      patch: { accountType: 'manager_only', onboard: true },
+    });
   }
 
   // Mark invitation accepted
-  await supabase.from('Invitation').update({ status: 'accepted' }).eq('id', inv.id);
+  await convex().mutation(api.org.invitations.setStatus, { id: inv.id, status: 'accepted' });
 
   void audit({ actorClerkId: clerkId, action: 'CREATE', resource: 'CompanyMembership', metadata: { companyId: inv.companyId, role: inv.roleToAssign, method: 'email_invitation', invitationId: inv.id } });
 

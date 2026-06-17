@@ -23,7 +23,6 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
@@ -116,17 +115,24 @@ export const scheduleDemoTool = defineTool<typeof parameters, ScheduleDemoResult
     let guestPhone: string | null = args.guestPhone?.trim() || null;
 
     if (args.contactId) {
-      const { data: contact, error } = await supabase
-        .from('Contact')
-        .select('id, name, email, phone')
-        .eq('id', args.contactId)
-        .eq('spaceId', ctx.space.id)
-        .is('companyId', null)
-        .maybeSingle();
-      if (error) {
-        return { summary: `Contact lookup failed: ${error.message}`, display: 'error' };
+      let contact: {
+        id: string;
+        name: string;
+        email: string | null;
+        phone: string | null;
+        companyId: string | null;
+      } | null;
+      try {
+        contact = await convex().query(api.contacts.contacts.getById, {
+          id: args.contactId,
+          spaceId: ctx.space.id,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'unknown error';
+        return { summary: `Contact lookup failed: ${message}`, display: 'error' };
       }
-      if (!contact) {
+      // Preserve the `.is('companyId', null)` workspace-only filter.
+      if (!contact || contact.companyId !== null) {
         return {
           summary: `No contact with id "${args.contactId}" in this workspace.`,
           display: 'error',
@@ -174,15 +180,16 @@ export const scheduleDemoTool = defineTool<typeof parameters, ScheduleDemoResult
 
     // Audit the demo on the Contact's activity feed when linked.
     if (contactId) {
-      const { error: activityErr } = await supabase.from('ContactActivity').insert({
-        id: crypto.randomUUID(),
-        spaceId: ctx.space.id,
-        contactId,
-        type: 'meeting',
-        content: `Demo scheduled${args.productAddress ? ` at ${args.productAddress}` : ''}`,
-        metadata: { demoId, via: 'on_demand_agent' },
-      });
-      if (activityErr) {
+      try {
+        await convex().mutation(api.contacts.activity.create, {
+          id: crypto.randomUUID(),
+          spaceId: ctx.space.id,
+          contactId,
+          type: 'meeting',
+          content: `Demo scheduled${args.productAddress ? ` at ${args.productAddress}` : ''}`,
+          metadata: { demoId, via: 'on_demand_agent' },
+        });
+      } catch (activityErr) {
         logger.warn(
           '[tools.schedule_demo] activity insert failed',
           { contactId, demoId },

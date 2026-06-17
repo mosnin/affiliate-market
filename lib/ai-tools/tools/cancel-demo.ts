@@ -7,7 +7,6 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { deleteGoogleEvent } from '@/lib/gcal-helpers';
@@ -98,15 +97,16 @@ export const cancelDemoTool = defineTool<typeof parameters, CancelDemoResult>({
     }
 
     if (demo.contactId) {
-      const { error: activityErr } = await supabase.from('ContactActivity').insert({
-        id: crypto.randomUUID(),
-        spaceId: ctx.space.id,
-        contactId: demo.contactId,
-        type: 'note',
-        content: `Demo cancelled: ${args.reason}`,
-        metadata: { demoId: args.demoId, via: 'on_demand_agent' },
-      });
-      if (activityErr) {
+      try {
+        await convex().mutation(api.contacts.activity.create, {
+          id: crypto.randomUUID(),
+          spaceId: ctx.space.id,
+          contactId: demo.contactId,
+          type: 'note',
+          content: `Demo cancelled: ${args.reason}`,
+          metadata: { demoId: args.demoId, via: 'on_demand_agent' },
+        });
+      } catch (activityErr) {
         logger.warn('[tools.cancel_demo] activity insert failed', { demoId: args.demoId }, activityErr);
       }
     }

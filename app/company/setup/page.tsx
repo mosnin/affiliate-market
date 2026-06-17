@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getManagerContext } from '@/lib/permissions';
 import { CompanySetupClient } from './company-setup-client';
 
@@ -16,20 +16,14 @@ export default async function CompanyPage() {
   const { userId } = await auth();
   if (!userId) redirect('/login/seller');
 
-  const { data: user } = await supabase
-    .from('User')
-    .select('id, onboard')
-    .eq('clerkId', userId)
-    .maybeSingle();
+  const user = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
 
   if (!user) redirect('/setup');
   if (!user.onboard) redirect('/setup');
 
-  const { data: space } = await supabase
-    .from('Space')
-    .select('slug')
-    .eq('ownerId', user.id)
-    .maybeSingle();
+  const space = await convex().query(api.workspace.spaces.getByOwnerId, {
+    ownerId: user.id,
+  });
 
   if (!space) redirect('/setup');
 
@@ -48,18 +42,15 @@ export default async function CompanyPage() {
 
   // Already a seller_member? Also redirect
   if (!existingCompanyName) {
-    const { data: membership } = await supabase
-      .from('CompanyMembership')
-      .select('companyId')
-      .eq('userId', user.id)
-      .eq('role', 'seller_member')
-      .maybeSingle();
+    const sellerMemberships = await convex().query(api.org.memberships.listByUser, {
+      userId: user.id,
+      roles: ['seller_member'],
+    });
+    const membership = sellerMemberships[0] ?? null;
     if (membership) {
-      const { data: company } = await supabase
-        .from('Company')
-        .select('name')
-        .eq('id', membership.companyId)
-        .maybeSingle();
+      const company = await convex().query(api.org.companies.getById, {
+        id: membership.companyId,
+      });
       existingCompanyName = company?.name ?? 'Your company';
       existingCompanyId = membership.companyId;
     }

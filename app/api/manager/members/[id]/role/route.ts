@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requireManager, canManageRoles, canChangeRole } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 
 type Params = { params: Promise<{ id: string }> };
@@ -43,12 +43,15 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   // Fetch the membership
-  const { data: membership } = await supabase
-    .from('CompanyMembership')
-    .select('id, userId, role')
-    .eq('id', membershipId)
-    .eq('companyId', ctx.company.id)
-    .maybeSingle();
+  let membership: { id: string; userId: string; role: string } | null = null;
+  try {
+    membership = await convex().query(api.org.memberships.getByIdScoped, {
+      id: membershipId,
+      companyId: ctx.company.id,
+    });
+  } catch {
+    membership = null;
+  }
 
   if (!membership) {
     return NextResponse.json({ error: 'Member not found' }, { status: 404 });
@@ -69,13 +72,13 @@ export async function PATCH(req: Request, { params }: Params) {
   // Scope the update to both the membership ID and company ID to prevent
   // a TOCTOU race where membership might have moved companies between the
   // fetch above and this write.
-  const { error: updateErr } = await supabase
-    .from('CompanyMembership')
-    .update({ role })
-    .eq('id', membershipId)
-    .eq('companyId', ctx.company.id);
-
-  if (updateErr) {
+  try {
+    await convex().mutation(api.org.memberships.updateRole, {
+      id: membershipId,
+      companyId: ctx.company.id,
+      role: role as 'manager_admin' | 'seller_member',
+    });
+  } catch (updateErr) {
     console.error('[manager/members/role] update failed', updateErr);
     return NextResponse.json({ error: 'Failed to update role' }, { status: 500 });
   }

@@ -1,6 +1,7 @@
 import { query, mutation } from '../_generated/server';
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
+import { purgeCreditRowsForAccount } from '../credits/purge';
 
 /**
  * Space data access — the Convex replacement for every `.from('Space')` read &
@@ -518,6 +519,11 @@ export const removeBySlug = mutation({
       .withIndex('by_space_active', (q) => q.eq('spaceId', s.id))
       .collect();
     for (const row of disabled) await ctx.db.delete(row._id);
+
+    // PG trigger parity: trg_purge_credits_on_space_delete purged the space's
+    // credit lots + txns. No FK in Convex, so do it here, atomically with the
+    // space delete (money-adjacent — no orphan credit rows).
+    await purgeCreditRowsForAccount(ctx, 'space', s.id);
 
     await ctx.db.delete(s._id);
     return { deleted: true };

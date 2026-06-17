@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { sendCompanyInvitation } from '@/lib/email';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { audit } from '@/lib/audit';
@@ -50,12 +50,15 @@ export async function POST(req: Request) {
   const { company, dbUserId } = ctx;
 
   // Cap: max 100 pending invitations per company
-  const { count: pendingCount } = await supabase
-    .from('Invitation')
-    .select('*', { count: 'exact', head: true })
-    .eq('companyId', company.id)
-    .eq('status', 'pending')
-    .gt('expiresAt', new Date().toISOString());
+  let pendingCount = 0;
+  try {
+    pendingCount = await convex().query(api.org.invitations.countPending, {
+      companyId: company.id,
+      now: new Date().toISOString(),
+    });
+  } catch {
+    pendingCount = 0;
+  }
   if ((pendingCount ?? 0) >= 100) {
     return NextResponse.json(
       { error: 'Too many pending invitations. Cancel some before sending more.' },
@@ -64,38 +67,50 @@ export async function POST(req: Request) {
   }
 
   // Check if this email already belongs to a member
-  const { data: existingUser } = await supabase
-    .from('User')
-    .select('id')
-    .eq('email', trimmedEmail)
-    .maybeSingle();
+  let existingUser: { id: string } | null = null;
+  try {
+    existingUser = await convex().query(api.org.users.getByEmail, { email: trimmedEmail });
+  } catch {
+    existingUser = null;
+  }
   if (existingUser) {
-    const { data: existingMember } = await supabase
-      .from('CompanyMembership')
-      .select('id')
-      .eq('companyId', company.id)
-      .eq('userId', existingUser.id)
-      .maybeSingle();
+    let existingMember: { id: string } | null = null;
+    try {
+      existingMember = await convex().query(api.org.memberships.getByCompanyUser, {
+        companyId: company.id,
+        userId: existingUser.id,
+      });
+    } catch {
+      existingMember = null;
+    }
     if (existingMember) {
       return NextResponse.json({ error: 'This person is already a member of your company' }, { status: 409 });
     }
   }
 
   // Idempotency: return existing pending invite for this email, but resend the email
-  const { data: existing } = await supabase
-    .from('Invitation')
-    .select('*')
-    .eq('companyId', company.id)
-    .eq('email', trimmedEmail)
-    .eq('status', 'pending')
-    .maybeSingle();
+  let existing: { id: string; roleToAssign: string; token: string } | null = null;
+  try {
+    existing = await convex().query(api.org.invitations.pendingForCompanyEmail, {
+      companyId: company.id,
+      email: trimmedEmail,
+    });
+  } catch {
+    existing = null;
+  }
   if (existing) {
     // Resend the invitation email (original may have failed or been missed)
     try {
+      let resendInviter: { name: string | null } | null = null;
+      try {
+        resendInviter = await convex().query(api.org.users.getById, { id: dbUserId });
+      } catch {
+        resendInviter = null;
+      }
       await sendCompanyInvitation({
         toEmail: trimmedEmail,
         companyName: company.name,
-        inviterName: (await supabase.from('User').select('name, email').eq('id', dbUserId).maybeSingle()).data?.name ?? 'Someone',
+        inviterName: resendInviter?.name ?? 'Someone',
         roleToAssign: existing.roleToAssign as 'manager_admin' | 'seller_member',
         token: existing.token,
       });
@@ -125,26 +140,30 @@ export async function POST(req: Request) {
   }
 
   // Resolve inviter name for email
-  const { data: inviterUser } = await supabase
-    .from('User')
-    .select('name, email')
-    .eq('id', dbUserId)
-    .maybeSingle();
+  let inviterUser: { name: string | null; email: string | null } | null = null;
+  try {
+    inviterUser = await convex().query(api.org.users.getById, { id: dbUserId });
+  } catch {
+    inviterUser = null;
+  }
   const inviterName = inviterUser?.name ?? inviterUser?.email ?? 'Someone';
 
   // Create invitation
-  const { data: invitation, error: invErr } = await supabase
-    .from('Invitation')
-    .insert({
+  let invitation: { id: string; token: string } | null = null;
+  try {
+    const result = await convex().mutation(api.org.invitations.create, {
       companyId: company.id,
       email: trimmedEmail,
-      roleToAssign,
+      roleToAssign: roleToAssign as 'manager_admin' | 'seller_member',
       invitedById: dbUserId,
-    })
-    .select()
-    .single();
-  if (invErr || !invitation) {
+    });
+    invitation = result.invitation;
+  } catch (invErr) {
     console.error('[manager/invite] insert failed', invErr);
+    return NextResponse.json({ error: 'Failed to create invitation' }, { status: 500 });
+  }
+  if (!invitation) {
+    console.error('[manager/invite] insert failed');
     return NextResponse.json({ error: 'Failed to create invitation' }, { status: 500 });
   }
 

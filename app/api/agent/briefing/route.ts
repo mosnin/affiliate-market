@@ -15,7 +15,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
@@ -32,11 +31,9 @@ const DEFAULT_TIMEZONE = 'America/New_York';
  * would already see "tomorrow's brief" because UTC has rolled over.
  */
 async function todayLocalDate(spaceId: string): Promise<string> {
-  const { data } = await supabase
-    .from('SpaceSetting')
-    .select('timezone')
-    .eq('spaceId', spaceId)
-    .maybeSingle();
+  const data = await convex()
+    .query(api.workspace.settings.getBySpace, { spaceId })
+    .catch(() => null);
   return localDateIn(new Date(), (data?.timezone as string | undefined) ?? DEFAULT_TIMEZONE);
 }
 
@@ -64,11 +61,9 @@ export async function GET(req: NextRequest) {
   // The one-day backward window is hard: there is no ?day=2-days-ago.
   const dayParam = req.nextUrl.searchParams.get('day');
   if (dayParam === 'yesterday') {
-    const { data: tz } = await supabase
-      .from('SpaceSetting')
-      .select('timezone')
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const tz = await convex()
+      .query(api.workspace.settings.getBySpace, { spaceId: space.id })
+      .catch(() => null);
     const yForDate = localDateOffset(
       (tz?.timezone as string | undefined) ?? DEFAULT_TIMEZONE,
       -1,
@@ -94,11 +89,9 @@ export async function GET(req: NextRequest) {
   // Whether to show the one-line intro on this brief. Null means the
   // seller has never seen a brief — the intro renders. Once 'seen'
   // PATCH fires the column gets stamped and the intro never returns.
-  const { data: setting } = await supabase
-    .from('SpaceSetting')
-    .select('briefIntroSeenAt')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const setting = await convex()
+    .query(api.workspace.settings.getBySpace, { spaceId: space.id })
+    .catch(() => null);
   const showIntro = setting?.briefIntroSeenAt == null;
 
   const existing = await convex().query(api.portal.briefs.getBySpaceDate, {
@@ -249,12 +242,18 @@ export async function PATCH(req: NextRequest) {
   // The first ever 'seen' PATCH stamps briefIntroSeenAt so the one-line
   // intro never reappears. Only on 'seen' (not 'acted') because the
   // intro lives on the live brief surface, not on acted-then-collapsed.
+  // The PG `.is('briefIntroSeenAt', null)` guard becomes a read-check-write:
+  // only stamp when currently unset, so a re-fired 'seen' never overwrites it.
   if (body.event === 'seen') {
-    await supabase
-      .from('SpaceSetting')
-      .update({ briefIntroSeenAt: nowIso })
-      .eq('spaceId', space.id)
-      .is('briefIntroSeenAt', null);
+    const current = await convex()
+      .query(api.workspace.settings.getBySpace, { spaceId: space.id })
+      .catch(() => null);
+    if (current?.briefIntroSeenAt == null) {
+      await convex().mutation(api.workspace.settings.upsertBySpace, {
+        spaceId: space.id,
+        fields: { briefIntroSeenAt: nowIso },
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });

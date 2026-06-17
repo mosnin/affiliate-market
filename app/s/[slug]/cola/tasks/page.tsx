@@ -3,7 +3,6 @@ import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { cn } from '@/lib/utils';
 import { ColaPageShell } from '@/components/cola/cola-page-shell';
@@ -70,13 +69,10 @@ export default async function AgentTasksPage({
   if (!space) notFound();
 
   // Verify the authenticated user owns this space.
-  const { data: spaceOwner } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .eq('id', space.ownerId)
-    .maybeSingle();
-  if (!spaceOwner) notFound();
+  const spaceOwner = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: userId })
+    .catch(() => null);
+  if (!spaceOwner || spaceOwner.id !== space.ownerId) notFound();
 
   let tasks: AgentTask[] | null = null;
   let error: unknown = null;

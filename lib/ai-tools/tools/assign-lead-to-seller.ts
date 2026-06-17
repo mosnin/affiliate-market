@@ -19,7 +19,7 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
 
@@ -51,64 +51,74 @@ export const assignLeadToSellerTool = defineTool<typeof parameters, AssignResult
 
   async handler(args, ctx) {
     // ── Manager-role gate ────────────────────────────────────────────────────
-    const { data: callerUser } = await supabase
-      .from('User')
-      .select('id')
-      .eq('clerkId', ctx.userId)
-      .maybeSingle();
+    let callerUser: { id: string } | null = null;
+    try {
+      callerUser = await convex().query(api.org.users.getByClerkId, { clerkId: ctx.userId });
+    } catch {
+      callerUser = null;
+    }
     if (!callerUser) {
       return { summary: 'Manager access required.', display: 'error' };
     }
-    const { data: callerMemberships } = await supabase
-      .from('CompanyMembership')
-      .select('companyId')
-      .eq('userId', (callerUser as { id: string }).id)
-      .in('role', ['manager_owner', 'manager_admin']);
-    const callerCompanyIds = new Set(
-      ((callerMemberships ?? []) as Array<{ companyId: string }>).map((m) => m.companyId),
-    );
+    let callerMemberships: Array<{ companyId: string }> = [];
+    try {
+      callerMemberships = await convex().query(api.org.memberships.listByUser, {
+        userId: callerUser.id,
+        roles: ['manager_owner', 'manager_admin'],
+      });
+    } catch {
+      callerMemberships = [];
+    }
+    const callerCompanyIds = new Set(callerMemberships.map((m) => m.companyId));
     if (callerCompanyIds.size === 0) {
       return { summary: 'Manager access required.', display: 'error' };
     }
 
     // ── Seller must be in the same company ──────────────────────────────
-    const { data: sellerMembership } = await supabase
-      .from('CompanyMembership')
-      .select('companyId, userId')
-      .eq('userId', args.sellerUserId)
-      .maybeSingle();
-    if (
-      !sellerMembership ||
-      !callerCompanyIds.has((sellerMembership as { companyId: string }).companyId)
-    ) {
+    // The old code used `.eq('userId').maybeSingle()` (one membership per
+    // seller); listByUser returns the set — take the first to mirror that.
+    let sellerMembership: { companyId: string; userId: string } | null = null;
+    try {
+      const sellerMemberships = await convex().query(api.org.memberships.listByUser, {
+        userId: args.sellerUserId,
+      });
+      sellerMembership = sellerMemberships[0] ?? null;
+    } catch {
+      sellerMembership = null;
+    }
+    if (!sellerMembership || !callerCompanyIds.has(sellerMembership.companyId)) {
       return { summary: 'That seller is not in your company.', display: 'error' };
     }
 
     // ── Contact must exist (in this space OR linked to the company) ──────
-    const { data: contact } = await supabase
-      .from('Contact')
-      .select('id, name, spaceId, companyId')
-      .eq('id', args.personId)
-      .maybeSingle();
+    // Unscoped lookup by id (the old `.eq('id').maybeSingle()` with no
+    // spaceId) — omit spaceId so getById returns the row regardless of space.
+    let contact: { id: string; name: string; spaceId: string; companyId: string | null } | null;
+    try {
+      contact = await convex().query(api.contacts.contacts.getById, { id: args.personId });
+    } catch {
+      contact = null;
+    }
     if (!contact) {
       return { summary: 'Contact not found.', display: 'error' };
     }
     const c = contact as { id: string; name: string; spaceId: string; companyId: string | null };
-    const companyId = (sellerMembership as { companyId: string }).companyId;
+    const companyId = sellerMembership.companyId;
     const callerOwnsThisContact = c.spaceId === ctx.space.id || c.companyId === companyId;
     if (!callerOwnsThisContact) {
       return { summary: 'Contact not in your company.', display: 'error' };
     }
 
     // ── Fetch seller name for the audit note ──────────────────────────────
-    const { data: seller } = await supabase
-      .from('User')
-      .select('id, name, email')
-      .eq('id', args.sellerUserId)
-      .maybeSingle();
+    let seller: { id: string; name?: string | null; email?: string | null } | null = null;
+    try {
+      seller = await convex().query(api.org.users.getById, { id: args.sellerUserId });
+    } catch {
+      seller = null;
+    }
     const sellerName =
-      (seller as { name?: string | null } | null)?.name ??
-      (seller as { email?: string } | null)?.email ??
+      seller?.name ??
+      seller?.email ??
       args.sellerUserId;
 
     // ── Audit-only update: applicationStatusNote + activity note. No clone.
@@ -126,29 +136,38 @@ export const assignLeadToSellerTool = defineTool<typeof parameters, AssignResult
     // linked to a company the caller administers. The read-then-write
     // pattern is safe only if the write carries the same scope; a
     // concurrent manager-merge or reassign-elsewhere could otherwise let
-    // the UPDATE land on a row that has since moved out of scope.
-    const updateBuilder = supabase
-      .from('Contact')
-      .update({ applicationStatusNote: meta, updatedAt: now })
-      .eq('id', c.id);
-    const scopedUpdate = c.spaceId === ctx.space.id
-      ? updateBuilder.eq('spaceId', ctx.space.id)
-      : updateBuilder.eq('companyId', companyId);
-    const { error: updateErr } = await scopedUpdate;
-    if (updateErr) {
+    // the UPDATE land on a row that has since moved out of scope. The
+    // update mutation enforces the same CAS via its spaceId/companyId args
+    // (returns null on scope mismatch).
+    try {
+      const updated = await convex().mutation(api.contacts.contacts.update, {
+        id: c.id,
+        ...(c.spaceId === ctx.space.id
+          ? { spaceId: ctx.space.id }
+          : { companyId }),
+        patch: { applicationStatusNote: meta },
+        updatedAt: now,
+      });
+      if (!updated) {
+        logger.error('[tools.assign_lead] update missed scope', { contactId: c.id });
+        return { summary: 'Reassignment failed: contact moved out of scope.', display: 'error' };
+      }
+    } catch (updateErr) {
       logger.error('[tools.assign_lead] update failed', { contactId: c.id }, updateErr);
-      return { summary: `Reassignment failed: ${updateErr.message}`, display: 'error' };
+      const message = updateErr instanceof Error ? updateErr.message : 'unknown error';
+      return { summary: `Reassignment failed: ${message}`, display: 'error' };
     }
 
-    const { error: activityErr } = await supabase.from('ContactActivity').insert({
-      id: crypto.randomUUID(),
-      contactId: c.id,
-      spaceId: c.spaceId,
-      type: 'note',
-      content: `Reassigned to ${sellerName}: ${args.why}`,
-      metadata: { sellerUserId: args.sellerUserId, via: 'on_demand_agent' },
-    });
-    if (activityErr) {
+    try {
+      await convex().mutation(api.contacts.activity.create, {
+        id: crypto.randomUUID(),
+        contactId: c.id,
+        spaceId: c.spaceId,
+        type: 'note',
+        content: `Reassigned to ${sellerName}: ${args.why}`,
+        metadata: { sellerUserId: args.sellerUserId, via: 'on_demand_agent' },
+      });
+    } catch (activityErr) {
       logger.warn('[tools.assign_lead] activity insert failed', { contactId: c.id }, activityErr);
     }
 

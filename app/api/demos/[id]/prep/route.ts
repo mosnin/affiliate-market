@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
@@ -27,11 +26,9 @@ export async function GET(
   if (!space || demo.spaceId !== space.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   // Fetch space timezone for correct date/time display
-  const { data: spaceSettings } = await supabase
-    .from('SpaceSetting')
-    .select('timezone')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const spaceSettings = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
   const timezone = spaceSettings?.timezone || 'America/New_York';
 
   // Build the prep card from CRM data
@@ -67,7 +64,7 @@ export async function GET(
 
   // If linked to a contact, pull their data
   if (demo.contactId) {
-    const { data: contact } = await supabase.from('Contact').select('*').eq('id', demo.contactId).maybeSingle();
+    const contact = await convex().query(api.contacts.contacts.getById, { id: demo.contactId });
 
     if (contact) {
       // Highlights

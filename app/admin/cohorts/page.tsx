@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { Card, CardContent } from '@/components/ui/card';
 import { Users, TrendingUp, CreditCard, CheckCircle2, XCircle, AlertTriangle, DollarSign } from 'lucide-react';
 import { isPlatformAdmin } from '@/lib/permissions';
@@ -93,15 +93,34 @@ export default async function AdminCohortsPage() {
   let fetchError = false;
 
   try {
-    const { data, error } = await supabase
-      .from('User')
-      .select('id, createdAt, onboard, Space(id, stripeSubscriptionStatus)')
-      .gte('createdAt', earliestIso)
-      .order('createdAt', { ascending: true });
+    // Users since the window's start. listForAdmin returns full rows; we filter
+    // by createdAt and attach each owner's Space (the old `Space(...)` embed is
+    // keyed on Space.ownerId) via a single listByOwnerIds fan-out.
+    const allUsers = (await convex().query(api.org.users.listForAdmin, {
+      limit: 100000,
+    })) as Array<{ id: string; createdAt: string; onboard: boolean }>;
+    const windowUsers = allUsers.filter((u) => u.createdAt >= earliestIso);
 
-    if (error) throw error;
+    const ownerIds = windowUsers.map((u) => u.id);
+    const windowSpaces =
+      ownerIds.length > 0
+        ? ((await convex().query(api.workspace.spaces.listByOwnerIds, {
+            ownerIds,
+          })) as Array<{ id: string; ownerId: string; stripeSubscriptionStatus: string }>)
+        : [];
+    const spaceByOwner = new Map(windowSpaces.map((s) => [s.ownerId, s]));
 
-    for (const row of (data ?? []) as UserRow[]) {
+    const data: UserRow[] = windowUsers.map((u) => {
+      const sp = spaceByOwner.get(u.id);
+      return {
+        id: u.id,
+        createdAt: u.createdAt,
+        onboard: u.onboard,
+        Space: sp ? { id: sp.id, stripeSubscriptionStatus: sp.stripeSubscriptionStatus as SubscriptionStatus } : null,
+      };
+    });
+
+    for (const row of data) {
       const created = new Date(row.createdAt);
       const wkKey = isoDate(weekStartOf(created));
       const bucket = cohorts.get(wkKey);
@@ -122,13 +141,13 @@ export default async function AdminCohortsPage() {
     }
 
     // Totals from ALL users (not just last 12 weeks) for accurate top-level stats
-    const [totalUsersRes, subStatusRes] = await Promise.all([
-      supabase.from('User').select('*', { count: 'exact', head: true }),
-      supabase.from('Space').select('stripeSubscriptionStatus'),
+    const [userCounts, allSpaces] = await Promise.all([
+      convex().query(api.org.users.counts, {}),
+      convex().query(api.workspace.spaces.listBySubscriptionStatus, {}),
     ]);
 
-    totalSignups = totalUsersRes.count ?? 0;
-    const statuses = (subStatusRes.data ?? []) as {
+    totalSignups = userCounts.total;
+    const statuses = allSpaces as {
       stripeSubscriptionStatus: SubscriptionStatus | null;
     }[];
     for (const s of statuses) {

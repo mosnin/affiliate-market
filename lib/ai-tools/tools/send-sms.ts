@@ -17,7 +17,6 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { sendSMS } from '@/lib/sms';
 import { logger } from '@/lib/logger';
@@ -89,17 +88,18 @@ export const sendSmsTool = defineTool<typeof parameters, SendSMSResult>({
     let resolvedContactId: string | null = null;
 
     if (args.contactId) {
-      const { data: contact, error } = await supabase
-        .from('Contact')
-        .select('id, name, phone')
-        .eq('id', args.contactId)
-        .eq('spaceId', ctx.space.id)
-        .is('companyId', null)
-        .maybeSingle();
-      if (error) {
-        return { summary: `Contact lookup failed: ${error.message}`, display: 'error' };
+      let contact: { id: string; name: string; phone: string | null; companyId: string | null } | null;
+      try {
+        contact = await convex().query(api.contacts.contacts.getById, {
+          id: args.contactId,
+          spaceId: ctx.space.id,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'unknown error';
+        return { summary: `Contact lookup failed: ${message}`, display: 'error' };
       }
-      if (!contact) {
+      // Preserve the `.is('companyId', null)` workspace-only filter.
+      if (!contact || contact.companyId !== null) {
         return {
           summary: `No contact with id "${args.contactId}" in this workspace.`,
           display: 'error',
@@ -116,13 +116,12 @@ export const sendSmsTool = defineTool<typeof parameters, SendSMSResult>({
     } else if (args.toPhone) {
       resolvedPhone = args.toPhone;
       // Best-effort link back to a matching Contact for the audit trail.
-      const { data: maybeContact } = await supabase
-        .from('Contact')
-        .select('id')
-        .eq('spaceId', ctx.space.id)
-        .is('companyId', null)
-        .eq('phone', args.toPhone)
-        .maybeSingle();
+      // Exact-phone equality in the space, workspace-only (companyId null).
+      const maybeContact = await convex().query(api.contacts.contacts.findByPhoneInSpace, {
+        spaceId: ctx.space.id,
+        phone: args.toPhone,
+        requireCompanyIdNull: true,
+      });
       resolvedContactId = maybeContact?.id ?? null;
     }
 
@@ -194,15 +193,16 @@ export const sendSmsTool = defineTool<typeof parameters, SendSMSResult>({
     // ContactActivity.type enum doesn't include an 'sms' value, so we log
     // under 'note' with a metadata flag the UI can special-case later.
     if (resolvedContactId) {
-      const { error: activityErr } = await supabase.from('ContactActivity').insert({
-        id: crypto.randomUUID(),
-        spaceId: ctx.space.id,
-        contactId: resolvedContactId,
-        type: 'note',
-        content: `SMS: ${args.body.slice(0, 140)}${args.body.length > 140 ? '…' : ''}`,
-        metadata: { channel: 'sms', via: 'on_demand_agent' },
-      });
-      if (activityErr) {
+      try {
+        await convex().mutation(api.contacts.activity.create, {
+          id: crypto.randomUUID(),
+          spaceId: ctx.space.id,
+          contactId: resolvedContactId,
+          type: 'note',
+          content: `SMS: ${args.body.slice(0, 140)}${args.body.length > 140 ? '…' : ''}`,
+          metadata: { channel: 'sms', via: 'on_demand_agent' },
+        });
+      } catch (activityErr) {
         logger.warn(
           '[tools.send_sms] activity insert failed',
           { contactId: resolvedContactId },

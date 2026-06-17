@@ -1,5 +1,5 @@
 import { getManagerMemberContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { redirect } from 'next/navigation';
 import { HOT_LEAD_THRESHOLD, WARM_LEAD_THRESHOLD } from '@/lib/constants';
 import { PhoneIncoming, Briefcase, ChevronRight } from 'lucide-react';
@@ -23,11 +23,9 @@ export default async function MyLeadsPage() {
   const { company, dbUserId } = ctx;
 
   // Find the member's personal Space
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id, slug, name')
-    .eq('ownerId', dbUserId)
-    .maybeSingle();
+  const space = await convex().query(api.workspace.spaces.getByOwnerId, {
+    ownerId: dbUserId,
+  });
 
   if (!space) {
     return (
@@ -56,16 +54,13 @@ export default async function MyLeadsPage() {
     );
   }
 
-  // Query contacts with tag 'assigned-by-manager'
-  const { data: contacts } = await supabase
-    .from('Contact')
-    .select(
-      'id, name, phone, email, leadScore, scoreLabel, tags, sourceLabel, createdAt, lastContactedAt',
-    )
-    .eq('spaceId', space.id)
-    .contains('tags', ['assigned-by-manager'])
-    .order('createdAt', { ascending: false })
-    .limit(100);
+  // Query contacts with tag 'assigned-by-manager' (filterForSpaces returns full
+  // rows newest-first; the JSX projects the columns it reads).
+  const contacts = await convex().query(api.contacts.contacts.filterForSpaces, {
+    spaceIds: [space.id],
+    tagsAll: ['assigned-by-manager'],
+    limit: 100,
+  });
 
   const leads = (contacts ?? []) as Array<{
     id: string;

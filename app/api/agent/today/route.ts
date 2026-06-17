@@ -9,7 +9,6 @@
  * per section instead of N. Seller space only (not company-routed).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
@@ -44,16 +43,17 @@ export async function GET(_req: NextRequest) {
 
   const nowIso = new Date().toISOString();
 
-  const [followUpsRes, demosUpcoming] = await Promise.all([
-    supabase
-      .from('Contact')
-      .select('id, name, phone, email, type, followUpAt, leadScore, scoreLabel')
-      .eq('spaceId', space.id)
-      .is('companyId', null)
-      .not('followUpAt', 'is', null)
-      .lte('followUpAt', nowIso)
-      .order('followUpAt', { ascending: true })
-      .limit(10),
+  const [followUpRows, demosUpcoming] = await Promise.all([
+    // followUpAt-due, companyId-null, ASC by followUpAt, capped 10 — the old
+    // `.is('companyId',null).not(followUpAt,is,null).lte(followUpAt,now)` query.
+    convex()
+      .query(api.contacts.contacts.followUpsForSpaces, {
+        spaceIds: [space.id],
+        lte: nowIso,
+        requireCompanyIdNull: true,
+        limit: 10,
+      })
+      .catch(() => []),
     convex().query(api.demos.demos.listBySpace, {
       spaceId: space.id,
       startsAtGte: nowIso,
@@ -64,7 +64,7 @@ export async function GET(_req: NextRequest) {
   ]);
 
   return NextResponse.json({
-    followUpsDue: (followUpsRes.data ?? []) as FollowUpDue[],
+    followUpsDue: followUpRows as unknown as FollowUpDue[],
     demosUpcoming: demosUpcoming as UpcomingDemo[],
   });
 }

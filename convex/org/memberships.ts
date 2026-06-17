@@ -138,6 +138,20 @@ export const getByIdScoped = query({
   },
 });
 
+/** One membership by id alone (no company scope), or null. The admin
+ *  membership-by-id read that needs to DISCOVER the companyId (`.eq('id', id)
+ *  .maybeSingle()`). */
+export const getById = query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    const m = await ctx.db
+      .query('CompanyMembership')
+      .withIndex('by_app_id', (q) => q.eq('id', args.id))
+      .unique();
+    return m ? toMembershipRow(m) : null;
+  },
+});
+
 /** Total seat usage for a company — the member count (`.select('*', { count,
  *  head }).eq('companyId', x)`) and, optionally, the seller_member-only count
  *  (settings page). Returns both so callers pick the one they need. */

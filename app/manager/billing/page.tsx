@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getManagerContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { BillingPage } from '@/components/billing/billing-page';
 import { CreditsSummary } from '@/components/billing/credits-summary';
 import type { PlanId } from '@/lib/plans';
@@ -22,28 +22,21 @@ export default async function ManagerBillingPage() {
   // checkout and kept current by the webhook. When a company subscription
   // exists, it is the billing entity for this page; the owner's personal Space
   // is only a legacy fallback (companies subscribed before company billing).
-  const { data: companyStripe } = await supabase
-    .from('Company')
-    .select('stripeCustomerId, stripeSubscriptionId, stripeSubscriptionStatus, stripePeriodEnd')
-    .eq('id', ctx.company.id)
-    .maybeSingle();
+  const companyStripe = await convex().query(api.org.companies.getById, {
+    id: ctx.company.id,
+  });
 
   // Find the user's own space for billing
-  const { data: ownSpaceRow } = await supabase
-    .from('Space')
-    .select('id, slug, name, stripeCustomerId, stripeSubscriptionId, stripeSubscriptionStatus, stripePeriodEnd')
-    .eq('ownerId', ctx.dbUserId)
-    .maybeSingle();
+  const ownSpaceRow = await convex().query(api.workspace.spaces.getByOwnerId, {
+    ownerId: ctx.dbUserId,
+  });
 
   // If user has no personal space, find the company owner's space
   let spaceRow = ownSpaceRow;
   if (!spaceRow) {
-    const { data: ownerSpace } = await supabase
-      .from('Space')
-      .select('id, slug, name, stripeCustomerId, stripeSubscriptionId, stripeSubscriptionStatus, stripePeriodEnd')
-      .eq('ownerId', ctx.company.ownerId)
-      .maybeSingle();
-    spaceRow = ownerSpace;
+    spaceRow = await convex().query(api.workspace.spaces.getByOwnerId, {
+      ownerId: ctx.company.ownerId,
+    });
   }
 
   const usingCompanyEntity = Boolean(companyStripe?.stripeSubscriptionId);

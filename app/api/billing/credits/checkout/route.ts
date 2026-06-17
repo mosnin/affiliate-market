@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { TOPUPS, type TopupId } from '@/lib/plans';
@@ -49,12 +49,10 @@ export async function POST(req: NextRequest) {
     // customer, which the webhook's anti-poisoning guard (it compares the
     // account's stored customer to session.customer) then rejected → the team
     // was CHARGED but granted ZERO credits.
-    const customerTable = account.type === 'company' ? 'Company' : 'Space';
-    const { data: custRow } = await supabase
-      .from(customerTable)
-      .select('stripeCustomerId')
-      .eq('id', account.id)
-      .single();
+    const custRow =
+      account.type === 'company'
+        ? await convex().query(api.org.companies.getById, { id: account.id })
+        : await convex().query(api.workspace.spaces.getById, { id: account.id });
     const customerId = custRow?.stripeCustomerId ?? undefined;
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.usecola.com';

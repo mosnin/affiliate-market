@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 
@@ -39,11 +38,9 @@ export async function POST(req: NextRequest) {
   });
 
   // Send notification email
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select('businessName')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settings = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
 
   const businessName = settings?.businessName || space.name;
   const bookingUrl = `${process.env.NEXT_PUBLIC_APP_URL || ''}/book/${slug}`;

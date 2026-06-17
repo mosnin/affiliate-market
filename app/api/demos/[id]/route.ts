@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
@@ -104,13 +103,10 @@ export async function PATCH(
   // this demo's prep card.
   if (body.contactId !== undefined) {
     if (body.contactId) {
-      const { data: contactRow, error: cErr } = await supabase
-        .from('Contact')
-        .select('id')
-        .eq('id', body.contactId)
-        .eq('spaceId', ctx.space.id)
-        .maybeSingle();
-      if (cErr) throw cErr;
+      const contactRow = await convex().query(api.contacts.contacts.getById, {
+        id: body.contactId,
+        spaceId: ctx.space.id,
+      });
       if (!contactRow) {
         return NextResponse.json({ error: 'Contact not found in this space' }, { status: 400 });
       }
@@ -142,42 +138,42 @@ export async function PATCH(
   // Auto-create follow-up reminder when demo is completed (24h later)
   if (body.status === 'completed' && ctx.demo.status !== 'completed' && data.contactId) {
     const followUpAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    supabase
-      .from('Contact')
-      .update({ followUpAt, type: 'DEMO' })
-      .eq('id', data.contactId)
-      .is('followUpAt', null)
-      .then(({ error: fuErr }) => { if (fuErr) console.error('[demo] Follow-up set failed:', fuErr); });
+    convex()
+      .mutation(api.contacts.contacts.update, {
+        id: data.contactId,
+        patch: { followUpAt, type: 'DEMO' },
+        followUpOnlyIfNull: true,
+      })
+      .catch((fuErr) => { console.error('[demo] Follow-up set failed:', fuErr); });
 
     // Log activity on the contact
-    supabase.from('ContactActivity').insert({
+    convex().mutation(api.contacts.activity.create, {
       id: crypto.randomUUID(),
       contactId: data.contactId,
       spaceId: ctx.space.id,
       type: 'follow_up',
       content: `Auto follow-up set for 24h after demo completion${data.productAddress ? ` — ${data.productAddress}` : ''}`,
-    }).then(({ error: actErr }) => { if (actErr) console.error('[demo] Activity log failed:', actErr); });
+    }).catch((actErr) => { console.error('[demo] Activity log failed:', actErr); });
   }
 
   // Auto-set follow-up for no-shows (48h later)
   if (body.status === 'no_show' && ctx.demo.status !== 'no_show' && data.contactId) {
     const followUpAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-    supabase
-      .from('Contact')
-      .update({ followUpAt })
-      .eq('id', data.contactId)
-      .is('followUpAt', null)
-      .then(({ error: fuErr }) => { if (fuErr) console.error('[demo] No-show follow-up failed:', fuErr); });
+    convex()
+      .mutation(api.contacts.contacts.update, {
+        id: data.contactId,
+        patch: { followUpAt },
+        followUpOnlyIfNull: true,
+      })
+      .catch((fuErr) => { console.error('[demo] No-show follow-up failed:', fuErr); });
   }
 
   // Send follow-up email when marked completed
   if (body.status === 'completed' && ctx.demo.status !== 'completed') {
-    const { data: settings } = await supabase
-      .from('SpaceSetting')
-      .select('businessName')
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
-    const { data: spaceRow } = await supabase.from('Space').select('name, slug').eq('id', ctx.space.id).maybeSingle();
+    const [settings, spaceRow] = await Promise.all([
+      convex().query(api.workspace.settings.getBySpace, { spaceId: ctx.space.id }),
+      convex().query(api.workspace.spaces.getById, { id: ctx.space.id }),
+    ]);
     const emailData: DemoEmailData = {
       guestName: data.guestName,
       guestEmail: data.guestEmail,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import crypto from 'crypto';
 import { uploadObject, getPublicUrl, buildKey, deleteObject, publicUrlToKey } from '@/lib/storage';
@@ -114,16 +114,15 @@ export async function POST(req: NextRequest) {
     };
     const field = fieldMap[type];
     if (field) {
-      const { data: existing } = await supabase
-        .from('SpaceSetting')
-        .select(field)
-        .eq('spaceId', space.id)
-        .maybeSingle();
+      const existing = await convex().query(api.workspace.settings.getBySpace, {
+        spaceId: space.id,
+      });
       const previousValue = (existing as Record<string, string | null> | null)?.[field] ?? null;
 
-      await supabase
-        .from('SpaceSetting')
-        .upsert({ spaceId: space.id, [field]: publicUrl }, { onConflict: 'spaceId' });
+      await convex().mutation(api.workspace.settings.upsertBySpace, {
+        spaceId: space.id,
+        fields: { [field]: publicUrl },
+      });
 
       // Fire-and-forget the previous object cleanup. publicUrlToKey
       // returns null for URLs that don't match our bucket shape (e.g.

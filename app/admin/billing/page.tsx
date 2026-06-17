@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   DollarSign,
@@ -82,38 +82,37 @@ export default async function AdminBillingPage() {
   }[] = [];
 
   try {
-    const [allSpacesRes, recentRes, trialExpiringRes, companyRes] = await Promise.all([
-      // All spaces for status counts
-      supabase
-        .from('Space')
-        .select('stripeSubscriptionStatus'),
-      // Recent subscriptions (non-inactive, ordered by period end)
-      supabase
-        .from('Space')
-        .select('id, name, ownerId, stripeSubscriptionStatus, stripePeriodEnd, stripeCustomerId, stripeSubscriptionId, User!inner(email)')
-        .neq('stripeSubscriptionStatus', 'inactive')
-        .order('stripePeriodEnd', { ascending: false, nullsFirst: false })
-        .limit(50),
-      // Trials expiring within 7 days
-      supabase
-        .from('Space')
-        .select('id, name, ownerId, stripePeriodEnd, User!inner(email)')
-        .eq('stripeSubscriptionStatus', 'trialing')
-        .lte('stripePeriodEnd', sevenDaysFromNow)
-        .gte('stripePeriodEnd', now.toISOString())
-        .order('stripePeriodEnd', { ascending: true }),
-      // Company-scoped subscriptions (the company checkout writes these to
-      // the Company row, not a Space — previously invisible on this page)
-      supabase
-        .from('Company')
-        .select('id, name, plan, stripeSubscriptionStatus, stripePeriodEnd, stripeCustomerId, stripeSubscriptionId')
-        .neq('stripeSubscriptionStatus', 'inactive')
-        .order('stripePeriodEnd', { ascending: false, nullsFirst: false })
-        .limit(50),
+    // All Space rows (the unfiltered list) + the company-scoped subs. Space's
+    // recent/trial slices are derived in JS below, then their owner emails are
+    // resolved via listByIds (the old `User!inner(email)` embed — inner join, so
+    // rows whose owner can't be resolved are dropped). companySubscriptions maps
+    // 1:1 to listBillingActive (!inactive, periodEnd desc nulls-last, limit 50).
+    const [allSpaces, companyRows] = await Promise.all([
+      convex().query(api.workspace.spaces.listBySubscriptionStatus, {}) as Promise<
+        Array<{
+          id: string;
+          name: string;
+          ownerId: string;
+          stripeSubscriptionStatus: SubscriptionStatus;
+          stripePeriodEnd: string | null;
+          stripeCustomerId: string | null;
+          stripeSubscriptionId: string | null;
+        }>
+      >,
+      convex().query(api.org.companies.listBillingActive, { limit: 50 }) as Promise<
+        Array<{
+          id: string;
+          name: string;
+          plan: string | null;
+          stripeSubscriptionStatus: SubscriptionStatus;
+          stripePeriodEnd: string | null;
+          stripeCustomerId: string | null;
+          stripeSubscriptionId: string | null;
+        }>
+      >,
     ]);
 
     // Count by status
-    const allSpaces = (allSpacesRes.data ?? []) as { stripeSubscriptionStatus: SubscriptionStatus }[];
     totalSpaces = allSpaces.length;
     for (const space of allSpaces) {
       const status = space.stripeSubscriptionStatus as SubscriptionStatus;
@@ -122,41 +121,81 @@ export default async function AdminBillingPage() {
       }
     }
 
-    // Map recent subscriptions
-    recentSubscriptions = ((recentRes.data ?? []) as any[]).map((row) => ({
-      id: row.id,
-      name: row.name,
-      ownerId: row.ownerId,
-      ownerEmail: row.User?.email ?? '',
-      stripeSubscriptionStatus: row.stripeSubscriptionStatus as SubscriptionStatus,
-      stripePeriodEnd: row.stripePeriodEnd,
-      stripeCustomerId: row.stripeCustomerId,
-      stripeSubscriptionId: row.stripeSubscriptionId,
-    }));
+    // Owner emails for every Space we might surface (recent + trial slices).
+    const ownerIds = Array.from(new Set(allSpaces.map((s) => s.ownerId).filter(Boolean)));
+    const owners =
+      ownerIds.length > 0
+        ? ((await convex().query(api.org.users.listByIds, { ids: ownerIds })) as Array<{
+            id: string;
+            email: string;
+          }>)
+        : [];
+    const emailByOwner = new Map(owners.map((o) => [o.id, o.email]));
 
-    companySubscriptions = ((companyRes.data ?? []) as any[]).map((row) => ({
-      id: row.id,
-      name: row.name,
-      plan: row.plan ?? '—',
-      stripeSubscriptionStatus: row.stripeSubscriptionStatus as SubscriptionStatus,
-      stripePeriodEnd: row.stripePeriodEnd,
-      stripeCustomerId: row.stripeCustomerId,
-      stripeSubscriptionId: row.stripeSubscriptionId,
-    }));
+    // periodEnd desc, nulls last — matches `.order(stripePeriodEnd, desc, nullsLast)`.
+    const periodEndDescNullsLast = (
+      a: { stripePeriodEnd: string | null },
+      b: { stripePeriodEnd: string | null },
+    ) => {
+      const ap = a.stripePeriodEnd;
+      const bp = b.stripePeriodEnd;
+      if (ap === null && bp === null) return 0;
+      if (ap === null) return 1;
+      if (bp === null) return -1;
+      return ap < bp ? 1 : ap > bp ? -1 : 0;
+    };
 
-    // Map trial expiring soon
-    trialExpiringSoon = ((trialExpiringRes.data ?? []) as any[]).map((row) => {
-      const periodEnd = new Date(row.stripePeriodEnd);
-      const daysLeft = Math.max(0, Math.ceil((periodEnd.getTime() - now.getTime()) / 86_400_000));
-      return {
+    // Recent subscriptions: non-inactive, owner must resolve (inner join), top 50.
+    recentSubscriptions = allSpaces
+      .filter((s) => s.stripeSubscriptionStatus !== 'inactive' && emailByOwner.has(s.ownerId))
+      .sort(periodEndDescNullsLast)
+      .slice(0, 50)
+      .map((row) => ({
         id: row.id,
         name: row.name,
         ownerId: row.ownerId,
-        ownerEmail: row.User?.email ?? '',
+        ownerEmail: emailByOwner.get(row.ownerId) ?? '',
+        stripeSubscriptionStatus: row.stripeSubscriptionStatus,
         stripePeriodEnd: row.stripePeriodEnd,
-        daysLeft,
-      };
-    });
+        stripeCustomerId: row.stripeCustomerId,
+        stripeSubscriptionId: row.stripeSubscriptionId,
+      }));
+
+    companySubscriptions = companyRows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      plan: row.plan ?? '—',
+      stripeSubscriptionStatus: row.stripeSubscriptionStatus,
+      stripePeriodEnd: row.stripePeriodEnd,
+      stripeCustomerId: row.stripeCustomerId,
+      stripeSubscriptionId: row.stripeSubscriptionId,
+    }));
+
+    // Trials expiring within 7 days: trialing, periodEnd in [now, +7d], owner
+    // resolves (inner join), ordered periodEnd asc.
+    const nowIso = now.toISOString();
+    trialExpiringSoon = allSpaces
+      .filter(
+        (s) =>
+          s.stripeSubscriptionStatus === 'trialing' &&
+          s.stripePeriodEnd != null &&
+          s.stripePeriodEnd <= sevenDaysFromNow &&
+          s.stripePeriodEnd >= nowIso &&
+          emailByOwner.has(s.ownerId),
+      )
+      .sort((a, b) => (a.stripePeriodEnd! < b.stripePeriodEnd! ? -1 : a.stripePeriodEnd! > b.stripePeriodEnd! ? 1 : 0))
+      .map((row) => {
+        const periodEnd = new Date(row.stripePeriodEnd!);
+        const daysLeft = Math.max(0, Math.ceil((periodEnd.getTime() - now.getTime()) / 86_400_000));
+        return {
+          id: row.id,
+          name: row.name,
+          ownerId: row.ownerId,
+          ownerEmail: emailByOwner.get(row.ownerId) ?? '',
+          stripePeriodEnd: row.stripePeriodEnd!,
+          daysLeft,
+        };
+      });
   } catch (err) {
     console.error('[admin/billing] DB queries failed', { error: err });
     return (

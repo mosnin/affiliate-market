@@ -28,7 +28,7 @@
  */
 
 import { MarketingHero } from '@/components/marketing/marketing-hero';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { hasLLMKey } from '@/lib/llm';
 import { composioConfigured } from '@/lib/integrations/composio';
 
@@ -53,8 +53,10 @@ interface Subsystem {
  */
 async function checkDatabase(): Promise<Health> {
   try {
-    const { error } = await supabase.from('User').select('id').limit(1);
-    return error ? 'degraded' : 'operational';
+    // A single bounded probe of the data layer. Convex throws on failure, so a
+    // successful return is operational; any throw is degraded.
+    await convex().query(api.org.users.counts, {});
+    return 'operational';
   } catch {
     return 'degraded';
   }

@@ -3,7 +3,7 @@ import { requireSpaceOwner } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { formConfigSchema } from '@/lib/form-config-schema';
 import { generateScoringModel } from '@/lib/scoring/generate-scoring-model';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 import { hasLLMKey } from '@/lib/llm';
 
@@ -77,12 +77,12 @@ export async function POST(req: NextRequest) {
     const column =
       leadType === 'rental' ? 'rentalScoringModel' : 'buyerScoringModel';
 
-    const { error: updateErr } = await supabase
-      .from('SpaceSetting')
-      .update({ [column]: scoringModel })
-      .eq('spaceId', space.id);
-
-    if (updateErr) {
+    try {
+      await convex().mutation(api.workspace.settings.upsertBySpace, {
+        spaceId: space.id,
+        fields: { [column]: scoringModel },
+      });
+    } catch (updateErr) {
       console.error('[generate-scoring] Failed to save scoring model', updateErr);
       // Still return the model even if storage fails
     }

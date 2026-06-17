@@ -65,6 +65,21 @@ export const getByToken = query({
   },
 });
 
+/** One invitation by id, scoped to a company, or null. The manager invitation
+ *  PATCH gate reads `.eq('id', id).eq('companyId', x).maybeSingle()` to enforce
+ *  the 409-on-non-pending guard before flipping status. */
+export const getByIdScoped = query({
+  args: { id: v.string(), companyId: v.string() },
+  handler: async (ctx, args) => {
+    const i = await ctx.db
+      .query('Invitation')
+      .withIndex('by_app_id', (q) => q.eq('id', args.id))
+      .unique();
+    if (!i || i.companyId !== args.companyId) return null;
+    return toInvitationRow(i);
+  },
+});
+
 /** The most-recent PENDING, non-expired invitation for an email, or null. Mirrors
  *  the auth-redirect `.eq('email', x).eq('status','pending').gt('expiresAt', now)
  *  .order('createdAt', desc).limit(1).maybeSingle()`. The caller lowercases the

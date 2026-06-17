@@ -16,7 +16,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { fireRoutineRun } from '@/lib/routines';
 import { monitorCron } from '@/lib/cron-monitor';
@@ -76,15 +75,14 @@ async function handler(req: NextRequest) {
   // tools for the right entity. (The Modal side can resolve this itself but
   // a silent null breaks integrations; passing it explicitly removes that.)
   const spaceIds = [...new Set(due.map((r) => r.spaceId))];
-  const { data: spaceRows, error: spaceErr } = await supabase
-    .from('Space')
-    .select('id, ownerId, stripeSubscriptionStatus')
-    .in('id', spaceIds);
-  if (spaceErr) {
+  let spaceRows: { id: string; ownerId: string; stripeSubscriptionStatus: string }[];
+  try {
+    spaceRows = await convex().query(api.workspace.spaces.listByIds, { ids: spaceIds });
+  } catch (spaceErr) {
     console.error('[cron/routines] Failed to load spaces', spaceErr);
     return NextResponse.json({ error: 'DB query failed' }, { status: 500 });
   }
-  const activeSpaceRows = (spaceRows ?? []).filter((s) =>
+  const activeSpaceRows = spaceRows.filter((s) =>
     ['active', 'trialing'].includes(s.stripeSubscriptionStatus as string),
   );
   const activeSpaces = new Set(activeSpaceRows.map((s) => s.id as string));
@@ -97,16 +95,13 @@ async function handler(req: NextRequest) {
   const clerkIdByOwner = new Map<string, string>();
   const ownerIds = [...new Set(ownerIdsBySpace.values())];
   if (ownerIds.length > 0) {
-    const { data: userRows, error: userErr } = await supabase
-      .from('User')
-      .select('id, clerkId')
-      .in('id', ownerIds);
-    if (userErr) {
-      console.warn('[cron/routines] Failed to load owners — running without userId', userErr);
-    } else {
-      for (const u of userRows ?? []) {
+    try {
+      const userRows = await convex().query(api.org.users.listByIds, { ids: ownerIds });
+      for (const u of userRows) {
         if (u.clerkId) clerkIdByOwner.set(u.id as string, u.clerkId as string);
       }
+    } catch (userErr) {
+      console.warn('[cron/routines] Failed to load owners — running without userId', userErr);
     }
   }
 

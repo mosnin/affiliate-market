@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
 const parameters = z
@@ -33,19 +33,17 @@ export const findOverdueFollowupsTool = defineTool<typeof parameters, FindOverdu
 
   async handler(_args, ctx) {
     const nowIso = new Date().toISOString();
-    const { data, error } = await supabase
-      .from('Contact')
-      .select('id, name, followUpAt')
-      .eq('spaceId', ctx.space.id)
-      .is('companyId', null)
-      .not('followUpAt', 'is', null)
-      .lte('followUpAt', nowIso)
-      .order('followUpAt', { ascending: true })
-      .limit(10)
-      .abortSignal(ctx.signal);
-
-    if (error) {
-      return { summary: `Overdue lookup failed: ${error.message}`, display: 'error' };
+    let data: Array<{ id: string; name: string; followUpAt: string | null }>;
+    try {
+      data = await convex().query(api.contacts.contacts.followUpsForSpaces, {
+        spaceIds: [ctx.space.id],
+        lte: nowIso,
+        requireCompanyIdNull: true,
+        limit: 10,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      return { summary: `Overdue lookup failed: ${message}`, display: 'error' };
     }
 
     const rows = (data ?? []) as Array<{ id: string; name: string; followUpAt: string }>;

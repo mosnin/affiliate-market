@@ -9,7 +9,6 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
@@ -111,15 +110,16 @@ export const rescheduleDemoTool = defineTool<typeof parameters, RescheduleDemoRe
     }
 
     if (demo.contactId) {
-      const { error: activityErr } = await supabase.from('ContactActivity').insert({
-        id: crypto.randomUUID(),
-        spaceId: ctx.space.id,
-        contactId: demo.contactId,
-        type: 'meeting',
-        content: `Demo rescheduled to ${args.newStartsAt}${args.why ? `: ${args.why}` : ''}`,
-        metadata: { demoId: args.demoId, oldStartsAt: demo.startsAt, newStartsAt: newStarts.toISOString(), via: 'on_demand_agent' },
-      });
-      if (activityErr) {
+      try {
+        await convex().mutation(api.contacts.activity.create, {
+          id: crypto.randomUUID(),
+          spaceId: ctx.space.id,
+          contactId: demo.contactId,
+          type: 'meeting',
+          content: `Demo rescheduled to ${args.newStartsAt}${args.why ? `: ${args.why}` : ''}`,
+          metadata: { demoId: args.demoId, oldStartsAt: demo.startsAt, newStartsAt: newStarts.toISOString(), via: 'on_demand_agent' },
+        });
+      } catch (activityErr) {
         logger.warn('[tools.reschedule_demo] activity insert failed', { demoId: args.demoId }, activityErr);
       }
     }

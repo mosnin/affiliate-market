@@ -14,7 +14,6 @@
  * Authorization boundary: `email` MUST always be the verified session email.
  */
 import 'server-only';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 
 export interface PortalApplication {
@@ -50,13 +49,6 @@ export interface ClientPortalData {
 
 type SpaceRel = { name?: string | null; slug?: string | null } | null;
 
-/** Escape LIKE/ILIKE metacharacters so a full email is matched literally (still
- *  case-insensitively) rather than as a pattern. `%` and `_` are legal in email
- *  local parts and were a wildcard-injection hole in the cross-client guard. */
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, '\\$&');
-}
-
 /**
  * Pull the client's applications + demos by email. `email` MUST be the verified
  * session email — it is the only authorization check, so never pass an
@@ -65,41 +57,38 @@ function escapeLike(value: string): string {
 export async function getClientPortalData(email: string): Promise<ClientPortalData> {
   const lower = email.trim().toLowerCase();
 
-  const [{ data: contacts }, demoRows] = await Promise.all([
-    supabase
-      .from('Contact')
-      .select(
-        'id, name, email, applicationStatus, applicationStatusNote, applicationRef, spaceId, createdAt, Space(name, slug)',
-      )
-      .ilike('email', escapeLike(lower))
-      .order('createdAt', { ascending: false }),
+  const [contacts, demoRows] = await Promise.all([
+    // Every contact across all spaces for this verified email, newest-first
+    // (the fn lower-cases + matches case-insensitively, mirroring ilike).
+    convex().query(api.contacts.contacts.listByEmailAllSpaces, { email: lower }),
     // Demos for this verified email, newest-first. The Space(name, slug) join
     // can't ride a Convex query, so resolve seller names from Space separately
-    // (Space stays on Supabase) and stitch them in below.
+    // and stitch them in below.
     convex().query(api.demos.demos.listByGuestEmail, { guestEmail: lower, order: 'desc' }),
   ]);
 
-  // Batch-resolve the seller name/slug for every space the demos belong to.
-  const demoSpaceIds = Array.from(
-    new Set((demoRows as { spaceId: string }[]).map((t) => t.spaceId)),
+  // Batch-resolve the seller name/slug for every space the contacts AND demos
+  // belong to (the Contact/Space and Demo/Space embeds, done in one lookup).
+  const spaceIds = Array.from(
+    new Set([
+      ...(contacts as { spaceId: string }[]).map((c) => c.spaceId),
+      ...(demoRows as { spaceId: string }[]).map((t) => t.spaceId),
+    ]),
   );
-  const demoSpaceMap = new Map<string, { name: string | null; slug: string | null }>();
-  if (demoSpaceIds.length > 0) {
-    const { data: spaceRows } = await supabase
-      .from('Space')
-      .select('id, name, slug')
-      .in('id', demoSpaceIds);
+  const spaceMap = new Map<string, { name: string | null; slug: string | null }>();
+  if (spaceIds.length > 0) {
+    const spaceRows = await convex().query(api.workspace.spaces.listByIds, { ids: spaceIds });
     for (const s of (spaceRows ?? []) as { id: string; name: string | null; slug: string | null }[]) {
-      demoSpaceMap.set(s.id, { name: s.name ?? null, slug: s.slug ?? null });
+      spaceMap.set(s.id, { name: s.name ?? null, slug: s.slug ?? null });
     }
   }
   const demos = (demoRows as Array<Record<string, unknown>>).map((t) => ({
     ...t,
-    Space: demoSpaceMap.get(t.spaceId as string) ?? null,
+    Space: spaceMap.get(t.spaceId as string) ?? null,
   })) as Array<Record<string, unknown> & { Space: { name: string | null; slug: string | null } | null }>;
 
   const applications: PortalApplication[] = (contacts ?? []).map((c) => {
-    const space = c.Space as SpaceRel;
+    const space = spaceMap.get(c.spaceId as string) ?? null;
     return {
       contactId: c.id as string,
       name: (c.name as string | null) ?? null,
@@ -141,11 +130,11 @@ export async function getClientPortalData(email: string): Promise<ClientPortalDa
  *  / info-request endpoints before any read or write on a contact. */
 export async function clientOwnsContact(email: string, contactId: string): Promise<boolean> {
   const lower = email.trim().toLowerCase();
-  const { data } = await supabase
-    .from('Contact')
-    .select('id')
-    .eq('id', contactId)
-    .ilike('email', escapeLike(lower))
-    .maybeSingle();
-  return Boolean(data);
+  // Exact case-insensitive (id, email) gate — the fn lower-cases both sides, so the
+  // old escapeLike wildcard-neutralization is no longer needed (no LIKE pattern).
+  const row = await convex().query(api.contacts.contacts.getByIdAndEmail, {
+    id: contactId,
+    email: lower,
+  });
+  return Boolean(row);
 }

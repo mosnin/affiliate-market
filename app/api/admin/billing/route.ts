@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
 import { logAdminAction } from '@/lib/admin';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import {
   getCreditBalance,
@@ -28,9 +27,11 @@ function parseAccount(type: unknown, id: unknown): BillingAccount | null {
 }
 
 async function lookupPlan(acc: BillingAccount): Promise<string | null> {
-  const table = acc.type === 'space' ? 'Space' : 'Company';
-  const { data } = await supabase.from(table).select('plan').eq('id', acc.id).maybeSingle();
-  return (data?.plan as string) ?? null;
+  const row =
+    acc.type === 'space'
+      ? await convex().query(api.workspace.spaces.getById, { id: acc.id })
+      : await convex().query(api.org.companies.getById, { id: acc.id });
+  return (row?.plan as string) ?? null;
 }
 
 export async function GET(req: Request) {

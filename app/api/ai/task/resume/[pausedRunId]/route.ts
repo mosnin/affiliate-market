@@ -28,7 +28,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -117,11 +116,9 @@ export async function POST(
   // resolveToolContext here because that helper takes a slug — the paused
   // run carries the spaceId directly, which is more precise (the slug
   // could have changed between pause and resume).
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id, slug, name, ownerId')
-    .eq('id', paused.spaceId)
-    .maybeSingle();
+  const space = await convex()
+    .query(api.workspace.spaces.getById, { id: paused.spaceId })
+    .catch(() => null);
   if (!space) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 });
   }
@@ -131,11 +128,9 @@ export async function POST(
   // outside the caller's own space (e.g. if space ownership changed between
   // pause and resume). paused.userId is the Clerk id; map it to the internal
   // User id the way resolveToolContext does.
-  const { data: ownerRow } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', auth.userId)
-    .maybeSingle();
+  const ownerRow = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: auth.userId })
+    .catch(() => null);
   if (!ownerRow || space.ownerId !== ownerRow.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

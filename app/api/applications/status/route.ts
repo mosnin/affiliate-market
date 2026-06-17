@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 
@@ -24,26 +23,19 @@ export async function PATCH(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   // Get current status for audit trail
-  const { data: currentContact } = await supabase
-    .from('Contact')
-    .select('applicationStatus, spaceId')
-    .eq('id', contactId)
-    .maybeSingle();
+  const currentContact = await convex().query(api.contacts.contacts.getById, { id: contactId });
 
-  const update: Record<string, any> = {
+  const patch: Record<string, any> = {
     applicationStatus: status,
-    updatedAt: new Date().toISOString(),
   };
   if (statusNote !== undefined) {
-    update.applicationStatusNote = statusNote?.trim() || null;
+    patch.applicationStatusNote = statusNote?.trim() || null;
   }
 
-  const { error } = await supabase
-    .from('Contact')
-    .update(update)
-    .eq('id', contactId);
-
-  if (error) throw error;
+  await convex().mutation(api.contacts.contacts.update, {
+    id: contactId,
+    patch,
+  });
 
   // Create audit trail record
   if (currentContact) {

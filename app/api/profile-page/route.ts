@@ -7,7 +7,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';
@@ -20,7 +19,6 @@ export const runtime = 'nodejs';
 // rather than ProfilePage because they're inherited across every public
 // surface the seller owns — the public page, the application, the booking
 // page all read these. The PATCH below threads them through.
-const SETTINGS_SELECT = 'isVerified, socialLinks';
 
 // The picker only needs to render — full product pages live elsewhere.
 // We cap the list at 50 so the editor stays snappy; if a seller truly has
@@ -77,13 +75,9 @@ export async function GET() {
   const space = await getSpaceForUser(authResult.userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const [data, { data: settingsRow }, productRowsRaw] = await Promise.all([
+  const [data, settingsRow, productRowsRaw] = await Promise.all([
     convex().query(api.marketplace.profiles.getBySpace, { spaceId: space.id }),
-    supabase
-      .from('SpaceSetting')
-      .select(SETTINGS_SELECT)
-      .eq('spaceId', space.id)
-      .maybeSingle(),
+    convex().query(api.workspace.settings.getBySpace, { spaceId: space.id }),
     // The picker shows every active listing in the space. Capped at 50 —
     // beyond that the seller isn't picking from a list any more, they're
     // hunting, and that belongs in the listings management surface, not
@@ -271,28 +265,20 @@ export async function PATCH(req: NextRequest) {
 
   let settingsRow: { isVerified: boolean; socialLinks: Record<string, string> } | null = null;
   if (Object.keys(settingsPatch).length > 0) {
-    // Upsert keyed on spaceId — when the row doesn't exist yet, the unique
-    // constraint on spaceId picks it up and we synthesise the required PK.
-    const { data: upserted, error: settingsError } = await supabase
-      .from('SpaceSetting')
-      .upsert(
-        { id: crypto.randomUUID(), spaceId: space.id, ...settingsPatch },
-        { onConflict: 'spaceId' },
-      )
-      .select(SETTINGS_SELECT)
-      .single();
-
-    if (settingsError) {
-      logger.error('[profile-page] settings update failed', { spaceId: space.id }, settingsError);
+    // Upsert keyed on spaceId — the mutation reads-then-inserts-or-patches the
+    // single row, preserving UNIQUE(spaceId) and minting the PK on first insert.
+    try {
+      const upserted = await convex().mutation(api.workspace.settings.upsertBySpace, {
+        spaceId: space.id,
+        fields: settingsPatch,
+      });
+      settingsRow = upserted as unknown as typeof settingsRow;
+    } catch (settingsError) {
+      logger.error('[profile-page] settings update failed', { spaceId: space.id }, settingsError as Error);
       return NextResponse.json({ error: 'Update failed' }, { status: 500 });
     }
-    settingsRow = upserted as unknown as typeof settingsRow;
   } else {
-    const { data: existing } = await supabase
-      .from('SpaceSetting')
-      .select(SETTINGS_SELECT)
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const existing = await convex().query(api.workspace.settings.getBySpace, { spaceId: space.id });
     settingsRow = existing as unknown as typeof settingsRow;
   }
 

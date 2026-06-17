@@ -16,7 +16,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSpaceOwner } from '@/lib/api-auth';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
@@ -46,18 +45,17 @@ export async function GET(req: NextRequest) {
   }
 
   // The old query embedded Contact(name) to flatten contactName onto each row.
-  // Contact is not part of the migrated domain, so resolve the names in one
-  // Supabase read keyed by the contactIds these rows carry, then merge.
+  // Resolve the names keyed by the contactIds these rows carry, then merge.
   const contactIds = Array.from(
     new Set(rows.map((c) => c.contactId).filter((id): id is string => !!id)),
   );
   const nameById = new Map<string, string | null>();
   if (contactIds.length > 0) {
-    const { data: contacts } = await supabase
-      .from('Contact')
-      .select('id, name')
-      .in('id', contactIds);
-    for (const ct of (contacts ?? []) as { id: string; name: string | null }[]) {
+    const contacts = await convex().query(api.contacts.contacts.getManyByIds, {
+      ids: contactIds,
+      spaceId: space.id,
+    });
+    for (const ct of contacts) {
       nameById.set(ct.id, ct.name ?? null);
     }
   }
@@ -101,12 +99,10 @@ export async function POST(req: NextRequest) {
   // If a contactId is given, it must belong to this space — never trust the body.
   let contactId: string | null = null;
   if (payload.contactId) {
-    const { data: contact } = await supabase
-      .from('Contact')
-      .select('id')
-      .eq('id', payload.contactId)
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const contact = await convex().query(api.contacts.contacts.getById, {
+      id: payload.contactId,
+      spaceId: space.id,
+    });
     if (!contact) {
       return NextResponse.json({ error: 'Contact not found.' }, { status: 404 });
     }
@@ -118,14 +114,11 @@ export async function POST(req: NextRequest) {
   // Space row — getSpaceFromSlug never selects it, so the old `space.phoneNumber`
   // cast was always undefined and every call silently fell through to the env
   // fallback. TELNYX_AGENT_NUMBER stays as a deploy-wide fallback.
-  const { data: settingRow } = await supabase
-    .from('SpaceSetting')
-    .select('phoneNumber')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settingRow = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
   const agentNumber = toE164(
-    (settingRow as { phoneNumber?: string | null } | null)?.phoneNumber ??
-      process.env.TELNYX_AGENT_NUMBER,
+    settingRow?.phoneNumber ?? process.env.TELNYX_AGENT_NUMBER,
   );
   const fromNumber = process.env.TELNYX_FROM_NUMBER ?? '';
 

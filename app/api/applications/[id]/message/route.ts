@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 
@@ -40,13 +39,15 @@ export async function POST(
   const sanitized = content.trim().replace(/<[^>]*>/g, '');
 
   // Get contact details for email notification
-  const { data: contact, error: fetchError } = await supabase
-    .from('Contact')
-    .select('email, name, spaceId, applicationRef, statusPortalToken')
-    .eq('id', contactId)
-    .single();
+  let contact;
+  try {
+    contact = await convex().query(api.contacts.contacts.getById, { id: contactId });
+  } catch (fetchError) {
+    console.error('[message] Contact lookup error:', fetchError);
+    return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+  }
 
-  if (fetchError || !contact) {
+  if (!contact) {
     return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
   }
 
@@ -126,13 +127,9 @@ async function sendMessageNotification(
 ): Promise<void> {
   if (!contact.email || !process.env.RESEND_API_KEY) return;
 
-  const [{ data: space }, { data: settings }] = await Promise.all([
-    supabase.from('Space').select('slug, name').eq('id', contact.spaceId).maybeSingle(),
-    supabase
-      .from('SpaceSetting')
-      .select('businessName')
-      .eq('spaceId', contact.spaceId)
-      .maybeSingle(),
+  const [space, settings] = await Promise.all([
+    convex().query(api.workspace.spaces.getById, { id: contact.spaceId }),
+    convex().query(api.workspace.settings.getBySpace, { spaceId: contact.spaceId }),
   ]);
 
   const businessName = settings?.businessName ?? space?.name ?? 'Your Agent';

@@ -15,7 +15,6 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
@@ -61,14 +60,15 @@ export const sendProductPacketTool = defineTool<typeof parameters, SendProductPa
   },
 
   async handler(args, ctx) {
-    const { data: contact, error: contactErr } = await supabase
-      .from('Contact')
-      .select('id, name')
-      .eq('id', args.contactId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
-    if (contactErr) {
-      return { summary: `Contact lookup failed: ${contactErr.message}`, display: 'error' };
+    let contact: { id: string; name: string } | null;
+    try {
+      contact = await convex().query(api.contacts.contacts.getById, {
+        id: args.contactId,
+        spaceId: ctx.space.id,
+      });
+    } catch (contactErr) {
+      const message = contactErr instanceof Error ? contactErr.message : 'unknown error';
+      return { summary: `Contact lookup failed: ${message}`, display: 'error' };
     }
     if (!contact) {
       return { summary: `No contact with id "${args.contactId}".`, display: 'error' };
@@ -84,28 +84,30 @@ export const sendProductPacketTool = defineTool<typeof parameters, SendProductPa
 
     const intent = args.intent?.trim() || 'standard';
     const activityId = crypto.randomUUID();
-    const { error: activityErr } = await supabase.from('ContactActivity').insert({
-      id: activityId,
-      contactId: args.contactId,
-      spaceId: ctx.space.id,
-      type: 'note',
-      content: `Queued product packet for ${product.address} (${intent}).`,
-      metadata: {
-        kind: 'product_packet',
-        productId: args.productId,
-        status: 'queued',
-        intent,
-        via: 'on_demand_agent',
-      },
-    });
-    if (activityErr) {
+    try {
+      await convex().mutation(api.contacts.activity.create, {
+        id: activityId,
+        contactId: args.contactId,
+        spaceId: ctx.space.id,
+        type: 'note',
+        content: `Queued product packet for ${product.address} (${intent}).`,
+        metadata: {
+          kind: 'product_packet',
+          productId: args.productId,
+          status: 'queued',
+          intent,
+          via: 'on_demand_agent',
+        },
+      });
+    } catch (activityErr) {
       logger.error(
         '[tools.send_product_packet] activity insert failed',
         { contactId: args.contactId, productId: args.productId },
         activityErr,
       );
+      const message = activityErr instanceof Error ? activityErr.message : 'unknown error';
       return {
-        summary: `Couldn't queue the packet: ${activityErr.message}`,
+        summary: `Couldn't queue the packet: ${message}`,
         display: 'error',
       };
     }

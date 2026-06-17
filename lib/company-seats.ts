@@ -15,7 +15,7 @@
  * strictest sane default (team / 5). Never silently unlock the cap on infra
  * errors.
  */
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { PLANS } from '@/lib/plans';
 
 export type CompanyPlan = 'team' | 'team_plus';
@@ -52,13 +52,9 @@ async function loadPlan(
   companyId: string
 ): Promise<{ plan: CompanyPlan; seatLimit: number | null }> {
   try {
-    const { data, error } = await supabase
-      .from('Company')
-      .select('plan, seatLimit')
-      .eq('id', companyId)
-      .maybeSingle();
+    const data = await convex().query(api.org.companies.getById, { id: companyId });
 
-    if (error || !data) {
+    if (!data) {
       return { plan: DEFAULT_PLAN, seatLimit: DEFAULT_SEAT_LIMIT };
     }
 
@@ -90,12 +86,8 @@ async function loadPlan(
  */
 async function countMembers(companyId: string): Promise<number | null> {
   try {
-    const { count, error } = await supabase
-      .from('CompanyMembership')
-      .select('*', { count: 'exact', head: true })
-      .eq('companyId', companyId);
-    if (error) return null;
-    return count ?? 0;
+    const { total } = await convex().query(api.org.memberships.countByCompany, { companyId });
+    return total ?? 0;
   } catch {
     return null;
   }
@@ -107,14 +99,7 @@ async function countMembers(companyId: string): Promise<number | null> {
  */
 async function countPendingInvites(companyId: string): Promise<number | null> {
   try {
-    const { count, error } = await supabase
-      .from('Invitation')
-      .select('*', { count: 'exact', head: true })
-      .eq('companyId', companyId)
-      .eq('status', 'pending')
-      .gt('expiresAt', new Date().toISOString());
-    if (error) return null;
-    return count ?? 0;
+    return await convex().query(api.org.invitations.countPending, { companyId });
   } catch {
     return null;
   }

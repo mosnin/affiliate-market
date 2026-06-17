@@ -14,7 +14,6 @@
  */
 
 import { notFound } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { formatCurrency } from '@/lib/formatting';
 import type { CmaPayload, CmaComp } from '@/lib/cma';
@@ -77,12 +76,8 @@ export default async function CmaPublicPage({ params }: Props) {
   // A draft is private. Only published reports are visible to an outsider.
   if (report.status !== 'published') notFound();
 
-  const { data: spaceRow } = await supabase
-    .from('Space')
-    .select('name, emoji')
-    .eq('id', report.spaceId)
-    .maybeSingle();
-  const brand = (spaceRow as { name: string; emoji: string | null } | null) ?? null;
+  const spaceRow = await convex().query(api.workspace.spaces.getById, { id: report.spaceId });
+  const brand = spaceRow ? { name: spaceRow.name, emoji: spaceRow.emoji } : null;
 
   const { subject, comps, stats, generatedAt } = report.payload;
 

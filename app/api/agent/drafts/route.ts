@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
@@ -41,12 +40,10 @@ export async function GET(req: NextRequest) {
 
   const contactsById = new Map<string, { id: string; name: string; email: string | null; phone: string | null }>();
   if (contactIds.length > 0) {
-    const { data: contacts } = await supabase
-      .from('Contact')
-      .select('id, name, email, phone')
-      .eq('spaceId', space.id)
-      .in('id', contactIds);
-    for (const c of (contacts ?? []) as Array<{ id: string; name: string; email: string | null; phone: string | null }>) {
+    const contacts = await convex()
+      .query(api.contacts.contacts.getManyByIds, { ids: contactIds, spaceId: space.id })
+      .catch(() => []);
+    for (const c of contacts) {
       contactsById.set(c.id, { id: c.id, name: c.name, email: c.email ?? null, phone: c.phone ?? null });
     }
   }

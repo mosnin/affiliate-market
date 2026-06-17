@@ -12,7 +12,7 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { syncContact } from '@/lib/vectorize';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
@@ -59,17 +59,18 @@ export const logCallTool = defineTool<typeof parameters, LogCallResult>({
   },
 
   async handler(args, ctx) {
-    const { data: contact, error: lookupErr } = await supabase
-      .from('Contact')
-      .select('id, name')
-      .eq('id', args.personId)
-      .eq('spaceId', ctx.space.id)
-      .is('companyId', null)
-      .maybeSingle();
-    if (lookupErr) {
-      return { summary: `Contact lookup failed: ${lookupErr.message}`, display: 'error' };
+    let contact: { id: string; name: string; companyId: string | null } | null;
+    try {
+      contact = await convex().query(api.contacts.contacts.getById, {
+        id: args.personId,
+        spaceId: ctx.space.id,
+      });
+    } catch (lookupErr) {
+      const message = lookupErr instanceof Error ? lookupErr.message : 'unknown error';
+      return { summary: `Contact lookup failed: ${message}`, display: 'error' };
     }
-    if (!contact) {
+    // Preserve the `.is('companyId', null)` workspace-only filter.
+    if (!contact || contact.companyId !== null) {
       return {
         summary: `No contact with id "${args.personId}" in this workspace.`,
         display: 'error',
@@ -77,34 +78,40 @@ export const logCallTool = defineTool<typeof parameters, LogCallResult>({
     }
 
     const activityId = crypto.randomUUID();
-    const { error: activityErr } = await supabase.from('ContactActivity').insert({
-      id: activityId,
-      contactId: args.personId,
-      spaceId: ctx.space.id,
-      type: 'call',
-      content: args.summary,
-      metadata: {
-        sentiment: args.sentiment ?? null,
-        durationMins: args.durationMins ?? null,
-        via: 'on_demand_agent',
-      },
-    });
-    if (activityErr) {
+    try {
+      await convex().mutation(api.contacts.activity.create, {
+        id: activityId,
+        contactId: args.personId,
+        spaceId: ctx.space.id,
+        type: 'call',
+        content: args.summary,
+        metadata: {
+          sentiment: args.sentiment ?? null,
+          durationMins: args.durationMins ?? null,
+          via: 'on_demand_agent',
+        },
+      });
+    } catch (activityErr) {
       logger.error(
         '[tools.log_call] activity insert failed',
         { contactId: args.personId },
         activityErr,
       );
-      return { summary: `Couldn't log the call: ${activityErr.message}`, display: 'error' };
+      const message = activityErr instanceof Error ? activityErr.message : 'unknown error';
+      return { summary: `Couldn't log the call: ${message}`, display: 'error' };
     }
 
-    // Bump lastContactedAt — the column we actually have. Non-fatal.
-    const { error: updateErr } = await supabase
-      .from('Contact')
-      .update({ lastContactedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
-      .eq('id', args.personId)
-      .eq('spaceId', ctx.space.id);
-    if (updateErr) {
+    // Bump lastContactedAt — the column we actually have. Non-fatal. The
+    // update returns the post-patch row, which we reindex below.
+    let refreshed: Contact | null = null;
+    try {
+      refreshed = (await convex().mutation(api.contacts.contacts.update, {
+        id: args.personId,
+        spaceId: ctx.space.id,
+        patch: { lastContactedAt: new Date().toISOString() },
+        updatedAt: new Date().toISOString(),
+      })) as Contact | null;
+    } catch (updateErr) {
       logger.warn(
         '[tools.log_call] lastContactedAt update failed',
         { contactId: args.personId },
@@ -113,11 +120,6 @@ export const logCallTool = defineTool<typeof parameters, LogCallResult>({
     }
 
     // Reindex so the call summary is searchable.
-    const { data: refreshed } = await supabase
-      .from('Contact')
-      .select('*')
-      .eq('id', args.personId)
-      .maybeSingle();
     if (refreshed) {
       syncContact(refreshed as Contact).catch((err) =>
         logger.warn('[tools.log_call] vector sync failed', { contactId: args.personId }, err),

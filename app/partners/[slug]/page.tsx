@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Megaphone, Link2, Banknote } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getOrCreateDefaultProgram } from '@/lib/affiliates/programs';
 import { PLATFORM_FEE_PERCENT } from '@/lib/affiliates/fees';
 import { ProgramJoinForm } from '@/components/affiliate/program-join-form';
@@ -10,12 +10,9 @@ import { ProgramJoinForm } from '@/components/affiliate/program-join-form';
 export const revalidate = 300;
 
 async function getSeller(slug: string) {
-  const { data } = await supabase
-    .from('Space')
-    .select('id, slug, name, emoji')
-    .eq('slug', slug.toLowerCase())
-    .maybeSingle();
-  return data;
+  return await convex().query(api.workspace.spaces.getBySlug, {
+    slug: slug.toLowerCase(),
+  });
 }
 
 export async function generateMetadata({

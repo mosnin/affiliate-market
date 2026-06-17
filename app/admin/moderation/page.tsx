@@ -17,7 +17,6 @@ import {
   META,
 } from '@/lib/typography';
 import { isPlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getReviewsForModeration } from '@/lib/marketplace/reviews';
 import { ReviewModerationButton, VerifyProductButton } from './moderation-actions';
@@ -43,8 +42,10 @@ async function getUnverifiedPublishedProducts(): Promise<UnverifiedProduct[]> {
   if (rows.length === 0) return [];
 
   const spaceIds = [...new Set(rows.map((r) => r.spaceId as string))];
-  const { data: spaces } = await supabase.from('Space').select('id, name').in('id', spaceIds);
-  const nameById = new Map((spaces ?? []).map((s) => [s.id as string, s.name as string]));
+  const spaces = (await convex().query(api.workspace.spaces.listByIds, {
+    ids: spaceIds,
+  })) as { id: string; name: string }[];
+  const nameById = new Map(spaces.map((s) => [s.id, s.name]));
 
   return rows.map((r) => ({
     id: r.id as string,

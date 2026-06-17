@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { decrypt, decryptOrPassthrough, encrypt } from '@/lib/crypto';
@@ -35,11 +34,9 @@ export async function GET(req: NextRequest) {
   }
 
   // Load space settings
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select('demoDuration, demoStartHour, demoEndHour, demoDaysAvailable, timezone, demoBufferMinutes, demoBlockedDates')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settings = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
 
   // If a product profile is specified, use its settings instead of defaults
   let duration = settings?.demoDuration ?? 30;

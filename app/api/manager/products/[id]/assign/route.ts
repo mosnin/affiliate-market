@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { resolveManagerContext } from '@/lib/agent/manager-context';
 import { logger } from '@/lib/logger';
@@ -42,12 +41,13 @@ export async function PATCH(
   // A non-null target must be a space inside this company (a member's, or
   // the owner's own).
   if (target) {
-    const { data: space } = await supabase
-      .from('Space')
-      .select('id, companyId, ownerId')
-      .eq('id', target)
-      .maybeSingle();
-    const s = space as { companyId?: string; ownerId?: string } | null;
+    let space: { id: string; companyId: string | null; ownerId: string } | null = null;
+    try {
+      space = await convex().query(api.workspace.spaces.getById, { id: target });
+    } catch {
+      space = null;
+    }
+    const s = space as { companyId?: string | null; ownerId?: string } | null;
     const inCompany =
       s && (s.companyId === ctx.company.id || s.ownerId === ctx.company.ownerId);
     if (!inCompany) {

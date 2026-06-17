@@ -22,7 +22,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type OpenAI from 'openai';
 import { getLLMClient, hasLLMKey, openaiModel } from '@/lib/llm';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import type { IntakeFormConfig, FormQuestion } from '@/components/form-builder/types';
@@ -299,11 +299,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   let buyerFormConfig: IntakeFormConfig | null = null;
 
   try {
-    const { data: spaceSetting } = await supabase
-      .from('SpaceSetting')
-      .select('businessName, formConfigSource, rentalFormConfig, buyerFormConfig, formConfig')
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const spaceSetting = await convex().query(api.workspace.settings.getBySpace, {
+      spaceId: space.id,
+    });
 
     if (spaceSetting?.businessName) businessName = spaceSetting.businessName;
 
@@ -312,11 +310,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (source === 'company' && space.companyId) {
       // Inherit form configs from company template
       try {
-        const { data: company } = await supabase
-          .from('Company')
-          .select('companyRentalFormConfig, companyBuyerFormConfig, companyFormConfig')
-          .eq('id', space.companyId)
-          .maybeSingle();
+        const company = await convex().query(api.org.companies.getById, { id: space.companyId });
         if (company) {
           rentalFormConfig = (company.companyRentalFormConfig ?? null) as IntakeFormConfig | null;
           buyerFormConfig = (company.companyBuyerFormConfig ?? null) as IntakeFormConfig | null;

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getManagerMemberContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 import { logger } from '@/lib/logger';
@@ -36,9 +35,6 @@ type MessageTemplateRow = {
   sourceTemplateId: string | null;
   sourceVersion: number | null;
 };
-
-const TEMPLATE_COLUMNS =
-  'id, companyId, name, category, channel, subject, body, version, publishedAt, publishedVersion, publishedCount, createdByUserId, createdAt, updatedAt';
 
 /**
  * POST /api/manager/templates/[id]/publish
@@ -81,18 +77,17 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
   const { id: templateId } = await params;
 
   // 1. Load the source template scoped to the caller's company.
-  const { data: tmpl, error: loadErr } = await supabase
-    .from('CompanyTemplate')
-    .select(TEMPLATE_COLUMNS)
-    .eq('id', templateId)
-    .eq('companyId', ctx.company.id)
-    .maybeSingle<CompanyTemplateRow>();
-
-  if (loadErr) {
+  let tmpl: CompanyTemplateRow | null;
+  try {
+    tmpl = (await convex().query(api.org.templates.getByIdScoped, {
+      id: templateId,
+      companyId: ctx.company.id,
+    })) as CompanyTemplateRow | null;
+  } catch (loadErr) {
     logger.error(
       '[manager/templates/publish] load failed',
       { templateId, companyId: ctx.company.id },
-      loadErr,
+      loadErr as Error,
     );
     return NextResponse.json({ error: 'Failed to load template' }, { status: 500 });
   }
@@ -102,18 +97,17 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
 
   // 2. Enumerate seller_member userIds for this company. Managers don't
   //    get a personal copy — they own the source library.
-  const { data: memberships, error: memberErr } = await supabase
-    .from('CompanyMembership')
-    .select('userId')
-    .eq('companyId', ctx.company.id)
-    .eq('role', 'seller_member')
-    .returns<MembershipRow[]>();
-
-  if (memberErr) {
+  let memberships: MembershipRow[];
+  try {
+    memberships = (await convex().query(api.org.memberships.listByCompany, {
+      companyId: ctx.company.id,
+      roles: ['seller_member'],
+    })) as MembershipRow[];
+  } catch (memberErr) {
     logger.error(
       '[manager/templates/publish] member fetch failed',
       { templateId, companyId: ctx.company.id },
-      memberErr,
+      memberErr as Error,
     );
     return NextResponse.json({ error: 'Failed to load members' }, { status: 500 });
   }
@@ -136,18 +130,17 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
     //    fan out into Spaces in Company B — a cross-tenant data leak.
     //    0-space members (or members whose only Space is elsewhere) are
     //    counted as skipped and logged.
-    const { data: spaces, error: spaceErr } = await supabase
-      .from('Space')
-      .select('id, ownerId')
-      .in('ownerId', agentUserIds)
-      .eq('companyId', ctx.company.id)
-      .returns<SpaceRow[]>();
-
-    if (spaceErr) {
+    let spaces: SpaceRow[];
+    try {
+      spaces = (await convex().query(api.workspace.spaces.listByCompanyId, {
+        companyId: ctx.company.id,
+        ownerIds: agentUserIds,
+      })) as SpaceRow[];
+    } catch (spaceErr) {
       logger.error(
         '[manager/templates/publish] space fetch failed',
         { templateId, companyId: ctx.company.id },
-        spaceErr,
+        spaceErr as Error,
       );
       return NextResponse.json({ error: 'Failed to load agent spaces' }, { status: 500 });
     }
@@ -290,9 +283,10 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
 
   // 6. Stamp the source row. If this fails we still return the counts —
   //    the per-agent writes already landed.
-  const { error: stampErr } = await supabase
-    .from('CompanyTemplate')
-    .update({
+  try {
+    await convex().mutation(api.org.templates.stampPublished, {
+      id: tmpl.id,
+      companyId: ctx.company.id,
       publishedAt,
       // Audit follow-up: pin the exact version that was just pushed so the
       // UI can tell "up-to-date" (version === publishedVersion) from
@@ -300,16 +294,12 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
       // relying on a fragile timestamp-slack heuristic.
       publishedVersion: tmpl.version,
       publishedCount: pushed,
-      updatedAt: publishedAt,
-    })
-    .eq('id', tmpl.id)
-    .eq('companyId', ctx.company.id);
-
-  if (stampErr) {
+    });
+  } catch (stampErr) {
     logger.error(
       '[manager/templates/publish] stamp failed',
       { templateId, companyId: ctx.company.id, pushed, skipped },
-      stampErr,
+      stampErr as Error,
     );
     // Don't 500 — the core publish succeeded.
   }

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
@@ -109,13 +108,12 @@ export async function POST(req: NextRequest) {
       // draft isn't linked to a contact (e.g. an internal note).
       let contact = { name: 'Contact', email: null as string | null, phone: null as string | null };
       if (existing.contactId) {
-        const { data: contactRow } = await supabase
-          .from('Contact')
-          .select('name, email, phone')
-          .eq('id', existing.contactId)
-          .eq('spaceId', space.id)
-          .maybeSingle();
-        if (contactRow) contact = contactRow;
+        const contactRow = await convex()
+          .query(api.contacts.contacts.getById, { id: existing.contactId, spaceId: space.id })
+          .catch(() => null);
+        if (contactRow) {
+          contact = { name: contactRow.name, email: contactRow.email, phone: contactRow.phone };
+        }
       }
 
       const deliveryResult: DeliveryResult = await sendDraft(

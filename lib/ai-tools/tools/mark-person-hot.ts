@@ -12,7 +12,7 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { syncContact } from '@/lib/vectorize';
 import { logger } from '@/lib/logger';
 import { HOT_LEAD_THRESHOLD } from '@/lib/constants';
@@ -48,17 +48,18 @@ export const markPersonHotTool = defineTool<typeof parameters, MarkHotResult>({
   },
 
   async handler(args, ctx) {
-    const { data: contact, error: lookupErr } = await supabase
-      .from('Contact')
-      .select('id, name, leadScore')
-      .eq('id', args.personId)
-      .eq('spaceId', ctx.space.id)
-      .is('companyId', null)
-      .maybeSingle();
-    if (lookupErr) {
-      return { summary: `Contact lookup failed: ${lookupErr.message}`, display: 'error' };
+    let contact: { id: string; name: string; leadScore: number | null; companyId: string | null } | null;
+    try {
+      contact = await convex().query(api.contacts.contacts.getById, {
+        id: args.personId,
+        spaceId: ctx.space.id,
+      });
+    } catch (lookupErr) {
+      const message = lookupErr instanceof Error ? lookupErr.message : 'unknown error';
+      return { summary: `Contact lookup failed: ${message}`, display: 'error' };
     }
-    if (!contact) {
+    // Preserve the `.is('companyId', null)` workspace-only filter.
+    if (!contact || contact.companyId !== null) {
       return {
         summary: `No contact with id "${args.personId}" in this workspace.`,
         display: 'error',
@@ -67,34 +68,38 @@ export const markPersonHotTool = defineTool<typeof parameters, MarkHotResult>({
 
     const newScore = Math.max(contact.leadScore ?? 0, HOT_LEAD_THRESHOLD);
 
-    const { error: updateErr } = await supabase
-      .from('Contact')
-      .update({
-        scoreLabel: 'hot',
-        leadScore: newScore,
-        scoringStatus: 'scored',
+    let refreshed: Contact | null = null;
+    try {
+      refreshed = (await convex().mutation(api.contacts.contacts.update, {
+        id: args.personId,
+        spaceId: ctx.space.id,
+        patch: {
+          scoreLabel: 'hot',
+          leadScore: newScore,
+          scoringStatus: 'scored',
+        },
         updatedAt: new Date().toISOString(),
-      })
-      .eq('id', args.personId)
-      .eq('spaceId', ctx.space.id);
-    if (updateErr) {
+      })) as Contact | null;
+    } catch (updateErr) {
       logger.error(
         '[tools.mark_person_hot] update failed',
         { contactId: args.personId },
         updateErr,
       );
-      return { summary: `Update failed: ${updateErr.message}`, display: 'error' };
+      const message = updateErr instanceof Error ? updateErr.message : 'unknown error';
+      return { summary: `Update failed: ${message}`, display: 'error' };
     }
 
-    const { error: activityErr } = await supabase.from('ContactActivity').insert({
-      id: crypto.randomUUID(),
-      contactId: args.personId,
-      spaceId: ctx.space.id,
-      type: 'status_change',
-      content: `Marked hot: ${args.why}`,
-      metadata: { scoreLabel: 'hot', leadScore: newScore, via: 'on_demand_agent' },
-    });
-    if (activityErr) {
+    try {
+      await convex().mutation(api.contacts.activity.create, {
+        id: crypto.randomUUID(),
+        contactId: args.personId,
+        spaceId: ctx.space.id,
+        type: 'status_change',
+        content: `Marked hot: ${args.why}`,
+        metadata: { scoreLabel: 'hot', leadScore: newScore, via: 'on_demand_agent' },
+      });
+    } catch (activityErr) {
       logger.warn(
         '[tools.mark_person_hot] activity insert failed',
         { contactId: args.personId },
@@ -102,11 +107,8 @@ export const markPersonHotTool = defineTool<typeof parameters, MarkHotResult>({
       );
     }
 
-    const { data: refreshed } = await supabase
-      .from('Contact')
-      .select('*')
-      .eq('id', args.personId)
-      .maybeSingle();
+    // The update mutation returns the post-patch row; reindex from it so the
+    // 'hot' label is searchable (matches the old refresh-then-sync).
     if (refreshed) {
       syncContact(refreshed as Contact).catch((err) =>
         logger.warn('[tools.mark_person_hot] vector sync failed', { contactId: args.personId }, err),

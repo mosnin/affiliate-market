@@ -1,7 +1,7 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { ConfigureAccountForm } from './configure-account-form';
 import { getManagerContext } from '@/lib/permissions';
 import { Building2, ExternalLink, ArrowRight } from 'lucide-react';
@@ -26,16 +26,13 @@ export default async function ConfigurePage({
 
   let dbUser: DbUser | null = null;
   try {
-    const { data: userData, error: userError } = await supabase.from('User').select('*').eq('clerkId', userId).maybeSingle();
-    if (userError) throw userError;
+    const userData = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
     if (userData) {
-      const u = userData as User;
-      const { data: spaceData, error: spaceError } = await supabase.from('Space').select('*').eq('ownerId', u.id).limit(1).maybeSingle();
-      if (spaceError) throw spaceError;
+      const u = userData as unknown as User;
+      const spaceData = await convex().query(api.workspace.spaces.getByOwnerId, { ownerId: u.id });
       if (spaceData) {
-        const s = spaceData as Space;
-        const { data: settingsData, error: settingsError } = await supabase.from('SpaceSetting').select('*').eq('spaceId', s.id).maybeSingle();
-        if (settingsError) throw settingsError;
+        const s = spaceData as unknown as Space;
+        const settingsData = await convex().query(api.workspace.settings.getBySpace, { spaceId: s.id });
         dbUser = {
           ...u,
           space: {

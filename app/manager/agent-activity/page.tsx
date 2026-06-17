@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { getManagerMemberContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { AgentActivityClient, type SellerRollup, type ResponseShape } from './agent-activity-client';
 
@@ -44,11 +43,10 @@ async function rollupForCompany(companyId: string, windowDays: number): Promise<
   const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
   const generatedAt = new Date().toISOString();
 
-  const { data: memberships } = await supabase
-    .from('CompanyMembership')
-    .select('userId')
-    .eq('companyId', companyId);
-  const memberUserIds = (memberships ?? []).map((m) => m.userId as string);
+  const memberships = (await convex().query(api.org.memberships.listByCompany, {
+    companyId,
+  })) as Array<{ userId: string }>;
+  const memberUserIds = memberships.map((m) => m.userId);
 
   if (memberUserIds.length === 0) {
     return {
@@ -59,11 +57,10 @@ async function rollupForCompany(companyId: string, windowDays: number): Promise<
     };
   }
 
-  const { data: spacesData } = await supabase
-    .from('Space')
-    .select('id, slug, ownerId')
-    .in('ownerId', memberUserIds);
-  const spaces = (spacesData ?? []) as Array<{ id: string; slug: string; ownerId: string }>;
+  const spacesData = (await convex().query(api.workspace.spaces.listByOwnerIds, {
+    ownerIds: memberUserIds,
+  })) as Array<{ id: string; slug: string; ownerId: string }>;
+  const spaces = spacesData;
   const spaceIds = spaces.map((s) => s.id);
 
   if (spaceIds.length === 0) {
@@ -75,15 +72,10 @@ async function rollupForCompany(companyId: string, windowDays: number): Promise<
     };
   }
 
-  const { data: usersData } = await supabase
-    .from('User')
-    .select('id, name, email')
-    .in('id', memberUserIds);
-  const userById = new Map(
-    ((usersData ?? []) as Array<{ id: string; name: string | null; email: string | null }>).map(
-      (u) => [u.id, u],
-    ),
-  );
+  const usersData = (await convex().query(api.org.users.listByIds, {
+    ids: memberUserIds,
+  })) as Array<{ id: string; name: string | null; email: string | null }>;
+  const userById = new Map(usersData.map((u) => [u.id, u]));
 
   const logs = await convex()
     .query(api.agent.activity.rollupForSpaces, {

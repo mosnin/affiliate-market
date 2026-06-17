@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 import { sendClientNotification } from '@/lib/client-email';
@@ -49,12 +48,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   // Notify the client by their contact email (best-effort).
-  const { data: contact } = await supabase
-    .from('Contact')
-    .select('email')
-    .eq('id', contactId)
-    .maybeSingle();
-  const email = (contact as { email?: string | null } | null)?.email;
+  const contact = await convex().query(api.contacts.contacts.getById, { id: contactId });
+  const email = contact?.email;
   if (email) {
     void sendClientNotification({
       to: email,

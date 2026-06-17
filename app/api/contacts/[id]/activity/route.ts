@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 
 export async function GET(
@@ -14,14 +14,15 @@ export async function GET(
   const offset = Math.max(0, parseInt(_req.nextUrl.searchParams.get('offset') ?? '0') || 0);
 
   const { space } = auth;
-  const { data, error } = await supabase
-    .from('ContactActivity')
-    .select('*')
-    .eq('contactId', id)
-    .eq('spaceId', space.id)
-    .order('createdAt', { ascending: false })
-    .range(offset, offset + limit - 1);
-  if (error) {
+  let data;
+  try {
+    data = await convex().query(api.contacts.activity.listForContact, {
+      contactId: id,
+      spaceId: space.id,
+      limit,
+      offset,
+    });
+  } catch (error) {
     console.error('[activity/GET] query error:', error);
     return NextResponse.json({ error: 'Failed to fetch activities' }, { status: 500 });
   }
@@ -53,19 +54,17 @@ export async function POST(
     return NextResponse.json({ error: 'Metadata too large' }, { status: 413 });
   }
 
-  const { data, error } = await supabase
-    .from('ContactActivity')
-    .insert({
+  let data;
+  try {
+    data = await convex().mutation(api.contacts.activity.create, {
       id: crypto.randomUUID(),
       contactId: id,
       spaceId: space.id,
       type,
       content: safeContent,
       metadata: metadata ?? null,
-    })
-    .select()
-    .single();
-  if (error) {
+    });
+  } catch (error) {
     console.error('[activity/POST] insert error:', error);
     return NextResponse.json({ error: 'Failed to save activity' }, { status: 500 });
   }

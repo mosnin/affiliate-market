@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { getManagerMemberContext } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 import { logger } from '@/lib/logger';
 
@@ -32,9 +32,6 @@ type CompanyTemplateRow = {
   updatedAt: string;
 };
 
-const TEMPLATE_COLUMNS =
-  'id, companyId, name, category, channel, subject, body, version, publishedAt, publishedVersion, publishedCount, createdByUserId, createdAt, updatedAt';
-
 const createSchema = z.object({
   name: z.string().trim().min(1).max(100),
   category: z.enum(['follow-up', 'intro', 'closing', 'demo-invite']),
@@ -60,17 +57,16 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data, error } = await supabase
-    .from('CompanyTemplate')
-    .select(TEMPLATE_COLUMNS)
-    .eq('companyId', ctx.company.id)
-    .order('updatedAt', { ascending: false });
-
-  if (error) {
+  let data: CompanyTemplateRow[];
+  try {
+    data = (await convex().query(api.org.templates.listByCompany, {
+      companyId: ctx.company.id,
+    })) as CompanyTemplateRow[];
+  } catch (error) {
     logger.error(
       '[manager/templates/GET] list failed',
       { companyId: ctx.company.id },
-      error,
+      error as Error,
     );
     return NextResponse.json({ error: 'Failed to load templates' }, { status: 500 });
   }
@@ -125,29 +121,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       ? (parsed.data.subject ?? null) || null
       : null;
 
-  const { data: inserted, error: insertErr } = await supabase
-    .from('CompanyTemplate')
-    .insert({
+  let inserted: CompanyTemplateRow | null = null;
+  try {
+    inserted = (await convex().mutation(api.org.templates.create, {
       companyId: ctx.company.id,
       name,
       category,
       channel,
       subject,
       body,
-      version: 1,
-      publishedAt: null,
-      publishedCount: 0,
       createdByUserId: ctx.dbUserId,
-    })
-    .select(TEMPLATE_COLUMNS)
-    .single<CompanyTemplateRow>();
-
-  if (insertErr || !inserted) {
+    })) as CompanyTemplateRow;
+  } catch (insertErr) {
     logger.error(
       '[manager/templates/POST] insert failed',
       { companyId: ctx.company.id },
-      insertErr,
+      insertErr as Error,
     );
+    return NextResponse.json({ error: 'Failed to create template' }, { status: 500 });
+  }
+  if (!inserted) {
+    logger.error('[manager/templates/POST] insert failed', { companyId: ctx.company.id });
     return NextResponse.json({ error: 'Failed to create template' }, { status: 500 });
   }
 

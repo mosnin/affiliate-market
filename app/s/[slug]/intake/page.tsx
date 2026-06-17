@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { buildIntakeUrl } from '@/lib/intake';
 import { IntakeLinkRow } from './intake-link-row';
 import { timeAgo } from '@/lib/formatting';
@@ -54,35 +54,31 @@ export default async function IntakeOverviewPage({
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const [submissionsResult, hotLeadsResult, recentResult] = await Promise.all([
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .is('companyId', null)
-        .contains('tags', ['application-link'])
-        .gte('createdAt', sevenDaysAgo.toISOString()),
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .is('companyId', null)
-        .contains('tags', ['application-link'])
-        .gte('createdAt', sevenDaysAgo.toISOString())
-        .eq('scoreLabel', 'hot'),
-      supabase
-        .from('Contact')
-        .select('id, name, createdAt, tags, leadScore, scoreLabel, leadType')
-        .eq('spaceId', space.id)
-        .is('companyId', null)
-        .contains('tags', ['application-link'])
-        .order('createdAt', { ascending: false })
-        .limit(5),
+    const [submissionsCount, hotLeadsCount, recentRows] = await Promise.all([
+      convex().query(api.contacts.contacts.countForSpaces, {
+        spaceIds: [space.id],
+        requireCompanyIdNull: true,
+        tagsAll: ['application-link'],
+        createdGte: sevenDaysAgo.toISOString(),
+      }),
+      convex().query(api.contacts.contacts.countForSpaces, {
+        spaceIds: [space.id],
+        requireCompanyIdNull: true,
+        tagsAll: ['application-link'],
+        createdGte: sevenDaysAgo.toISOString(),
+        scoreLabel: 'hot',
+      }),
+      convex().query(api.contacts.contacts.filterForSpaces, {
+        spaceIds: [space.id],
+        requireCompanyIdNull: true,
+        tagsAll: ['application-link'],
+        limit: 5,
+      }),
     ]);
 
-    totalSubmissions = submissionsResult.count ?? 0;
-    hotLeadCount = hotLeadsResult.count ?? 0;
-    recentLeads = (recentResult.data ?? []) as typeof recentLeads;
+    totalSubmissions = submissionsCount ?? 0;
+    hotLeadCount = hotLeadsCount ?? 0;
+    recentLeads = (recentRows ?? []) as unknown as typeof recentLeads;
   } catch (err) {
     console.error('[intake/overview] DB query failed', err);
   }

@@ -9,7 +9,7 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
 
@@ -41,46 +41,51 @@ export const clearFollowupTool = defineTool<typeof parameters, ClearFollowupResu
   },
 
   async handler(args, ctx) {
-    const { data: contact, error: lookupErr } = await supabase
-      .from('Contact')
-      .select('id, name')
-      .eq('id', args.personId)
-      .eq('spaceId', ctx.space.id)
-      .is('companyId', null)
-      .maybeSingle();
-    if (lookupErr) {
-      return { summary: `Contact lookup failed: ${lookupErr.message}`, display: 'error' };
+    let contact: { id: string; name: string; companyId: string | null } | null;
+    try {
+      contact = await convex().query(api.contacts.contacts.getById, {
+        id: args.personId,
+        spaceId: ctx.space.id,
+      });
+    } catch (lookupErr) {
+      const message = lookupErr instanceof Error ? lookupErr.message : 'unknown error';
+      return { summary: `Contact lookup failed: ${message}`, display: 'error' };
     }
-    if (!contact) {
+    // Preserve the `.is('companyId', null)` workspace-only filter.
+    if (!contact || contact.companyId !== null) {
       return {
         summary: `No contact with id "${args.personId}" in this workspace.`,
         display: 'error',
       };
     }
 
-    const { error: updateErr } = await supabase
-      .from('Contact')
-      .update({ followUpAt: null, updatedAt: new Date().toISOString() })
-      .eq('id', args.personId)
-      .eq('spaceId', ctx.space.id);
-    if (updateErr) {
+    try {
+      await convex().mutation(api.contacts.contacts.update, {
+        id: args.personId,
+        spaceId: ctx.space.id,
+        patch: { followUpAt: null },
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (updateErr) {
       logger.error(
         '[tools.clear_followup] update failed',
         { contactId: args.personId },
         updateErr,
       );
-      return { summary: `Update failed: ${updateErr.message}`, display: 'error' };
+      const message = updateErr instanceof Error ? updateErr.message : 'unknown error';
+      return { summary: `Update failed: ${message}`, display: 'error' };
     }
 
-    const { error: activityErr } = await supabase.from('ContactActivity').insert({
-      id: crypto.randomUUID(),
-      contactId: args.personId,
-      spaceId: ctx.space.id,
-      type: 'note',
-      content: `Follow-up cleared: ${args.why}`,
-      metadata: { via: 'on_demand_agent' },
-    });
-    if (activityErr) {
+    try {
+      await convex().mutation(api.contacts.activity.create, {
+        id: crypto.randomUUID(),
+        contactId: args.personId,
+        spaceId: ctx.space.id,
+        type: 'note',
+        content: `Follow-up cleared: ${args.why}`,
+        metadata: { via: 'on_demand_agent' },
+      });
+    } catch (activityErr) {
       logger.warn(
         '[tools.clear_followup] activity insert failed',
         { contactId: args.personId },

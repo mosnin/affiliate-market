@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAdmin, logAdminAction } from '@/lib/admin';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { scoreLeadApplicationDynamic } from '@/lib/lead-scoring';
@@ -37,32 +37,33 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { data: contactRow, error: fetchErr } = await supabase
-      .from('Contact')
-      .select(
-        'id, spaceId, name, email, phone, budget, leadType, formLeadType, applicationData, formConfigSnapshot, scoringStatus, Space(id, companyId)',
-      )
-      .eq('id', contactId)
-      .maybeSingle();
-
-    if (fetchErr) throw fetchErr;
+    const contactRow = await convex().query(api.contacts.contacts.getById, { id: contactId });
     if (!contactRow) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
-    const contact = contactRow as unknown as {
-      id: string;
-      spaceId: string;
-      name: string;
-      email: string | null;
-      phone: string | null;
-      budget: number | null;
-      leadType: 'rental' | 'buyer';
-      formLeadType: 'rental' | 'buyer' | null;
-      applicationData: Record<string, unknown> | null;
-      formConfigSnapshot: IntakeFormConfig | null;
-      scoringStatus: string;
-      Space: { id: string; companyId: string | null } | null;
+    // Compose the embedded Space(id, companyId) lib-side (the old PostgREST join).
+    const spaceRow = await convex().query(api.workspace.spaces.getById, {
+      id: contactRow.spaceId,
+    });
+
+    const contact = {
+      ...(contactRow as unknown as {
+        id: string;
+        spaceId: string;
+        name: string;
+        email: string | null;
+        phone: string | null;
+        budget: number | null;
+        leadType: 'rental' | 'buyer';
+        formLeadType: 'rental' | 'buyer' | null;
+        applicationData: Record<string, unknown> | null;
+        formConfigSnapshot: IntakeFormConfig | null;
+        scoringStatus: string;
+      }),
+      Space: spaceRow
+        ? { id: spaceRow.id, companyId: spaceRow.companyId }
+        : (null as { id: string; companyId: string | null } | null),
     };
 
     const oldStatus = contact.scoringStatus;
@@ -70,10 +71,10 @@ export async function POST(req: NextRequest) {
       contact.formLeadType ?? contact.leadType ?? 'rental';
 
     // Mark as pending immediately so the UI reflects in-flight state
-    await supabase
-      .from('Contact')
-      .update({ scoringStatus: 'pending', updatedAt: new Date().toISOString() })
-      .eq('id', contact.id);
+    await convex().mutation(api.contacts.contacts.update, {
+      id: contact.id,
+      patch: { scoringStatus: 'pending' },
+    });
 
     // Resolve form config: prefer the snapshot stored with the contact,
     // fall back to current configured form for the space.
@@ -96,11 +97,9 @@ export async function POST(req: NextRequest) {
     try {
       const scoringColumn =
         resolvedLeadType === 'buyer' ? 'buyerScoringModel' : 'rentalScoringModel';
-      const { data: settingRow } = await supabase
-        .from('SpaceSetting')
-        .select(scoringColumn)
-        .eq('spaceId', contact.spaceId)
-        .maybeSingle();
+      const settingRow = await convex().query(api.workspace.settings.getBySpace, {
+        spaceId: contact.spaceId,
+      });
       if (settingRow) {
         scoringModel = (settingRow as Record<string, unknown>)[scoringColumn] as
           | ScoringModel
@@ -132,14 +131,13 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       console.error('[retry-scoring] scoring threw', { contactId: contact.id, err });
-      await supabase
-        .from('Contact')
-        .update({
+      await convex().mutation(api.contacts.contacts.update, {
+        id: contact.id,
+        patch: {
           scoringStatus: 'failed',
           scoreSummary: 'Scoring unavailable right now.',
-          updatedAt: new Date().toISOString(),
-        })
-        .eq('id', contact.id);
+        },
+      });
 
       await logAdminAction({
         actor: admin.userId,
@@ -154,18 +152,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { error: updateErr } = await supabase
-      .from('Contact')
-      .update({
+    await convex().mutation(api.contacts.contacts.update, {
+      id: contact.id,
+      patch: {
         scoringStatus: scoring.scoringStatus,
         leadScore: scoring.leadScore,
         scoreLabel: scoring.scoreLabel,
         scoreSummary: scoring.scoreSummary,
         scoreDetails: scoring.scoreDetails,
-        updatedAt: new Date().toISOString(),
-      })
-      .eq('id', contact.id);
-    if (updateErr) throw updateErr;
+      },
+    });
 
     await logAdminAction({
       actor: admin.userId,

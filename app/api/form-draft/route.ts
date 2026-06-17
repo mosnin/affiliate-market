@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { sendDraftResumeEmail } from '@/lib/email';
@@ -74,11 +73,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify the space exists
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id, slug, name')
-    .eq('id', spaceId)
-    .maybeSingle();
+  const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
 
   if (!space) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 });
@@ -123,11 +118,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Fetch the business name for the email
-    const { data: settings } = await supabase
-      .from('SpaceSetting')
-      .select('businessName')
-      .eq('spaceId', spaceId)
-      .maybeSingle();
+    const settings = await convex().query(api.workspace.settings.getBySpace, { spaceId });
 
     const businessName = settings?.businessName || space.name;
 
@@ -197,11 +188,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Look up the space slug (don't return email or other PII)
-    const { data: space } = await supabase
-      .from('Space')
-      .select('slug')
-      .eq('id', draft.spaceId)
-      .maybeSingle();
+    const space = await convex().query(api.workspace.spaces.getById, { id: draft.spaceId });
 
     return NextResponse.json({
       answers: draft.answers,

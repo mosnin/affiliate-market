@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 
 /**
@@ -50,18 +49,16 @@ export async function POST(req: NextRequest) {
   }> = [];
 
   if (demos24h?.length) {
-    const spaceIds = [...new Set(demos24h.map((t: any) => t.spaceId))];
-    const { data: settings } = await supabase
-      .from('SpaceSetting')
-      .select('spaceId, businessName')
-      .in('spaceId', spaceIds);
-    const nameMap = new Map((settings ?? []).map((s: any) => [s.spaceId, s.businessName]));
+    const spaceIds = [...new Set(demos24h.map((t: any) => t.spaceId))] as string[];
+    const settings = await convex().query(api.workspace.settings.listBusinessNamesForSpaces, {
+      spaceIds,
+    });
+    const nameMap = new Map((settings ?? []).map((s) => [s.spaceId, s.businessName]));
 
-    const { data: spaces } = await supabase
-      .from('Space')
-      .select('id, name')
-      .in('id', spaceIds);
-    const spaceNameMap = new Map((spaces ?? []).map((s: any) => [s.id, s.name]));
+    const spaces = await convex().query(api.workspace.spaces.listByIds, {
+      ids: spaceIds,
+    });
+    const spaceNameMap = new Map((spaces ?? []).map((s) => [s.id, s.name]));
 
     for (const demo of demos24h) {
       const demoStart = new Date(demo.startsAt);

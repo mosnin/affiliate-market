@@ -4,7 +4,6 @@
  * Returns the agent's latest brief and score explanation for a contact.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
@@ -23,12 +22,9 @@ export async function GET(
   const { contactId } = await params;
 
   // Verify contact belongs to this space
-  const { data: contact } = await supabase
-    .from('Contact')
-    .select('id')
-    .eq('id', contactId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const contact = await convex()
+    .query(api.contacts.contacts.getById, { id: contactId, spaceId: space.id })
+    .catch(() => null);
 
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 

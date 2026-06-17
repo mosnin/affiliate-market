@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { z } from 'zod';
 
 const addNoteSchema = z.object({
@@ -44,27 +44,37 @@ export async function POST(req: NextRequest) {
 
   try {
     // Get manager user's name
-    const { data: managerUser } = await supabase
-      .from('User')
-      .select('name, email')
-      .eq('id', dbUserId)
-      .maybeSingle();
+    let managerUser: { name: string | null; email: string | null } | null = null;
+    try {
+      managerUser = await convex().query(api.org.users.getById, { id: dbUserId });
+    } catch {
+      managerUser = null;
+    }
     const managerName = managerUser?.name ?? managerUser?.email ?? 'Manager';
 
     // Find the manager's space
-    const { data: ownerSpace } = await supabase
-      .from('Space')
-      .select('id')
-      .eq('ownerId', company.ownerId)
-      .maybeSingle();
+    let ownerSpace: { id: string } | null = null;
+    try {
+      ownerSpace = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: company.ownerId,
+      });
+    } catch {
+      ownerSpace = null;
+    }
     const managerSpaceId = ownerSpace?.id ?? null;
 
     // First check: is this contact in the manager's own space?
-    const { data: contact } = await supabase
-      .from('Contact')
-      .select('id, notes, spaceId, applicationStatusNote')
-      .eq('id', contactId)
-      .maybeSingle();
+    let contact: {
+      id: string;
+      notes: string | null;
+      spaceId: string;
+      applicationStatusNote: string | null;
+    } | null = null;
+    try {
+      contact = await convex().query(api.contacts.contacts.getById, { id: contactId });
+    } catch {
+      contact = null;
+    }
 
     if (!contact) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
@@ -77,19 +87,25 @@ export async function POST(req: NextRequest) {
       authorized = true;
     } else {
       // Check if the contact's space belongs to a company member
-      const { data: spaceOwner } = await supabase
-        .from('Space')
-        .select('ownerId')
-        .eq('id', contact.spaceId)
-        .maybeSingle();
+      let spaceOwner: { ownerId: string } | null = null;
+      try {
+        spaceOwner = await convex().query(api.workspace.spaces.getById, {
+          id: contact.spaceId,
+        });
+      } catch {
+        spaceOwner = null;
+      }
 
       if (spaceOwner) {
-        const { data: membership } = await supabase
-          .from('CompanyMembership')
-          .select('id')
-          .eq('companyId', company.id)
-          .eq('userId', spaceOwner.ownerId)
-          .maybeSingle();
+        let membership: { id: string } | null = null;
+        try {
+          membership = await convex().query(api.org.memberships.getByCompanyUser, {
+            companyId: company.id,
+            userId: spaceOwner.ownerId,
+          });
+        } catch {
+          membership = null;
+        }
         if (membership) authorized = true;
       }
     }
@@ -116,26 +132,20 @@ export async function POST(req: NextRequest) {
       ? `${newNote}\n\n${existingNotes}`
       : newNote;
 
-    const { error: updateError } = await supabase
-      .from('Contact')
-      .update({
-        notes: updatedNotes,
-        updatedAt: now.toISOString(),
-      })
-      .eq('id', contactId);
-
-    if (updateError) throw updateError;
+    await convex().mutation(api.contacts.contacts.update, {
+      id: contactId,
+      patch: { notes: updatedNotes },
+      updatedAt: now.toISOString(),
+    });
 
     // If this is an assigned lead, also add the note to the seller's copy
     if (contact.spaceId === managerSpaceId && contact.applicationStatusNote) {
       try {
         const meta = JSON.parse(contact.applicationStatusNote);
         if (meta.assignedContactId) {
-          const { data: sellerContact } = await supabase
-            .from('Contact')
-            .select('id, notes')
-            .eq('id', meta.assignedContactId)
-            .maybeSingle();
+          const sellerContact = await convex().query(api.contacts.contacts.getById, {
+            id: meta.assignedContactId,
+          });
 
           if (sellerContact) {
             const sellerExisting = sellerContact.notes ?? '';
@@ -143,13 +153,11 @@ export async function POST(req: NextRequest) {
               ? `${newNote}\n\n${sellerExisting}`
               : newNote;
 
-            await supabase
-              .from('Contact')
-              .update({
-                notes: sellerUpdated,
-                updatedAt: now.toISOString(),
-              })
-              .eq('id', meta.assignedContactId);
+            await convex().mutation(api.contacts.contacts.update, {
+              id: meta.assignedContactId,
+              patch: { notes: sellerUpdated },
+              updatedAt: now.toISOString(),
+            });
           }
         }
       } catch {
@@ -189,22 +197,26 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { data: contact } = await supabase
-      .from('Contact')
-      .select('id, notes, spaceId')
-      .eq('id', contactId)
-      .maybeSingle();
+    let contact: { id: string; notes: string | null; spaceId: string } | null = null;
+    try {
+      contact = await convex().query(api.contacts.contacts.getById, { id: contactId });
+    } catch {
+      contact = null;
+    }
 
     if (!contact) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
     // Verify the contact belongs to the manager's space or a company member's space
-    const { data: ownerSpace } = await supabase
-      .from('Space')
-      .select('id')
-      .eq('ownerId', company.ownerId)
-      .maybeSingle();
+    let ownerSpace: { id: string } | null = null;
+    try {
+      ownerSpace = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: company.ownerId,
+      });
+    } catch {
+      ownerSpace = null;
+    }
     const managerSpaceId = ownerSpace?.id ?? null;
 
     let authorized = false;
@@ -213,19 +225,25 @@ export async function GET(req: NextRequest) {
       authorized = true;
     } else {
       // Check if the contact's space belongs to a company member
-      const { data: spaceOwner } = await supabase
-        .from('Space')
-        .select('ownerId')
-        .eq('id', contact.spaceId)
-        .maybeSingle();
+      let spaceOwner: { ownerId: string } | null = null;
+      try {
+        spaceOwner = await convex().query(api.workspace.spaces.getById, {
+          id: contact.spaceId,
+        });
+      } catch {
+        spaceOwner = null;
+      }
 
       if (spaceOwner) {
-        const { data: membership } = await supabase
-          .from('CompanyMembership')
-          .select('id')
-          .eq('companyId', company.id)
-          .eq('userId', spaceOwner.ownerId)
-          .maybeSingle();
+        let membership: { id: string } | null = null;
+        try {
+          membership = await convex().query(api.org.memberships.getByCompanyUser, {
+            companyId: company.id,
+            userId: spaceOwner.ownerId,
+          });
+        } catch {
+          membership = null;
+        }
         if (membership) authorized = true;
       }
     }

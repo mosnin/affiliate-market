@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { redis } from '@/lib/redis';
 import { getSpaceFromSlug } from '@/lib/space';
@@ -84,11 +83,7 @@ async function fetchFormConfigForLeadType(
 
   // Legacy fallback: try the single formConfig column directly
   try {
-    const { data: spaceSetting } = await supabase
-      .from('SpaceSetting')
-      .select('formConfig, formConfigSource')
-      .eq('spaceId', spaceId)
-      .maybeSingle();
+    const spaceSetting = await convex().query(api.workspace.settings.getBySpace, { spaceId });
 
     if (spaceSetting?.formConfig && spaceSetting.formConfigSource !== 'legacy') {
       const parsed = formConfigSchema.safeParse(spaceSetting.formConfig);
@@ -103,11 +98,7 @@ async function fetchFormConfigForLeadType(
 
     // Fall back to company-level config
     if (companyId) {
-      const { data: company } = await supabase
-        .from('Company')
-        .select('companyFormConfig')
-        .eq('id', companyId)
-        .maybeSingle();
+      const company = await convex().query(api.org.companies.getById, { id: companyId });
 
       if (company?.companyFormConfig) {
         const parsed = formConfigSchema.safeParse(company.companyFormConfig);
@@ -351,11 +342,9 @@ export async function POST(req: NextRequest) {
         const scoringColumn = resolvedLeadType === 'buyer'
           ? 'buyerScoringModel'
           : 'rentalScoringModel';
-        const { data: scoringSettings } = await supabase
-          .from('SpaceSetting')
-          .select(scoringColumn)
-          .eq('spaceId', space.id)
-          .maybeSingle();
+        const scoringSettings = await convex().query(api.workspace.settings.getBySpace, {
+          spaceId: space.id,
+        });
         if (scoringSettings) {
           scoringModel = (scoringSettings as Record<string, unknown>)[scoringColumn] as ScoringModel | null;
         }
@@ -485,16 +474,20 @@ export async function POST(req: NextRequest) {
      // different phone, days later, it doesn't matter. The 5-minute name+phone
      // window below catches the "double-tap submit" case for emailless flows.
      if (contactEmail) {
-      const { data: emailMatches, error: emailDupErr } = await supabase
-        .from('Contact')
-        .select('id, applicationRef')
-        .eq('spaceId', space.id)
-        .ilike('email', contactEmail)
-        .contains('tags', ['application-link'])
-        .order('createdAt', { ascending: false })
-        .limit(1);
-      if (!emailDupErr && emailMatches && emailMatches.length > 0) {
-        const match = emailMatches[0] as { id: string; applicationRef: string | null };
+      // Best-effort (a lookup failure must not block a real submission): on
+      // error, skip dedup and fall through to insert — matching the old
+      // error-swallowing `if (!emailDupErr …)`.
+      let match: { id: string; applicationRef: string | null } | null = null;
+      try {
+        match = await convex().query(api.contacts.contacts.findApplicationByEmailInSpace, {
+          spaceId: space.id,
+          email: contactEmail,
+          tag: 'application-link',
+        });
+      } catch {
+        match = null;
+      }
+      if (match) {
         return NextResponse.json(
           {
             success: true,
@@ -506,18 +499,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Expanded window: 5 minutes (was 2 minutes)
+    // Expanded window: 5 minutes (was 2 minutes). A failure here THROWS (the old
+    // `if (dupError) throw dupError`), failing the request rather than risking a
+    // duplicate.
     const duplicateCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: existingRecentLeads, error: dupError } = await supabase
-      .from('Contact')
-      .select('id, phone, email, scoringStatus, leadScore, scoreLabel, scoreSummary, scoreDetails, applicationRef')
-      .eq('spaceId', space.id)
-      .eq('name', contactName)
-      .contains('tags', ['application-link'])
-      .gte('createdAt', duplicateCutoff)
-      .order('createdAt', { ascending: false })
-      .limit(5);
-    if (dupError) throw dupError;
+    const existingRecentLeads = await convex().query(
+      api.contacts.contacts.recentByNameAndTag,
+      {
+        spaceId: space.id,
+        name: contactName,
+        tag: 'application-link',
+        sinceIso: duplicateCutoff,
+        limit: 5,
+      },
+    );
 
     // Generate a unique application reference for the status page (64 hex chars = 256 bits entropy)
     const applicationRef = crypto.randomBytes(32).toString('hex');
@@ -529,7 +524,7 @@ export async function POST(req: NextRequest) {
       const normalizedPhone = normalizePhone(contactPhone);
       const normalizedEmail = (contactEmail ?? '').trim().toLowerCase();
 
-      const duplicate = (existingRecentLeads as Contact[]).find((lead) => {
+      const duplicate = (existingRecentLeads as unknown as Contact[]).find((lead) => {
         const phoneMatch =
           normalizePhone(lead.phone ?? '') !== '' &&
           normalizePhone(lead.phone ?? '') === normalizedPhone;
@@ -568,11 +563,9 @@ export async function POST(req: NextRequest) {
     let spaceBusinessName: string | null = null;
     let intakeConfirmationEmail: string | null = null;
     try {
-      const { data: spaceSetting } = await supabase
-        .from('SpaceSetting')
-        .select('privacyPolicyUrl, businessName, intakeConfirmationEmail')
-        .eq('spaceId', space.id)
-        .maybeSingle();
+      const spaceSetting = await convex().query(api.workspace.settings.getBySpace, {
+        spaceId: space.id,
+      });
       spacePrivacyPolicyUrl = spaceSetting?.privacyPolicyUrl ?? null;
       spaceBusinessName = spaceSetting?.businessName ?? null;
       intakeConfirmationEmail = spaceSetting?.intakeConfirmationEmail ?? null;
@@ -617,12 +610,12 @@ export async function POST(req: NextRequest) {
       contactInsert.formConfigSnapshot = formConfigSnapshot;
     }
 
-    const { data: contacts, error: insertError } = await supabase
-      .from('Contact')
-      .insert(contactInsert)
-      .select();
-    if (insertError) throw insertError;
-    const contact = contacts![0] as Contact;
+    // contactInsert is a Record<string, unknown> built above; its camelCase keys
+    // are exactly the create-mutation args (id, spaceId, name, …, formConfigSnapshot).
+    const contact = (await convex().mutation(
+      api.contacts.contacts.create,
+      contactInsert as any,
+    )) as unknown as Contact;
     // Create initial status update record for audit trail
     try {
       await convex().mutation(api.portal.applicationStatus.create, {
@@ -672,39 +665,39 @@ export async function POST(req: NextRequest) {
         scoringModel,
       });
 
-      const { error: scoreUpdateError } = await supabase
-        .from('Contact')
-        .update({
-          scoringStatus: scoring.scoringStatus,
-          leadScore: scoring.leadScore,
-          scoreLabel: scoring.scoreLabel,
-          scoreSummary: scoring.scoreSummary,
-          scoreDetails: scoring.scoreDetails,
+      try {
+        await convex().mutation(api.contacts.contacts.update, {
+          id: contact.id,
+          patch: {
+            scoringStatus: scoring.scoringStatus,
+            leadScore: scoring.leadScore,
+            scoreLabel: scoring.scoreLabel,
+            scoreSummary: scoring.scoreSummary,
+            scoreDetails: scoring.scoreDetails,
+          },
           updatedAt: new Date().toISOString(),
-        })
-        .eq('id', contact.id);
-      if (scoreUpdateError) {
-        logger.error('[apply] scoring update failed', { contactId: contact.id }, scoreUpdateError);
-      } else {
+        });
         logger.info('[apply] scoring persisted', {
           contactId: contact.id,
           scoringStatus: scoring.scoringStatus,
           scoreLabel: scoring.scoreLabel,
         });
+      } catch (scoreUpdateError) {
+        logger.error('[apply] scoring update failed', { contactId: contact.id }, scoreUpdateError);
       }
     } catch (error) {
       logger.error('[apply] scoring failed', { contactId: contact.id }, error);
       try {
-        await supabase
-          .from('Contact')
-          .update({
+        await convex().mutation(api.contacts.contacts.update, {
+          id: contact.id,
+          patch: {
             scoringStatus: 'failed',
             leadScore: null,
             scoreLabel: 'unscored',
             scoreSummary: 'Scoring unavailable right now. Lead saved.',
-            updatedAt: new Date().toISOString(),
-          })
-          .eq('id', contact.id);
+          },
+          updatedAt: new Date().toISOString(),
+        });
       } catch (fallbackErr) {
         logger.error('[apply] fallback scoring state failed', { contactId: contact.id }, fallbackErr);
       }

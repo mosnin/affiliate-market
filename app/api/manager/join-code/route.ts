@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requireManager } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -61,11 +61,12 @@ export async function POST() {
   let joinCode = '';
   for (let attempt = 0; attempt < 5; attempt++) {
     const candidate = generateJoinCode();
-    const { data: conflict } = await supabase
-      .from('Company')
-      .select('id')
-      .eq('joinCode', candidate)
-      .maybeSingle();
+    let conflict: { id: string } | null = null;
+    try {
+      conflict = await convex().query(api.org.companies.getByJoinCode, { joinCode: candidate });
+    } catch {
+      conflict = null;
+    }
     if (!conflict) {
       joinCode = candidate;
       break;
@@ -76,12 +77,12 @@ export async function POST() {
     return NextResponse.json({ error: 'Failed to generate unique code, please try again' }, { status: 500 });
   }
 
-  const { error } = await supabase
-    .from('Company')
-    .update({ joinCode })
-    .eq('id', ctx.company.id);
-
-  if (error) {
+  try {
+    await convex().mutation(api.org.companies.updateById, {
+      id: ctx.company.id,
+      patch: { joinCode },
+    });
+  } catch (error) {
     console.error('[manager/join-code] update failed', error);
     return NextResponse.json({ error: 'Failed to save join code' }, { status: 500 });
   }

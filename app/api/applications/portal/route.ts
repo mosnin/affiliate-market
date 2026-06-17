@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
@@ -34,16 +33,13 @@ export async function GET(req: NextRequest) {
   }
 
   // Validate both applicationRef AND statusPortalToken match (defense in depth)
-  const { data: contact, error: contactError } = await supabase
-    .from('Contact')
-    .select(
-      'id, name, applicationStatus, applicationStatusNote, applicationRef, spaceId, createdAt',
-    )
-    .eq('applicationRef', ref)
-    .eq('statusPortalToken', token)
-    .maybeSingle();
-
-  if (contactError) {
+  let contact;
+  try {
+    contact = await convex().query(api.contacts.contacts.findByApplicationRef, {
+      applicationRef: ref,
+      statusPortalToken: token,
+    });
+  } catch (contactError) {
     console.error('[portal] Contact lookup error:', contactError);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
@@ -83,11 +79,9 @@ export async function GET(req: NextRequest) {
   }
 
   // Fetch business name for display
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select('businessName')
-    .eq('spaceId', contact.spaceId)
-    .maybeSingle();
+  const settings = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: contact.spaceId,
+  });
 
   return NextResponse.json({
     contact: {

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 
 /**
@@ -18,16 +17,12 @@ export async function GET() {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   // Look up the current user and their primary space (for subscription status).
-  const { data: user } = await supabase
-    .from('User')
-    .select('id, platformRole, Space(stripeSubscriptionStatus)')
-    .eq('clerkId', userId)
-    .maybeSingle();
-
+  // The User row and its owned Space live in separate Convex domains, so the old
+  // PostgREST `Space(...)` embed becomes two reads: User by clerkId, then the
+  // owner's single Space (Space.ownerId is unique → the user's primary space).
+  const user = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
   const space = user
-    ? Array.isArray((user as any).Space)
-      ? (user as any).Space[0]
-      : (user as any).Space
+    ? await convex().query(api.workspace.spaces.getByOwnerId, { ownerId: user.id })
     : null;
   const subStatus: string | null = space?.stripeSubscriptionStatus ?? null;
   const isAdmin = user?.platformRole === 'admin';

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { getStripe } from '@/lib/stripe';
 
@@ -16,11 +16,7 @@ export function sellerPayoutsConfigured(): boolean {
 }
 
 export async function getSellerConnectAccountId(spaceId: string): Promise<string | null> {
-  const { data } = await supabase
-    .from('Space')
-    .select('stripeConnectAccountId')
-    .eq('id', spaceId)
-    .maybeSingle();
+  const data = await convex().query(api.workspace.spaces.getById, { id: spaceId });
   return (data?.stripeConnectAccountId as string | null) ?? null;
 }
 
@@ -47,10 +43,10 @@ export async function createSellerConnectOnboardingLink(
         metadata: { spaceId: space.id },
       });
       accountId = account.id;
-      await supabase
-        .from('Space')
-        .update({ stripeConnectAccountId: accountId })
-        .eq('id', space.id);
+      await convex().mutation(api.workspace.spaces.setConnectAccountId, {
+        id: space.id,
+        stripeConnectAccountId: accountId,
+      });
     }
 
     const base = origin.replace(/\/$/, '');

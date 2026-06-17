@@ -16,18 +16,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 async function unsubscribe(token: string): Promise<NextResponse> {
   if (!token || typeof token !== 'string' || token.length < 8) {
     return NextResponse.json({ error: 'Invalid token.' }, { status: 400 });
   }
 
-  const { data: setting } = await supabase
-    .from('SpaceSetting')
-    .select('id, spaceId, briefEmail')
-    .eq('unsubscribeToken', token)
-    .maybeSingle();
+  const setting = await convex()
+    .query(api.workspace.settings.getByUnsubscribeToken, { token })
+    .catch(() => null);
 
   if (!setting) {
     // Don't leak whether the token exists — same 200 either way so
@@ -36,7 +34,10 @@ async function unsubscribe(token: string): Promise<NextResponse> {
   }
 
   if (setting.briefEmail) {
-    await supabase.from('SpaceSetting').update({ briefEmail: false }).eq('id', setting.id);
+    await convex().mutation(api.workspace.settings.setBriefEmailById, {
+      id: setting.id,
+      briefEmail: false,
+    });
   }
 
   return htmlResponse('You&#39;re unsubscribed from the daily brief.');

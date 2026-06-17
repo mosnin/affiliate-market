@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { BookingForm } from '../booking-form';
 import { FormUnavailable } from '@/components/form-unavailable';
 
@@ -17,11 +17,9 @@ export default async function EmbedBookingPage({
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
-  const { data: settingsData } = await supabase
-    .from('SpaceSetting')
-    .select('businessName, demoDuration, timezone')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settingsData = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
 
   const businessName = (settingsData as any)?.businessName || space.name;
   const duration = (settingsData as any)?.demoDuration || 30;
