@@ -11,6 +11,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockByTable: Record<string, { single?: Record<string, unknown> | null; count?: number }> = {};
 
+// User / Deal / Contact counts still come from Supabase (those tables didn't
+// migrate). The pending-draft count moved to Convex (api.agent.drafts.
+// countBySpaceStatus), so the AgentDraft count is driven by the Convex mock
+// below — set it via `pendingDraftCount`, not via mockByTable.AgentDraft.
 vi.mock('@/lib/supabase', () => {
   return {
     supabase: {
@@ -33,6 +37,23 @@ vi.mock('@/lib/supabase', () => {
   };
 });
 
+// Convex mock — the pending-draft count read. countBySpaceStatus returns a
+// number; the snapshot folds it into pendingDraftCount. `api` is a path proxy.
+let pendingDraftCount = 0;
+const { convexQueryMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: vi.fn() }),
+  };
+});
+
 const { activeToolkitsMock } = vi.hoisted(() => ({
   activeToolkitsMock: vi.fn(async () => [] as string[]),
 }));
@@ -50,6 +71,10 @@ beforeEach(() => {
   for (const key of Object.keys(mockByTable)) delete mockByTable[key];
   activeToolkitsMock.mockReset();
   activeToolkitsMock.mockResolvedValue([]);
+  pendingDraftCount = 0;
+  convexQueryMock.mockReset();
+  // The single Convex read in loadFresh is the pending-draft count.
+  convexQueryMock.mockImplementation(async () => pendingDraftCount);
   __resetPersonalizedSnapshotCacheForTests();
 });
 
@@ -67,8 +92,10 @@ describe('buildPersonalizedSnapshot', () => {
   });
 
   it('returns counts from the parallel queries', async () => {
+    // Deal count still rides Supabase; the pending-draft count comes from the
+    // Convex countBySpaceStatus query.
     mockByTable.Deal = { count: 3 };
-    mockByTable.AgentDraft = { count: 2 };
+    pendingDraftCount = 2;
     const snap = await buildPersonalizedSnapshot({ spaceId: 's', userId: 'u' });
     expect(snap.activeDealCount).toBe(3);
     expect(snap.pendingDraftCount).toBe(2);

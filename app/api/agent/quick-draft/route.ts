@@ -28,6 +28,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getSpaceForUser } from '@/lib/space';
@@ -187,9 +188,9 @@ export async function POST(req: NextRequest) {
     // from server code — and the logic is small. We replicate it inline:
     // insert pending → sendDraft → flip status. Same audit shape.
     const now = new Date().toISOString();
-    const { data: inserted, error: insertError } = await supabase
-      .from('AgentDraft')
-      .insert({
+    let inserted;
+    try {
+      inserted = await convex().mutation(api.agent.drafts.create, {
         spaceId: space.id,
         contactId,
         dealId,
@@ -199,16 +200,13 @@ export async function POST(req: NextRequest) {
         reasoning: `Quick draft from /cola home (${sendBody.intent}).`,
         priority: 0,
         status: 'pending',
-      })
-      .select('id, channel, subject, content, contactId')
-      .single();
-
-    if (insertError || !inserted) {
-      logger.error('[quick-draft] insert failed', { err: insertError?.message });
+      });
+    } catch (insertError) {
+      logger.error('[quick-draft] insert failed', { err: insertError instanceof Error ? insertError.message : String(insertError) });
       return NextResponse.json({ error: 'Failed to create draft' }, { status: 500 });
     }
 
-    const draftId = (inserted as { id: string }).id;
+    const draftId = inserted.id;
 
     // Hydrate contact for delivery (needs email/phone).
     let contact = { name: subjectLabel, email: null as string | null, phone: null as string | null };
@@ -230,13 +228,14 @@ export async function POST(req: NextRequest) {
     );
 
     const finalStatus = deliveryResult.sent ? 'sent' : 'approved';
-    const { error: patchError } = await supabase
-      .from('AgentDraft')
-      .update({ status: finalStatus, updatedAt: now })
-      .eq('id', draftId)
-      .eq('spaceId', space.id);
-    if (patchError) {
-      logger.error('[quick-draft] status update failed', { err: patchError.message });
+    try {
+      await convex().mutation(api.agent.drafts.updateForSpace, {
+        id: draftId,
+        spaceId: space.id,
+        patch: { status: finalStatus, touchUpdatedAt: true },
+      });
+    } catch (patchError) {
+      logger.error('[quick-draft] status update failed', { err: patchError instanceof Error ? patchError.message : String(patchError) });
     }
 
     void audit({

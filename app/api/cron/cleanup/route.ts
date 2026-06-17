@@ -13,7 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { monitorCron } from '@/lib/cron-monitor';
 
@@ -25,11 +25,19 @@ async function handler(req: NextRequest) {
   }
 
   // ── Run cleanup ───────────────────────────────────────────────────────────
-  const { data, error } = await supabase.rpc('cleanup_agent_data');
-
-  if (error) {
-    logger.error('[cron.cleanup] cleanup_agent_data RPC failed', { err: error.message });
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  // Convex port of the cleanup_agent_data() proc. Returns the same jsonb count
+  // shape ({ deleted_steps, deleted_tasks, deleted_memories,
+  // deleted_artifact_versions, deleted_artifacts, ran_at }). NOTE: the
+  // cross-domain AgentMemory / Artifact / ArtifactVersion deletes are flagged
+  // pending in the mutation (crossDomainPending: true, zeroed counts) until
+  // those tables land in Convex — see convex/agent/cleanup.ts.
+  let data: Record<string, unknown>;
+  try {
+    data = await convex().mutation(api.agent.cleanup.cleanupAgentData, {});
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('[cron.cleanup] cleanupAgentData failed', { err: message });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   logger.info('[cron.cleanup] cleanup complete', { result: data });

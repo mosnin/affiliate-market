@@ -469,17 +469,11 @@ export async function POST(req: NextRequest) {
     // legitimate turn. Default matches the AgentSettings column default
     // (50_000) — same correction the seller route carries.
     try {
-      const [settingsResult, usageResult] = await Promise.all([
-        supabase
-          .from('AgentSettings')
-          .select('dailyTokenBudget')
-          .eq('spaceId', runtimeSpaceId)
-          .maybeSingle(),
+      // dailyTokenBudget folds the maybeSingle + `?? 50_000` default into the query.
+      const [dailyTokenBudget, usageResult] = await Promise.all([
+        convex().query(api.agent.settings.dailyTokenBudget, { spaceId: runtimeSpaceId }),
         getTodayTokenUsage(runtimeSpaceId),
       ]);
-      const dailyTokenBudget: number =
-        ((settingsResult.data as { dailyTokenBudget?: number | null } | null)
-          ?.dailyTokenBudget as number | null | undefined) ?? 50_000;
       if (usageResult.total >= dailyTokenBudget) {
         logger.warn('[ai/manager-task] daily token budget exceeded', {
           companyId,

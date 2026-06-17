@@ -18,6 +18,7 @@ import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { cn } from '@/lib/utils';
 import { AgentDraftInbox } from '@/components/agent/agent-draft-inbox';
 import { ColaPageShell } from '@/components/cola/cola-page-shell';
@@ -84,22 +85,15 @@ export default async function ColaInboxPage({
 
   // Just the count — AgentDraftInbox fetches the actual draft data
   // client-side, the same way it does on every other page that mounts it.
-  const { count: pendingDraftCount } = await supabase
-    .from('AgentDraft')
-    .select('*', { count: 'exact', head: true })
-    .eq('spaceId', space.id)
-    .eq('status', 'pending');
+  const pendingDraftCount = await convex()
+    .query(api.agent.drafts.countBySpaceStatus, { spaceId: space.id, status: 'pending' })
+    .catch(() => undefined);
 
-  const { data: tasks } = await supabase
-    .from('AgentTask')
-    .select('*')
-    .eq('spaceId', space.id)
-    .eq('status', 'paused')
-    .not('metadata->approvalRequired', 'is', null)
-    .order('createdAt', { ascending: false })
-    .limit(50);
+  const tasks = await convex()
+    .query(api.agent.tasks.listPendingApprovals, { spaceId: space.id, limit: 50 })
+    .catch(() => undefined);
 
-  const approvalList = (tasks ?? []) as ApprovalTask[];
+  const approvalList = (tasks ?? []) as unknown as ApprovalTask[];
   const draftCount = pendingDraftCount ?? 0;
   const hasDrafts = draftCount > 0;
   const hasApprovals = approvalList.length > 0;

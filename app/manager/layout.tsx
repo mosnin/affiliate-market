@@ -9,6 +9,7 @@ import { Header } from '@/components/dashboard/header';
 import { AccountSwitchSwipe } from '@/components/dashboard/account-switch';
 import { ManagerMain } from '@/components/manager/manager-main';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getCompanyMembers } from '@/lib/company-members';
 import { ColaSplash } from '@/components/dashboard/cola-splash';
 import { pickGreeting } from '@/lib/greetings';
@@ -184,11 +185,9 @@ export default async function ManagerLayout({ children }: { children: React.Reac
           .not('followUpAt', 'is', null)
           .lte('followUpAt', now),
         // pending AgentDrafts across all member spaces
-        supabase
-          .from('AgentDraft')
-          .select('id', { count: 'exact', head: true })
-          .in('spaceId', memberSpaceIds)
-          .eq('status', 'pending'),
+        convex()
+          .query(api.agent.drafts.pendingForSpaces, { spaceIds: memberSpaceIds })
+          .then((rows) => ({ count: rows.length })),
       ]);
       unreadLeadCount = leadResult.count ?? 0;
       managerFollowUpsDue = followUpResult.count ?? 0;
@@ -208,11 +207,9 @@ export default async function ManagerLayout({ children }: { children: React.Reac
           .eq('spaceId', spaceRow.id)
           .not('followUpAt', 'is', null)
           .lte('followUpAt', now),
-        supabase
-          .from('AgentDraft')
-          .select('id', { count: 'exact', head: true })
-          .eq('spaceId', spaceRow.id)
-          .eq('status', 'pending'),
+        convex()
+          .query(api.agent.drafts.countBySpaceStatus, { spaceId: spaceRow.id as string, status: 'pending' })
+          .then((count) => ({ count })),
       ]);
       unreadLeadCount = leadResult.count ?? 0;
       managerFollowUpsDue = followUpResult.count ?? 0;

@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { AgentBuilderForm } from '@/components/agents/agent-builder-form';
 import type { CustomAgent } from '@/lib/swarm-types';
 
@@ -29,18 +30,17 @@ export default async function EditAgentPage({
   if (!spaceOwner) notFound();
 
   // Fetch the agent and verify it belongs to this space.
-  const { data: agentData, error } = await supabase
-    .from('CustomAgent')
-    .select('*')
-    .eq('id', agentId)
-    .maybeSingle();
-
-  if (error) {
+  let agentData: CustomAgent | null = null;
+  try {
+    agentData = (await convex().query(api.agent.customAgents.getById, {
+      id: agentId,
+    })) as CustomAgent | null;
+  } catch (error) {
     console.error('[agents/[agentId]] agent fetch error:', error);
     notFound();
   }
 
-  const agent = agentData as CustomAgent | null;
+  const agent = agentData;
   if (!agent || agent.spaceId !== space.id) notFound();
 
   return (

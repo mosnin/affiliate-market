@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { assertSpaceEnabled } from '@/lib/agent/kill-switch';
@@ -119,12 +120,10 @@ export async function POST(req: NextRequest) {
   // cap could launch unlimited swarms. Gate it the same way. Fails open on a DB
   // error so a transient blip can't block a legitimate run.
   try {
-    const { data: settingsRow } = await supabase
-      .from('AgentSettings')
-      .select('dailyTokenBudget')
-      .eq('spaceId', space.id)
-      .maybeSingle();
-    const dailyTokenBudget = (settingsRow?.dailyTokenBudget as number | null | undefined) ?? 50_000;
+    // dailyTokenBudget folds the maybeSingle + `?? 50_000` default into the query.
+    const dailyTokenBudget = await convex().query(api.agent.settings.dailyTokenBudget, {
+      spaceId: space.id,
+    });
     const { total: todayTokens } = await getTodayTokenUsage(space.id);
     if (todayTokens >= dailyTokenBudget) {
       return NextResponse.json({ error: 'Daily token budget exceeded' }, { status: 429 });
@@ -136,19 +135,15 @@ export async function POST(req: NextRequest) {
   // Fetch custom agents if IDs were provided.
   let agents: CustomAgentRow[] = [];
   if (customAgentIds.length > 0) {
-    const { data: agentRows, error: agentError } = await supabase
-      .from('CustomAgent')
-      .select('id, name, systemPrompt')
-      .in('id', customAgentIds)
-      .eq('spaceId', space.id)
-      .eq('isActive', true);
-
-    if (agentError) {
+    try {
+      agents = (await convex().query(api.agent.customAgents.activeByIdsForSpace, {
+        ids: customAgentIds,
+        spaceId: space.id,
+      })) as CustomAgentRow[];
+    } catch (agentError) {
       console.error('[swarm/POST] custom agent fetch error:', agentError);
       return NextResponse.json({ error: 'Failed to fetch custom agents' }, { status: 500 });
     }
-
-    agents = (agentRows ?? []) as CustomAgentRow[];
   }
 
   // Insert the SwarmRun row.

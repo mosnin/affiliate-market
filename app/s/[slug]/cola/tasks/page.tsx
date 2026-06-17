@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { cn } from '@/lib/utils';
 import { ColaPageShell } from '@/components/cola/cola-page-shell';
 
@@ -77,12 +78,16 @@ export default async function AgentTasksPage({
     .maybeSingle();
   if (!spaceOwner) notFound();
 
-  const { data: tasks, error } = await supabase
-    .from('AgentTask')
-    .select('*')
-    .eq('spaceId', space.id)
-    .order('createdAt', { ascending: false })
-    .limit(50);
+  let tasks: AgentTask[] | null = null;
+  let error: unknown = null;
+  try {
+    tasks = (await convex().query(api.agent.tasks.listBySpace, {
+      spaceId: space.id,
+      limit: 50,
+    })) as AgentTask[];
+  } catch (err) {
+    error = err;
+  }
 
   if (error) {
     console.error('[cola/tasks] query error:', error);

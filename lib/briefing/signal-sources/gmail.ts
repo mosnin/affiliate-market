@@ -244,18 +244,15 @@ async function contactsByEmail(spaceId: string): Promise<Map<string, ContactRow>
  *  for the contact, the drafts source covers it. */
 async function recentlyDraftedContactIds(spaceId: string): Promise<Set<string>> {
   const since = new Date(Date.now() - DRAFT_LOOKBACK_HOURS * MS_PER_HOUR).toISOString();
-  const { data, error } = await supabase
-    .from('AgentDraft')
-    .select('contactId')
-    .eq('spaceId', spaceId)
-    .gte('createdAt', since)
-    .not('contactId', 'is', null);
-  if (error || !data) return new Set();
-  const ids = new Set<string>();
-  for (const r of data as Array<{ contactId: string | null }>) {
-    if (r.contactId) ids.add(r.contactId);
+  try {
+    const ids = await convex().query(api.agent.drafts.recentlyDraftedContactIds, {
+      spaceId,
+      since,
+    });
+    return new Set(ids);
+  } catch {
+    return new Set();
   }
-  return ids;
 }
 
 /** Group messages by threadId, ordered by timestamp ascending so the last

@@ -18,6 +18,7 @@
  */
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { dealHealth } from '@/lib/deals/health';
@@ -103,8 +104,8 @@ export async function GET() {
     hotPeopleRes,
     overdueFollowUpsRes,
     activeDealsRes,
-    draftsRes,
-    questionsRes,
+    draftsCount,
+    questionsCount,
     topNewPersonRes,
     topHotPersonRes,
     topOverdueRes,
@@ -139,17 +140,9 @@ export async function GET() {
       .eq('status', 'active')
       .limit(500),
 
-    // ── Counts continued ──────────────────────────────────────────────────
-    supabase
-      .from('AgentDraft')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', space.id)
-      .eq('status', 'pending'),
-    supabase
-      .from('AgentQuestion')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', space.id)
-      .eq('status', 'pending'),
+    // ── Counts continued (Convex) ─────────────────────────────────────────
+    convex().query(api.agent.drafts.countBySpaceStatus, { spaceId: space.id, status: 'pending' }),
+    convex().query(api.agent.questions.countPending, { spaceId: space.id }),
 
     // ── Named subjects (1 row each — light reads) ─────────────────────────
     // Most-recent new applicant.
@@ -251,8 +244,8 @@ export async function GET() {
     overdueFollowUpsCount: overdueFollowUpsRes.count ?? 0,
     stuckDealsCount,
     closingThisWeekCount,
-    draftsCount: draftsRes.count ?? 0,
-    questionsCount: questionsRes.count ?? 0,
+    draftsCount: draftsCount ?? 0,
+    questionsCount: questionsCount ?? 0,
     topStuckDeal,
     topOverdueFollowUp,
     topNewPerson,

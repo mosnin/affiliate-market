@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -11,6 +12,9 @@ const VALID_GOAL_TYPES = [
   'reengagement',
   'custom',
 ] as const;
+
+const VALID_GOAL_STATUSES = ['active', 'completed', 'cancelled', 'paused'] as const;
+type GoalStatus = (typeof VALID_GOAL_STATUSES)[number];
 
 export async function GET(req: NextRequest) {
   const authResult = await requireAuth();
@@ -25,19 +29,35 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(isNaN(limitParam) ? 20 : limitParam, 50);
   const contactId = req.nextUrl.searchParams.get('contactId');
 
-  let query = supabase
-    .from('AgentGoal')
-    .select('*, Contact:contactId(id,name)')
-    .eq('spaceId', space.id)
-    .eq('status', status)
-    .order('priority', { ascending: false })
-    .order('createdAt', { ascending: false })
-    .limit(limit);
+  // An out-of-range status used to filter to zero rows in PostgREST; preserve
+  // that (return []) rather than 500 on the Convex status validator.
+  if (!(VALID_GOAL_STATUSES as readonly string[]).includes(status)) {
+    return NextResponse.json([]);
+  }
 
-  if (contactId) query = query.eq('contactId', contactId);
+  // AgentGoal list (Convex). The Contact:contactId(id,name) embed the old
+  // select carried is hydrated from Supabase below (Contact is another domain).
+  const rows = await convex().query(api.agent.goals.listBySpace, {
+    spaceId: space.id,
+    status: status as GoalStatus,
+    ...(contactId ? { contactId } : {}),
+    limit,
+  });
 
-  const { data, error } = await query;
-  if (error) throw error;
+  const contactIds = Array.from(
+    new Set(rows.map((r) => r.contactId).filter((id): id is string => !!id)),
+  );
+  const contactsRes = contactIds.length
+    ? await supabase.from('Contact').select('id, name').in('id', contactIds)
+    : { data: [] as { id: string; name: string }[] };
+  const contactById = new Map(
+    (contactsRes.data ?? []).map((c) => [c.id, { id: c.id, name: c.name }]),
+  );
+
+  const data = rows.map((r) => ({
+    ...r,
+    Contact: r.contactId ? contactById.get(r.contactId) ?? null : null,
+  }));
   return NextResponse.json(data ?? []);
 }
 
@@ -75,26 +95,15 @@ export async function POST(req: NextRequest) {
     if (!d) return NextResponse.json({ error: 'Deal not found' }, { status: 400 });
   }
 
-  const now = new Date().toISOString();
+  const data = await convex().mutation(api.agent.goals.create, {
+    spaceId: space.id,
+    goalType,
+    description: description.trim(),
+    instructions: instructions ?? null,
+    contactId: contactId ?? null,
+    dealId: dealId ?? null,
+    ...(typeof priority === 'number' ? { priority } : {}),
+  });
 
-  const { data, error } = await supabase
-    .from('AgentGoal')
-    .insert({
-      id: crypto.randomUUID(),
-      spaceId: space.id,
-      goalType,
-      description: description.trim(),
-      instructions: instructions ?? null,
-      contactId: contactId ?? null,
-      dealId: dealId ?? null,
-      priority: typeof priority === 'number' ? priority : 0,
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
   return NextResponse.json(data, { status: 201 });
 }

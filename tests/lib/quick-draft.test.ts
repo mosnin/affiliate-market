@@ -11,9 +11,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Supabase mock ─────────────────────────────────────────────────────────
+// Deal / Contact / ContactActivity still ride Supabase (enrichContext + the
+// targeted id/contact lookups). The AgentDraft insert + status flip moved to
+// Convex (api.agent.drafts.create / updateForSpace) — see the Convex mock and
+// `insertResult` wiring below; AgentDraft is no longer a Supabase table here.
 interface TableMock {
   single?: Record<string, unknown> | null;
   rows?: Array<Record<string, unknown>>;
+  /** Drives the Convex AgentDraft `create` mutation's returned row. */
   insertResult?: Record<string, unknown> | null;
   insertError?: { message: string } | null;
 }
@@ -37,28 +42,33 @@ vi.mock('@/lib/supabase', () => {
     chain.is = vi.fn(pass);
     chain.order = vi.fn(pass);
     chain.limit = vi.fn(pass);
-    chain.update = vi.fn((patch: Record<string, unknown>) => {
-      if (table === 'AgentDraft') lastDraftStatusUpdate = patch;
-      return chain;
-    });
-    chain.insert = vi.fn((row: Record<string, unknown>) => {
-      if (table === 'AgentDraft') lastInsertedDraft = row;
-      const insertSingle = Promise.resolve({
-        data: override.insertResult ?? { id: 'draft_new', ...row },
-        error: override.insertError ?? null,
-      });
-      return {
-        ...chain,
-        select: vi.fn(() => ({ single: vi.fn(() => insertSingle) })),
-        then: (r: (v: unknown) => unknown, e?: (e: unknown) => unknown) => insertSingle.then(r, e),
-      };
-    });
+    chain.update = vi.fn(pass);
+    chain.insert = vi.fn(pass);
     chain.maybeSingle = vi.fn(() => singleThen);
     chain.single = vi.fn(() => singleThen);
     chain.then = (r: (v: unknown) => unknown, e?: (e: unknown) => unknown) => termThen.then(r, e);
     return chain;
   }
   return { supabase: { from: vi.fn((table: string) => makeChain(table)) } };
+});
+
+// ── Convex mock ───────────────────────────────────────────────────────────
+// The AgentDraft create + status-flip writes. `create` returns the inserted
+// row (id taken from mockByTable.AgentDraft.insertResult, falling back to a
+// default); `updateForSpace` records the patch the route sent. `api` is a
+// path proxy so we branch on the dotted fn path regardless of call order.
+const { convexMutationMock } = vi.hoisted(() => ({
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: vi.fn(), mutation: convexMutationMock }),
+  };
 });
 
 // ── Auth + space mocks ────────────────────────────────────────────────────
@@ -127,6 +137,25 @@ beforeEach(() => {
   getRecentVoiceSamplesMock.mockReset();
   getRecentVoiceSamplesMock.mockResolvedValue([]);
   process.env.OPENAI_API_KEY = 'test-key';
+
+  // Route the AgentDraft Convex writes:
+  //   - create:         capture the inserted draft args, return the configured
+  //                     row ({ id, ...args }), honoring insertResult.
+  //   - updateForSpace: capture the patch the status-flip sent.
+  convexMutationMock.mockReset();
+  convexMutationMock.mockImplementation(async (ref: unknown, args: Record<string, unknown>) => {
+    const path = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (path.includes('drafts.create')) {
+      lastInsertedDraft = args;
+      const insertResult = mockByTable.AgentDraft?.insertResult;
+      return { id: 'draft_new', ...args, ...(insertResult ?? {}) };
+    }
+    if (path.includes('drafts.updateForSpace')) {
+      lastDraftStatusUpdate = args.patch as Record<string, unknown>;
+      return { id: (args.id as string) ?? 'draft_new', ...((args.patch as Record<string, unknown>) ?? {}) };
+    }
+    return null;
+  });
 });
 
 describe('POST /api/agent/quick-draft — preview mode', () => {

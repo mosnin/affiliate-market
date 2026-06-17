@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { enqueueTask } from '@/lib/agent/task-state-machine';
@@ -39,14 +39,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Space is disabled' }, { status: 403 });
   }
 
-  const { data: tasks, error } = await supabase
-    .from('AgentTask')
-    .select('*')
-    .eq('spaceId', spaceId)
-    .order('createdAt', { ascending: false })
-    .limit(50);
-
-  if (error) {
+  let tasks;
+  try {
+    tasks = await convex().query(api.agent.tasks.listBySpace, { spaceId, limit: 50 });
+  } catch (error) {
     console.error('[agent/tasks/GET] query error:', error);
     return NextResponse.json({ error: 'Failed to fetch tasks' }, { status: 500 });
   }
@@ -100,14 +96,14 @@ export async function POST(req: NextRequest) {
     });
 
     // Fetch the newly-created row so we can return canonical fields.
-    const { data: task, error: fetchError } = await supabase
-      .from('AgentTask')
-      .select('id, status, title, goalDescription, createdAt')
-      .eq('id', taskId)
-      .single();
-
-    if (fetchError || !task) {
+    let task;
+    try {
+      task = await convex().query(api.agent.tasks.getById, { id: taskId });
+    } catch (fetchError) {
       console.error('[agent/tasks/POST] fetch after insert error:', fetchError);
+      return NextResponse.json({ error: 'Task created but could not be retrieved' }, { status: 500 });
+    }
+    if (!task) {
       return NextResponse.json({ error: 'Task created but could not be retrieved' }, { status: 500 });
     }
 

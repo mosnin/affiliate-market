@@ -16,8 +16,7 @@
  *   /api/ai/task/resume/[pausedRunId] which re-enters via `resumeChatTurn`.
  */
 
-import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import type { AgentEvent, PushableEvent } from '@/lib/ai-tools/events';
 import { createSeqCounter, encodeEvent } from '@/lib/ai-tools/events';
@@ -589,7 +588,6 @@ interface PersistPausedInput {
  */
 async function persistPausedRun(input: PersistPausedInput): Promise<string | null> {
   try {
-    const id = crypto.randomUUID();
     const now = Date.now();
     const expires = new Date(now + 24 * 60 * 60 * 1000).toISOString();
     const approvals = extractApprovals(
@@ -602,20 +600,14 @@ async function persistPausedRun(input: PersistPausedInput): Promise<string | nul
       },
       ALL_TOOLS,
     );
-    const { error } = await supabase.from('AgentPausedRun').insert({
-      id,
+    const { id } = await convex().mutation(api.agent.paused.create, {
       spaceId: input.ctx.space.id,
       userId: input.ctx.userId,
       conversationId: input.conversationId,
       runState: serializeRunState(input.state),
       approvals,
-      status: 'pending',
       expiresAt: expires,
     });
-    if (error) {
-      logger.error('[ai/task ts] persistPausedRun failed', { conversationId: input.conversationId }, error);
-      return null;
-    }
     return id;
   } catch (err) {
     logger.error('[ai/task ts] persistPausedRun threw', { conversationId: input.conversationId }, err);

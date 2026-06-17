@@ -13,6 +13,7 @@
 
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
 const parameters = z
@@ -119,11 +120,7 @@ export const summarizeSellerTool = defineTool<typeof parameters, SummarizeSeller
         .eq('spaceId', spaceId)
         .is('companyId', null)
         .eq('scoreLabel', 'hot'),
-      supabase
-        .from('AgentDraft')
-        .select('status')
-        .eq('spaceId', spaceId)
-        .gte('createdAt', since),
+      convex().query(api.agent.drafts.statusesForSpaceSince, { spaceId, since }),
     ]);
 
     const dealRows = (dealsRes.data ?? []) as Array<{ status: string }>;
@@ -133,7 +130,7 @@ export const summarizeSellerTool = defineTool<typeof parameters, SummarizeSeller
       lost: dealRows.filter((d) => d.status === 'lost').length,
     };
 
-    const draftRows = (draftsRes.data ?? []) as Array<{ status: string }>;
+    const draftRows = (draftsRes ?? []) as Array<{ status: string }>;
     const pending = draftRows.filter((d) => d.status === 'pending').length;
     const sent = draftRows.filter((d) => d.status === 'sent').length;
     const decided = draftRows.filter((d) => d.status === 'sent' || d.status === 'dismissed').length;

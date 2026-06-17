@@ -7,15 +7,49 @@
  * so the table trigger advances nextRunAt. None of that was tested before
  * this file existed.
  *
- * Mock strategy mirrors `tests/api/agent-sweep.test.ts`:
- *   - `@/lib/supabase`: chainable thenable; one `from()` per query and one
- *     more per routine the cron stamps. Results come off `supabaseQueue`.
+ * Mock strategy:
+ *   - The due-routine pull + the per-routine stamp moved to Convex
+ *     (api.agent.routines.due / stampRun). We drive those via the Convex mock.
+ *   - `@/lib/supabase`: chainable thenable, still used for the Space + User
+ *     subscription/owner reads. Results come off `supabaseQueue`.
  *   - `globalThis.fetch`: routed by URL — Modal calls recorded for assertion.
  *   - Env vars set in `beforeEach`, restored in `afterEach`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-// ── Supabase mock ───────────────────────────────────────────────────────────
+// ── Convex mock ─────────────────────────────────────────────────────────────
+// due       → the due routines (was the first Supabase read).
+// stampRun  → records {id, spaceId, lastRunStatus}; returns {ok:true}.
+let dueRoutines: unknown[] = [];
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => [] as unknown),
+  convexMutationMock: vi.fn(async (_ref?: unknown, _args?: unknown) => ({ ok: true }) as unknown),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
+/** The stampRun mutation calls. */
+function stampCalls(): Array<{ path: string; args: Record<string, unknown> }> {
+  return convexMutationMock.mock.calls.map(([ref, args]) => ({
+    path: typeof ref === 'function' ? (ref as () => string)() : '',
+    args: (args ?? {}) as Record<string, unknown>,
+  }));
+}
+/** The fn ref + args of the i-th Convex query call (the due pull). */
+function queryCall(i = 0): { path: string; args: Record<string, unknown> } {
+  const [ref, args] = convexQueryMock.mock.calls[i] as [unknown, Record<string, unknown>];
+  return { path: typeof ref === 'function' ? (ref as () => string)() : '', args: (args ?? {}) as Record<string, unknown> };
+}
+
+// ── Supabase mock (Space + User only now) ───────────────────────────────────
 type Terminal = { data?: unknown; error?: unknown; count?: number | null };
 let supabaseQueue: Terminal[] = [];
 const supabaseCalls: Array<{ table: string; chain: Array<[string, unknown[]]> }> = [];
@@ -122,8 +156,9 @@ interface DueRoutine {
   instruction: string;
 }
 
-/** Queue: due routines, spaces (with ownerId+sub status), users (owner→clerkId),
- *  then one stamp result per runnable. */
+/** Set up a tick: due routines → Convex `due`; Space (with ownerId+sub status)
+ *  then User (owner→clerkId) → Supabase queue. Stamps surface as Convex
+ *  `stampRun` calls (no queueing needed; the mutation mock resolves {ok:true}). */
 function queueTick(opts: {
   due: DueRoutine[];
   activeSpaceIds: string[];
@@ -131,7 +166,7 @@ function queueTick(opts: {
   clerkIdByOwner?: Record<string, string>;
   runnableCount?: number;
 }) {
-  const stamps = opts.runnableCount ?? opts.due.length;
+  dueRoutines = opts.due;
   const spaceRows = opts.due.map((r) => ({
     id: r.spaceId,
     ownerId: opts.ownersBySpace?.[r.spaceId] ?? null,
@@ -139,17 +174,11 @@ function queueTick(opts: {
   }));
   const ownerIds = Object.values(opts.ownersBySpace ?? {});
   const userRows = ownerIds.map((id) => ({ id, clerkId: opts.clerkIdByOwner?.[id] ?? null }));
-  const queue: Terminal[] = [
-    { data: opts.due, error: null },
-    { data: spaceRows, error: null },
-  ];
-  // The User lookup only runs when at least one space has an ownerId; mirror
-  // the route's branch so we don't queue a phantom response.
+  const queue: Terminal[] = [{ data: spaceRows, error: null }];
+  // The User lookup only runs when at least one active space has an ownerId;
+  // mirror the route's branch so we don't queue a phantom response.
   if (ownerIds.length > 0) {
     queue.push({ data: userRows, error: null });
-  }
-  for (let i = 0; i < stamps; i++) {
-    queue.push({ data: null, error: null });
   }
   supabaseQueue = queue;
 }
@@ -158,6 +187,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   supabaseQueue = [];
   supabaseCalls.length = 0;
+  dueRoutines = [];
+  // due → the per-test due routines; stampRun → {ok:true}.
+  convexQueryMock.mockImplementation(async () => dueRoutines);
+  convexMutationMock.mockImplementation(async () => ({ ok: true }));
   modalCalls = [];
   modalResponder = () => new Response(JSON.stringify({ ok: true }), { status: 200 });
 
@@ -206,6 +239,7 @@ describe('GET /api/cron/routines', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'disabled' });
     expect(supabaseCalls).toHaveLength(0);
+    expect(convexQueryMock).not.toHaveBeenCalled();
     expect(modalCalls).toHaveLength(0);
   });
 
@@ -217,17 +251,23 @@ describe('GET /api/cron/routines', () => {
     expect(body.due).toBe(0);
     expect(body.fired).toBe(0);
     expect(modalCalls).toHaveLength(0);
-    // Only the Routine due-query ran; the Space query is skipped on empty.
-    expect(supabaseCalls.map((c) => c.table)).toEqual(['Routine']);
+    // Only the Convex due-query ran; the Space query is skipped on empty, and
+    // the due pull no longer touches Supabase.
+    expect(queryCall(0).path).toContain('agent.routines.due');
+    expect(supabaseCalls).toHaveLength(0);
   });
 
-  it('the due query filters on enabled=true and nextRunAt in the past', async () => {
+  it('the due query is scoped to nextRunAt <= now (Convex due pull)', async () => {
     queueTick({ due: [], activeSpaceIds: [] });
+    const before = Date.now();
     await invoke('Bearer test-secret');
-    const dueChain = supabaseCalls[0].chain;
-    expect(dueChain).toContainEqual(['eq', ['enabled', true]]);
-    const lte = dueChain.find(([m]) => m === 'lte');
-    expect(lte?.[1]?.[0]).toBe('nextRunAt');
+    // The enabled=true + nextRunAt<=now filter lives inside the Convex `due`
+    // query now; the route forwards `now` (ISO, ~current) and the per-tick cap.
+    const { path, args } = queryCall(0);
+    expect(path).toContain('agent.routines.due');
+    expect(typeof args.now).toBe('string');
+    expect(Math.abs(new Date(args.now as string).getTime() - before)).toBeLessThan(5000);
+    expect(args.limit).toBe(250);
   });
 
   it('a due routine in an active space → fires Modal with the instruction and stamps lastRun', async () => {
@@ -252,14 +292,13 @@ describe('GET /api/cron/routines', () => {
       instruction: 'draft a check-in for quiet deals',
     });
 
-    // The cron stamped the routine — table name + an update with both fields.
-    const stamp = supabaseCalls.find(
-      (c) => c.table === 'Routine' && c.chain.some(([m]) => m === 'update'),
-    );
-    expect(stamp).toBeDefined();
-    const updateArgs = stamp!.chain.find(([m]) => m === 'update')![1][0] as Record<string, unknown>;
-    expect(updateArgs.lastRunStatus).toBe('ok');
-    expect(typeof updateArgs.lastRunAt).toBe('string');
+    // The cron stamped the routine via the Convex stampRun mutation, scoped to
+    // (id, spaceId), with lastRunStatus='ok'. (lastRunAt is set inside the
+    // mutation now, not passed by the route.)
+    const stamps = stampCalls();
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0].path).toContain('agent.routines.stampRun');
+    expect(stamps[0].args).toMatchObject({ id: 'r1', spaceId: 's1', lastRunStatus: 'ok' });
   });
 
   it('threads the owner Clerk userId into the Modal payload when known', async () => {
@@ -310,12 +349,11 @@ describe('GET /api/cron/routines', () => {
     expect(body.fired).toBe(0);
     expect(body.errored).toBe(1);
 
-    const stamp = supabaseCalls.find(
-      (c) => c.table === 'Routine' && c.chain.some(([m]) => m === 'update'),
-    );
-    const updateArgs = stamp!.chain.find(([m]) => m === 'update')![1][0] as Record<string, unknown>;
-    // Even a failed dispatch stamps the row so the trigger advances nextRunAt.
-    expect(updateArgs.lastRunStatus).toBe('error');
+    // Even a failed dispatch stamps the row (via Convex stampRun) so nextRunAt
+    // advances and a permanently failing routine can't jam the queue.
+    const stamps = stampCalls();
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0].args.lastRunStatus).toBe('error');
   });
 
   it('caps Modal dispatches at 8 in flight even with 20 due routines', async () => {

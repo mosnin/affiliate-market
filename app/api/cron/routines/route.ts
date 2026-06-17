@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { fireRoutineRun } from '@/lib/routines';
 import { monitorCron } from '@/lib/cron-monitor';
 
@@ -53,19 +54,17 @@ async function handler(req: NextRequest) {
   const nowIso = new Date().toISOString();
 
   // ── 1. Due routines ─────────────────────────────────────────────────────
-  const { data: dueRows, error: dueErr } = await supabase
-    .from('Routine')
-    .select('id, spaceId, instruction')
-    .eq('enabled', true)
-    .lte('nextRunAt', nowIso)
-    .order('nextRunAt', { ascending: true })
-    .limit(MAX_PER_TICK);
-  if (dueErr) {
+  let due: DueRoutine[];
+  try {
+    due = (await convex().query(api.agent.routines.due, {
+      now: nowIso,
+      limit: MAX_PER_TICK,
+    })) as DueRoutine[];
+  } catch (dueErr) {
     console.error('[cron/routines] Failed to load due routines', dueErr);
     return NextResponse.json({ error: 'DB query failed' }, { status: 500 });
   }
 
-  const due = (dueRows ?? []) as DueRoutine[];
   if (due.length === 0) {
     return NextResponse.json({ due: 0, fired: 0, skipped: 0, durationMs: Date.now() - startedAt });
   }
@@ -134,12 +133,14 @@ async function handler(req: NextRequest) {
       if (status === 'ok') fired++;
       else errored++;
 
-      // Stamping lastRunAt fires the trigger that advances nextRunAt — even
+      // Stamping lastRunAt advances nextRunAt (the PG trigger's port) — even
       // on 'error', so a permanently failing dispatch can't jam the queue.
-      await supabase
-        .from('Routine')
-        .update({ lastRunAt: new Date().toISOString(), lastRunStatus: status })
-        .eq('id', routine.id);
+      // Scoped to the routine's own (id, spaceId).
+      await convex().mutation(api.agent.routines.stampRun, {
+        id: routine.id,
+        spaceId: routine.spaceId,
+        lastRunStatus: status,
+      });
     }
   }
 

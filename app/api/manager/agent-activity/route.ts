@@ -28,6 +28,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getManagerMemberContext } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -165,18 +166,20 @@ export async function GET(req: NextRequest) {
     ),
   );
 
-  // 4. AgentActivityLog rows in the window. Capped at 5k so a single
+  // 4. AgentActivityLog rows in the window (Convex). Capped at 5k so a single
   //    runaway space can't blow the response. Spaces past the cap will
   //    under-report — surface that in metadata if it ever bites us.
-  const { data: logs, error: logsErr } = await supabase
-    .from('AgentActivityLog')
-    .select('spaceId, actionType, outcome, createdAt')
-    .in('spaceId', spaceIds)
-    .gte('createdAt', since)
-    .order('createdAt', { ascending: false })
-    .limit(5000);
-  if (logsErr) {
-    logger.error('[manager/agent-activity] log fetch failed', { companyId: ctx.company.id }, logsErr);
+  //    rollupForSpaces returns the REAL columns (spaceId, actionType, outcome,
+  //    createdAt), newest-first, capped — matching the old select+order+limit.
+  let logs: { spaceId: string; actionType: string; outcome: string; createdAt: string }[];
+  try {
+    logs = await convex().query(api.agent.activity.rollupForSpaces, {
+      spaceIds,
+      since,
+      limit: 5000,
+    });
+  } catch (logsErr) {
+    logger.error('[manager/agent-activity] log fetch failed', { companyId: ctx.company.id }, logsErr as Error);
     return NextResponse.json({ error: 'Failed to load activity' }, { status: 500 });
   }
 
@@ -197,12 +200,7 @@ export async function GET(req: NextRequest) {
 
   const companyTotals = emptyTotals();
 
-  for (const row of (logs ?? []) as Array<{
-    spaceId: string;
-    actionType: string;
-    outcome: string;
-    createdAt: string;
-  }>) {
+  for (const row of logs) {
     const r = rollupBySpace.get(row.spaceId);
     if (!r) continue;
 

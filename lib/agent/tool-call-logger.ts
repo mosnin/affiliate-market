@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { randomUUID } from 'crypto';
 
 interface ToolCallRecord {
@@ -22,16 +22,12 @@ export async function logToolCallStart(
   const inputSummary = JSON.stringify(args).slice(0, 500);
 
   try {
-    await supabase.from('ExecutionStep').insert({
+    await convex().mutation(api.agent.steps.logStart, {
       id: stepId,
       spaceId,
       taskId: taskId ?? null,
-      stepIndex: 0,
-      stepType: 'tool_call',
       toolName,
       inputSummary,
-      status: 'running',
-      startedAt: new Date().toISOString(),
     });
     inFlight.set(stepId, { stepId, spaceId, taskId, toolName, startedAt: new Date() });
   } catch {
@@ -47,12 +43,10 @@ export async function logToolCallComplete(stepId: string, outputSummary: string)
   inFlight.delete(stepId);
 
   try {
-    await supabase.from('ExecutionStep').update({
+    await convex().mutation(api.agent.steps.logComplete, {
+      stepId,
       outputSummary: outputSummary.slice(0, 500),
-      toolResult: { output: outputSummary.slice(0, 500) },
-      status: 'completed',
-      completedAt: new Date().toISOString(),
-    }).eq('id', stepId);
+    });
   } catch {
     // Non-blocking
   }
@@ -64,12 +58,11 @@ export async function logToolCallError(stepId: string, error: string): Promise<v
   inFlight.delete(stepId);
 
   try {
-    await supabase.from('ExecutionStep').update({
+    await convex().mutation(api.agent.steps.logError, {
+      stepId,
       errorMessage: error.slice(0, 1000),
       outputSummary: error.slice(0, 500),
-      status: 'failed',
-      completedAt: new Date().toISOString(),
-    }).eq('id', stepId);
+    });
   } catch {
     // Non-blocking
   }

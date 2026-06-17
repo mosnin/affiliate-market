@@ -18,6 +18,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getTodayTokenUsage } from '@/lib/usage/today-token-usage';
 
 interface ProviderRollup {
@@ -38,13 +39,8 @@ export async function GET() {
 
   const { total: used } = await getTodayTokenUsage(space.id);
 
-  const { data: agentSettings } = await supabase
-    .from('AgentSettings')
-    .select('dailyTokenBudget')
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  const limit = (agentSettings?.dailyTokenBudget as number | null) ?? 50_000;
+  // Daily token budget (Convex) — already defaults to 50_000 when no row exists.
+  const limit = await convex().query(api.agent.settings.dailyTokenBudget, { spaceId: space.id });
   const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
 
   // Reset time: midnight UTC today

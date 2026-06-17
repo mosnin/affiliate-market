@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ArrowLeft, Wrench, MessageCircle } from 'lucide-react';
 import { getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { cn } from '@/lib/utils';
 import { ColaPageShell } from '@/components/cola/cola-page-shell';
 import { SECTION_LABEL } from '@/lib/typography';
@@ -188,17 +189,14 @@ export default async function AgentTaskDetailPage({
 
   // Fetch task + steps in parallel.
   const [taskResult, stepsResult] = await Promise.all([
-    supabase
-      .from('AgentTask')
-      .select('*')
-      .eq('id', taskId)
-      .eq('spaceId', space.id)
-      .maybeSingle(),
-    supabase
-      .from('ExecutionStep')
-      .select('*')
-      .eq('taskId', taskId)
-      .order('startedAt', { ascending: true }),
+    convex()
+      .query(api.agent.tasks.getByIdForSpace, { id: taskId, spaceId: space.id })
+      .then((data) => ({ data: data as AgentTask | null, error: null as unknown }))
+      .catch((error: unknown) => ({ data: null as AgentTask | null, error })),
+    convex()
+      .query(api.agent.steps.listByTask, { taskId, orderBy: 'startedAt' as const })
+      .then((data) => ({ data: data as unknown as ExecutionStep[] }))
+      .catch(() => ({ data: null as ExecutionStep[] | null })),
   ]);
 
   if (taskResult.error) {

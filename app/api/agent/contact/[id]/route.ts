@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -38,7 +39,7 @@ export async function GET(
   if (contactError) throw contactError;
   if (!contact) return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
 
-  const [memoriesResult, draftsResult, activityResult] = await Promise.all([
+  const [memoriesResult, drafts, activity] = await Promise.all([
     supabase
       .from('AgentMemory')
       .select('id, memoryType, content, importance, createdAt')
@@ -49,28 +50,27 @@ export async function GET(
       .order('createdAt', { ascending: false })
       .limit(20),
 
-    supabase
-      .from('AgentDraft')
-      .select('id, channel, subject, content, reasoning, priority, status, createdAt')
-      .eq('spaceId', space.id)
-      .eq('contactId', contactId)
-      .in('status', ['pending', 'approved'])
-      .order('createdAt', { ascending: false })
-      .limit(10),
+    convex().query(api.agent.drafts.listForContact, {
+      spaceId: space.id,
+      contactId,
+      statuses: ['pending', 'approved'],
+      limit: 10,
+    }),
 
-    supabase
-      .from('AgentActivityLog')
-      .select('id, agentType, action, outcome, summary, contactId, createdAt')
-      .eq('spaceId', space.id)
-      .eq('contactId', contactId)
-      .order('createdAt', { ascending: false })
-      .limit(15),
+    // Old SELECT named non-existent columns (`action`, `summary`, `contactId`);
+    // real columns are actionType, reasoning, relatedContactId. The Convex fn
+    // returns the real columns — same 15-row, createdAt-desc scope.
+    convex().query(api.agent.activity.contextForContact, {
+      spaceId: space.id,
+      contactId,
+      limit: 15,
+    }),
   ]);
 
   return NextResponse.json({
     contactId,
     memories: memoriesResult.data ?? [],
-    drafts: draftsResult.data ?? [],
-    activity: activityResult.data ?? [],
+    drafts,
+    activity,
   });
 }

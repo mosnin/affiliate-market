@@ -18,6 +18,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 interface Counts {
   sent: number;
@@ -58,14 +59,11 @@ function renderCounts(counts: Counts): string | null {
 export async function composeMomentum(spaceId: string): Promise<string | null> {
   const { start, end } = yesterdayBounds();
 
-  const [sentRes, activityRes] = await Promise.all([
-    supabase
-      .from('AgentDraft')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', spaceId)
-      .eq('status', 'sent')
-      .gte('updatedAt', start)
-      .lt('updatedAt', end),
+  const [sentCount, activityRes] = await Promise.all([
+    // 'sent' drafts in [start, end) — count lives in Convex now.
+    convex()
+      .query(api.agent.drafts.countSentInWindow, { spaceId, start, end })
+      .catch(() => 0),
     supabase
       .from('ContactActivity')
       .select('type')
@@ -74,7 +72,7 @@ export async function composeMomentum(spaceId: string): Promise<string | null> {
       .lt('createdAt', end),
   ]);
 
-  const counts: Counts = { sent: sentRes.count ?? 0, calls: 0, notes: 0, meetings: 0 };
+  const counts: Counts = { sent: sentCount ?? 0, calls: 0, notes: 0, meetings: 0 };
 
   if (activityRes.data) {
     for (const row of activityRes.data as { type: string }[]) {

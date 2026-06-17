@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,22 +20,21 @@ type AgentStatsResponse = {
 async function fetchAgentStats(days: number): Promise<AgentStatsResponse> {
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
 
-  // Parallel queries — all aggregated in JS, no full-table scans beyond the window
-  const [statusRes, costRes, stepRes, spaceRes] = await Promise.all([
-    supabase.from('AgentTask').select('status').gte('createdAt', since),
-    supabase.from('AgentTask').select('estimatedCostUsd').gte('createdAt', since),
-    supabase
-      .from('ExecutionStep')
-      .select('toolName, AgentTask!inner(createdAt)')
-      .gte('AgentTask.createdAt', since),
-    supabase.from('AgentTask').select('spaceId, estimatedCostUsd').gte('createdAt', since),
+  // Parallel queries — all aggregated in JS, no full-table scans beyond the window.
+  // The three AgentTask scans (status / cost / by-space) collapse to one
+  // listSince read whose row superset (status, estimatedCostUsd, spaceId) feeds
+  // all three folds. toolNamesForTasksSince replaces the ExecutionStep⋈AgentTask
+  // inner-join — it returns the toolNames for steps on tasks created in-window.
+  const [taskRows, toolNames] = await Promise.all([
+    convex().query(api.agent.tasks.listSince, { since }),
+    convex().query(api.agent.steps.toolNamesForTasksSince, { since }),
   ]);
 
   // Status breakdown
   const tasksByStatus: Record<string, number> = {};
   let totalTasks = 0;
   let failedCount = 0;
-  for (const row of statusRes.data ?? []) {
+  for (const row of taskRows) {
     const s = row.status as string;
     tasksByStatus[s] = (tasksByStatus[s] ?? 0) + 1;
     totalTasks++;
@@ -44,15 +43,14 @@ async function fetchAgentStats(days: number): Promise<AgentStatsResponse> {
 
   // Cost
   let totalCostUsd = 0;
-  for (const row of (costRes.data ?? []) as { estimatedCostUsd: string | number | null }[]) {
+  for (const row of taskRows) {
     totalCostUsd += parseFloat(String(row.estimatedCostUsd ?? 0));
   }
   const avgCostUsd = totalTasks > 0 ? totalCostUsd / totalTasks : 0;
 
   // Top tools
   const toolCounts: Record<string, number> = {};
-  for (const row of stepRes.data ?? []) {
-    const name = (row as { toolName: string }).toolName;
+  for (const name of toolNames) {
     toolCounts[name] = (toolCounts[name] ?? 0) + 1;
   }
   const topTools = Object.entries(toolCounts)
@@ -62,10 +60,7 @@ async function fetchAgentStats(days: number): Promise<AgentStatsResponse> {
 
   // By space
   const spaceMap: Record<string, { count: number; cost: number }> = {};
-  for (const row of (spaceRes.data ?? []) as {
-    spaceId: string;
-    estimatedCostUsd: string | number | null;
-  }[]) {
+  for (const row of taskRows) {
     const entry = spaceMap[row.spaceId] ?? { count: 0, cost: 0 };
     entry.count++;
     entry.cost += parseFloat(String(row.estimatedCostUsd ?? 0));

@@ -201,11 +201,9 @@ export default async function DashboardLayout({
         .is('companyId', null)
         .not('followUpAt', 'is', null)
         .lte('followUpAt', new Date().toISOString()),
-      supabase
-        .from('AgentDraft')
-        .select('id', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .eq('status', 'pending'),
+      convex()
+        .query(api.agent.drafts.countBySpaceStatus, { spaceId: space.id, status: 'pending' })
+        .then((count) => ({ count })),
       convex().query(api.marketplace.products.countForSpaceByStatus, {
         spaceId: space.id,
         listingStatusIn: ['active', 'pending'],

@@ -7,45 +7,62 @@
  *   - POST reject: transitions paused → cancelled, stamps rejectedAt + rejectedBy + rejectionReason
  *   - Auth: wrong user gets 403/404
  *
+ * The AgentTask reads/writes moved from Supabase to Convex:
+ *   - GET  lists via convex().query(api.agent.tasks.listPendingApprovals, …)
+ *   - POST reads the task via convex().query(api.agent.tasks.getById, …) for
+ *     the ownership (spaceId) + paused-status gate, then writes via
+ *     convex().mutation(api.agent.tasks.setStatusAndMetadata, …) which returns
+ *     the updated row (the route responds with `{ task: <that row> }`).
+ *
  * Mock strategy:
  *   - @/lib/api-auth       → vi.mock: controls requireAuth() return value
  *   - @/lib/space          → vi.mock: controls getSpaceForUser() return value
- *   - @/lib/supabase       → queue-based chainable mock (same pattern as task-state-machine tests)
+ *   - @/lib/convex-server  → query/mutation mocks steered per test via FIFO
+ *                            queues, branched on the dotted fn path. `api` is a
+ *                            path proxy.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-// ── Supabase queue-based mock ─────────────────────────────────────────────────
+// ── Convex queue-based mock ───────────────────────────────────────────────────
+//
+// Each POST walks getById (the gate) then setStatusAndMetadata (the write);
+// GET issues a single listPendingApprovals query. We branch the query mock by
+// fn path so listPendingApprovals and getById can be queued independently, and
+// drive the write off its own queue.
 
-type TerminalResult = { data?: unknown; error?: unknown };
-let supabaseQueue: TerminalResult[] = [];
+type ConvexResult = { value?: unknown; error?: unknown };
+let listQueue: ConvexResult[] = [];    // answers listPendingApprovals (GET)
+let getByIdQueue: ConvexResult[] = []; // answers getById (POST gate)
+let updateQueue: ConvexResult[] = [];  // answers setStatusAndMetadata (POST write)
 
-function makeChain(): Record<string, unknown> {
-  const terminal: TerminalResult = supabaseQueue.shift() ?? { data: null, error: null };
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
 
-  const chain: Record<string, unknown> = {};
-  const passthroughs = [
-    'select', 'eq', 'update', 'insert', 'limit', 'order', 'not', 'in',
-  ];
-  for (const method of passthroughs) {
-    chain[method] = vi.fn((..._args: unknown[]) => chain);
-  }
-
-  chain.single = vi.fn(() => Promise.resolve(terminal));
-  chain.maybeSingle = vi.fn(() => Promise.resolve(terminal));
-  chain.then = (
-    resolve: (v: TerminalResult) => unknown,
-    reject?: (e: unknown) => unknown,
-  ) => Promise.resolve(terminal).then(resolve, reject);
-
-  return chain;
+function fnPath(ref: unknown): string {
+  return typeof ref === 'function' ? (ref as () => string)() : '';
 }
 
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    from: vi.fn((_table: string) => makeChain()),
-  },
-}));
+/** Resolve `value`, or throw `error` (mirrors a Convex call throwing). */
+function settle(next: ConvexResult | undefined, fallback: unknown): Promise<unknown> {
+  if (!next) return Promise.resolve(fallback);
+  if (next.error) {
+    return Promise.reject(next.error instanceof Error ? next.error : new Error(String(next.error)));
+  }
+  return Promise.resolve(next.value);
+}
 
 // ── Auth mock ─────────────────────────────────────────────────────────────────
 
@@ -120,13 +137,37 @@ function makePostRequest(body: unknown): NextRequest {
 
 // ── Setup ────────────────────────────────────────────────────────────────────
 
-function queue(...results: TerminalResult[]) {
-  supabaseQueue.push(...results);
+/** Queue the GET listPendingApprovals result. */
+function queueList(result: ConvexResult) {
+  listQueue.push(result);
+}
+/** Queue the POST getById (gate) result. */
+function queueGetById(result: ConvexResult) {
+  getByIdQueue.push(result);
+}
+/** Queue the POST setStatusAndMetadata (write) result. */
+function queueUpdate(result: ConvexResult) {
+  updateQueue.push(result);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  supabaseQueue = [];
+  listQueue = [];
+  getByIdQueue = [];
+  updateQueue = [];
+
+  convexQueryMock.mockImplementation(async (ref: unknown) => {
+    const path = fnPath(ref);
+    if (path.includes('listPendingApprovals')) return settle(listQueue.shift(), []);
+    // getById (the POST gate).
+    return settle(getByIdQueue.shift(), null);
+  });
+
+  convexMutationMock.mockImplementation(async (ref: unknown) => {
+    const path = fnPath(ref);
+    if (path.includes('setStatusAndMetadata')) return settle(updateQueue.shift(), null);
+    return null;
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,8 +198,8 @@ describe('GET /api/agent/approvals', () => {
     mockRequireAuth.mockResolvedValue({ userId: USER_ID });
     mockGetSpaceForUser.mockResolvedValue(fakeSpace);
 
-    // The route queries paused tasks with approvalRequired not null
-    queue({ data: [fakePausedTask], error: null });
+    // The route queries paused tasks with approvalRequired present (Convex).
+    queueList({ value: [fakePausedTask] });
 
     const res = await GET(makeGetRequest());
     expect(res.status).toBe(200);
@@ -174,7 +215,7 @@ describe('GET /api/agent/approvals', () => {
   it('returns empty array when no tasks are pending approval', async () => {
     mockRequireAuth.mockResolvedValue({ userId: USER_ID });
     mockGetSpaceForUser.mockResolvedValue(fakeSpace);
-    queue({ data: [], error: null });
+    queueList({ value: [] });
 
     const res = await GET(makeGetRequest());
     expect(res.status).toBe(200);
@@ -182,10 +223,10 @@ describe('GET /api/agent/approvals', () => {
     expect(body.tasks).toEqual([]);
   });
 
-  it('returns 500 when DB query fails', async () => {
+  it('returns 500 when the Convex query fails', async () => {
     mockRequireAuth.mockResolvedValue({ userId: USER_ID });
     mockGetSpaceForUser.mockResolvedValue(fakeSpace);
-    queue({ data: null, error: { message: 'DB unavailable' } });
+    queueList({ error: new Error('DB unavailable') });
 
     const res = await GET(makeGetRequest());
     expect(res.status).toBe(500);
@@ -203,10 +244,10 @@ describe('POST /api/agent/approvals — approve', () => {
     mockRequireAuth.mockResolvedValue({ userId: USER_ID });
     mockGetSpaceForUser.mockResolvedValue(fakeSpace);
 
-    // Route fetches the task via maybeSingle
-    queue({ data: fakePausedTask, error: null });
+    // Route fetches the task via getById (the ownership + status gate).
+    queueGetById({ value: fakePausedTask });
 
-    // Route updates: status=queued, patches metadata
+    // Route writes via setStatusAndMetadata, which returns the updated row.
     const updatedTask = {
       ...fakePausedTask,
       status: 'queued',
@@ -216,7 +257,7 @@ describe('POST /api/agent/approvals — approve', () => {
         approvedBy: USER_ID,
       },
     };
-    queue({ data: updatedTask, error: null });
+    queueUpdate({ value: updatedTask });
 
     const res = await POST(
       makePostRequest({ taskId: 'task-paused-001', action: 'approve' }),
@@ -227,6 +268,10 @@ describe('POST /api/agent/approvals — approve', () => {
     expect(body.task.status).toBe('queued');
     expect(body.task.metadata.approvedBy).toBe(USER_ID);
     expect(body.task.metadata.approvedAt).toBeTruthy();
+    // The write must carry status=queued and stamp approvedBy in metadata.
+    const [, mutArgs] = convexMutationMock.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(mutArgs).toMatchObject({ taskId: 'task-paused-001', status: 'queued' });
+    expect((mutArgs.metadata as Record<string, unknown>).approvedBy).toBe(USER_ID);
   });
 
   it('returns 400 when taskId is missing', async () => {
@@ -255,8 +300,8 @@ describe('POST /api/agent/approvals — approve', () => {
     mockRequireAuth.mockResolvedValue({ userId: USER_ID });
     mockGetSpaceForUser.mockResolvedValue(fakeSpace);
 
-    // maybeSingle returns null → task not found
-    queue({ data: null, error: null });
+    // getById returns null → task not found
+    queueGetById({ value: null });
 
     const res = await POST(
       makePostRequest({ taskId: 'task-nonexistent', action: 'approve' }),
@@ -273,7 +318,7 @@ describe('POST /api/agent/approvals — approve', () => {
     mockGetSpaceForUser.mockResolvedValue({ ...fakeSpace, id: 'space-other-999' } as never);
 
     // Task belongs to SPACE_ID, but the user's space is space-other-999
-    queue({ data: fakePausedTask, error: null });
+    queueGetById({ value: fakePausedTask });
 
     const res = await POST(
       makePostRequest({ taskId: 'task-paused-001', action: 'approve' }),
@@ -289,7 +334,7 @@ describe('POST /api/agent/approvals — approve', () => {
     mockGetSpaceForUser.mockResolvedValue(fakeSpace);
 
     // Task is already completed — not paused
-    queue({ data: { ...fakePausedTask, status: 'completed' }, error: null });
+    queueGetById({ value: { ...fakePausedTask, status: 'completed' } });
 
     const res = await POST(
       makePostRequest({ taskId: 'task-paused-001', action: 'approve' }),
@@ -300,12 +345,12 @@ describe('POST /api/agent/approvals — approve', () => {
     expect(body.error).toMatch(/not awaiting approval/i);
   });
 
-  it('returns 500 when the DB update fails during approval', async () => {
+  it('returns 500 when the Convex write fails during approval', async () => {
     mockRequireAuth.mockResolvedValue({ userId: USER_ID });
     mockGetSpaceForUser.mockResolvedValue(fakeSpace);
 
-    queue({ data: fakePausedTask, error: null });      // fetch succeeds
-    queue({ data: null, error: { message: 'write conflict' } }); // update fails
+    queueGetById({ value: fakePausedTask });           // gate read succeeds
+    queueUpdate({ error: new Error('write conflict') }); // write throws → 500
 
     const res = await POST(
       makePostRequest({ taskId: 'task-paused-001', action: 'approve' }),
@@ -326,7 +371,7 @@ describe('POST /api/agent/approvals — reject', () => {
     mockRequireAuth.mockResolvedValue({ userId: USER_ID });
     mockGetSpaceForUser.mockResolvedValue(fakeSpace);
 
-    queue({ data: fakePausedTask, error: null });
+    queueGetById({ value: fakePausedTask });
 
     const updatedTask = {
       ...fakePausedTask,
@@ -338,7 +383,7 @@ describe('POST /api/agent/approvals — reject', () => {
         rejectionReason: 'Too risky at this price',
       },
     };
-    queue({ data: updatedTask, error: null });
+    queueUpdate({ value: updatedTask });
 
     const res = await POST(
       makePostRequest({
@@ -354,13 +399,17 @@ describe('POST /api/agent/approvals — reject', () => {
     expect(body.task.metadata.rejectedBy).toBe(USER_ID);
     expect(body.task.metadata.rejectedAt).toBeTruthy();
     expect(body.task.metadata.rejectionReason).toBe('Too risky at this price');
+    // The write carries status=cancelled and the rejection reason in metadata.
+    const [, mutArgs] = convexMutationMock.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(mutArgs).toMatchObject({ status: 'cancelled' });
+    expect((mutArgs.metadata as Record<string, unknown>).rejectionReason).toBe('Too risky at this price');
   });
 
   it('rejection without a reason still succeeds (reason is optional)', async () => {
     mockRequireAuth.mockResolvedValue({ userId: USER_ID });
     mockGetSpaceForUser.mockResolvedValue(fakeSpace);
 
-    queue({ data: fakePausedTask, error: null });
+    queueGetById({ value: fakePausedTask });
 
     const updatedTask = {
       ...fakePausedTask,
@@ -371,7 +420,7 @@ describe('POST /api/agent/approvals — reject', () => {
         rejectedBy: USER_ID,
       },
     };
-    queue({ data: updatedTask, error: null });
+    queueUpdate({ value: updatedTask });
 
     const res = await POST(
       makePostRequest({ taskId: 'task-paused-001', action: 'reject' }),
@@ -381,6 +430,9 @@ describe('POST /api/agent/approvals — reject', () => {
     const body = await res.json();
     expect(body.task.status).toBe('cancelled');
     expect(body.task.metadata.rejectionReason).toBeUndefined();
+    // No reason supplied → the write must NOT include rejectionReason.
+    const [, mutArgs] = convexMutationMock.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect((mutArgs.metadata as Record<string, unknown>).rejectionReason).toBeUndefined();
   });
 
   it('prevents rejection of task belonging to a different space (403)', async () => {
@@ -388,7 +440,7 @@ describe('POST /api/agent/approvals — reject', () => {
     mockGetSpaceForUser.mockResolvedValue({ ...fakeSpace, id: 'space-other-999' } as never);
 
     // Task belongs to SPACE_ID; user's space is space-other-999
-    queue({ data: fakePausedTask, error: null });
+    queueGetById({ value: fakePausedTask });
 
     const res = await POST(
       makePostRequest({ taskId: 'task-paused-001', action: 'reject' }),

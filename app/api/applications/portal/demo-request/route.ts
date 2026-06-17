@@ -128,42 +128,35 @@ export async function POST(req: NextRequest) {
   // Compose the AgentQuestion that surfaces in the seller's Cola focus
   // card. The question itself is action-oriented; the context carries the
   // structured fields. agentType=applicant_portal flags the source so the
-  // UI can render the right action set in a future pass.
-  const questionInsert = supabase
-    .from('AgentQuestion')
-    .insert({
-      spaceId: contact.spaceId,
-      runId: 'applicant-portal',
-      agentType: 'applicant_portal',
-      question: `${contact.name} requested a demo${safeAddress ? ` of ${safeAddress}` : ''}.`,
-      context: [
-        `Available: ${safeTimes}`,
-        safeNotes ? `Notes from ${contact.name}: ${safeNotes}` : null,
-      ]
-        .filter(Boolean)
-        .join('\n'),
-      status: 'pending',
-      priority: 50, // mid-high — applicant action; seller should see it today
-      contactId: contact.id,
-    })
-    .select('id')
-    .single();
+  // UI can render the right action set in a future pass. status is hardcoded
+  // 'pending' inside the mutation.
+  const questionInsert = convex().mutation(api.agent.questions.create, {
+    spaceId: contact.spaceId,
+    runId: 'applicant-portal',
+    agentType: 'applicant_portal',
+    question: `${contact.name} requested a demo${safeAddress ? ` of ${safeAddress}` : ''}.`,
+    context: [
+      `Available: ${safeTimes}`,
+      safeNotes ? `Notes from ${contact.name}: ${safeNotes}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    priority: 50, // mid-high — applicant action; seller should see it today
+    contactId: contact.id,
+  });
 
-  // Message (Convex, throws on failure) and AgentQuestion (Supabase, returns
-  // {error}) run concurrently; allSettled lets each fail on its own terms.
+  // Message and AgentQuestion (both Convex, throw on failure) run concurrently;
+  // allSettled lets each fail on its own terms.
   const [messageRes, questionRes] = await Promise.allSettled([messageInsert, questionInsert]);
 
   if (messageRes.status === 'rejected') {
     console.error('[portal/demo-request] Message insert error:', messageRes.reason);
     return NextResponse.json({ error: 'Failed to send demo request' }, { status: 500 });
   }
-  if (questionRes.status === 'rejected' || questionRes.value.error) {
+  if (questionRes.status === 'rejected') {
     // Soft-fail the AgentQuestion — the message landed, the seller sees it.
     // Log for observability but don't 500 the user.
-    console.error(
-      '[portal/demo-request] Question insert error:',
-      questionRes.status === 'rejected' ? questionRes.reason : questionRes.value.error,
-    );
+    console.error('[portal/demo-request] Question insert error:', questionRes.reason);
   }
 
   // Notify seller (fire and forget — same pattern as message endpoint).

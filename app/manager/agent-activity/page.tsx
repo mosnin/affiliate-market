@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getManagerMemberContext } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { AgentActivityClient, type SellerRollup, type ResponseShape } from './agent-activity-client';
 
 const DEFAULT_WINDOW_DAYS = 30;
@@ -84,13 +85,13 @@ async function rollupForCompany(companyId: string, windowDays: number): Promise<
     ),
   );
 
-  const { data: logs } = await supabase
-    .from('AgentActivityLog')
-    .select('spaceId, actionType, outcome, createdAt')
-    .in('spaceId', spaceIds)
-    .gte('createdAt', since)
-    .order('createdAt', { ascending: false })
-    .limit(ROLLUP_LOG_CAP);
+  const logs = await convex()
+    .query(api.agent.activity.rollupForSpaces, {
+      spaceIds,
+      since,
+      limit: ROLLUP_LOG_CAP,
+    })
+    .catch(() => [] as { spaceId: string; actionType: string; outcome: string; createdAt: string }[]);
 
   const rollupBySpace = new Map<string, SellerRollup>();
   for (const space of spaces) {

@@ -28,6 +28,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { activeToolkits } from '@/lib/integrations/connections';
 import { findIntegration } from '@/lib/integrations/catalog';
@@ -113,11 +114,10 @@ async function loadFresh(args: SnapshotKey): Promise<PersonalizedSnapshot> {
         .eq('spaceId', args.spaceId)
         .is('snoozedUntil', null)
         .lt('followUpAt', nowIso),
-      supabase
-        .from('AgentDraft')
-        .select('id', { count: 'exact', head: true })
-        .eq('spaceId', args.spaceId)
-        .eq('status', 'pending'),
+      convex().query(api.agent.drafts.countBySpaceStatus, {
+        spaceId: args.spaceId,
+        status: 'pending',
+      }),
       activeToolkits({ spaceId: args.spaceId, userId: args.userId }),
     ]);
 
@@ -141,7 +141,7 @@ async function loadFresh(args: SnapshotKey): Promise<PersonalizedSnapshot> {
     empty.overdueFollowUpCount = overdueResult.value.count ?? 0;
   }
   if (draftsResult.status === 'fulfilled') {
-    empty.pendingDraftCount = draftsResult.value.count ?? 0;
+    empty.pendingDraftCount = draftsResult.value ?? 0;
   }
   if (toolkitsResult.status === 'fulfilled') {
     const slugs = toolkitsResult.value;

@@ -16,6 +16,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { dealHealth } from '@/lib/deals/health';
 import type { Deal } from '@/lib/types';
 
@@ -159,17 +160,17 @@ export async function composeOvernight(
     Date.now() - OVERNIGHT_WINDOW_HOURS * 60 * 60 * 1000,
   ).toISOString();
 
-  const { data, error } = await supabase
-    .from('AgentActivityLog')
-    .select('actionType')
-    .eq('spaceId', spaceId)
-    .eq('outcome', 'completed')
-    .gte('createdAt', since);
+  let data: ActivityRow[];
+  try {
+    data = await convex().query(api.agent.activity.completedSince, { spaceId, since });
+  } catch {
+    return null;
+  }
 
-  if (error || !data || data.length === 0) return null;
+  if (data.length === 0) return null;
 
   const counts = new Map<string, number>();
-  for (const row of data as ActivityRow[]) {
+  for (const row of data) {
     const label = BUCKET_OF[row.actionType] ?? 'updates';
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }

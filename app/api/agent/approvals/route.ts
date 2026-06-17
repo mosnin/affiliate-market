@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { assertSpaceEnabled } from '@/lib/agent/kill-switch';
@@ -29,18 +29,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Space is disabled' }, { status: 403 });
   }
 
-  // Filter: paused tasks where metadata->approvalRequired is not null.
-  // Supabase PostgREST supports `not` with `is` for null checks on jsonb paths.
-  const { data: tasks, error } = await supabase
-    .from('AgentTask')
-    .select('*')
-    .eq('spaceId', space.id)
-    .eq('status', 'paused')
-    .not('metadata->approvalRequired', 'is', null)
-    .order('createdAt', { ascending: false })
-    .limit(50);
-
-  if (error) {
+  // Paused tasks where metadata.approvalRequired is present (Convex). The
+  // JSON-path filter is applied inside the query after the (spaceId,status) range.
+  let tasks;
+  try {
+    tasks = await convex().query(api.agent.tasks.listPendingApprovals, { spaceId: space.id, limit: 50 });
+  } catch (error) {
     console.error('[agent/approvals/GET] query error:', error);
     return NextResponse.json({ error: 'Failed to fetch pending approvals' }, { status: 500 });
   }
@@ -88,14 +82,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'action must be "approve" or "reject"' }, { status: 400 });
   }
 
-  // Fetch the task and verify it belongs to this space and is paused.
-  const { data: task, error: fetchError } = await supabase
-    .from('AgentTask')
-    .select('id, spaceId, status, metadata')
-    .eq('id', taskId)
-    .maybeSingle();
-
-  if (fetchError) {
+  // Fetch the task and verify it belongs to this space and is paused. Use the
+  // unscoped getById so we keep the 404 (no such task) vs 403 (wrong space)
+  // distinction the old `.eq('id')` + manual spaceId check made.
+  let task;
+  try {
+    task = await convex().query(api.agent.tasks.getById, { id: taskId });
+  } catch (fetchError) {
     console.error('[agent/approvals/POST] fetch error:', fetchError);
     return NextResponse.json({ error: 'Failed to fetch task' }, { status: 500 });
   }
@@ -137,19 +130,18 @@ export async function POST(req: NextRequest) {
     };
   }
 
-  const { data: updated, error: updateError } = await supabase
-    .from('AgentTask')
-    .update({
-      status: newStatus,
+  let updated;
+  try {
+    updated = await convex().mutation(api.agent.tasks.setStatusAndMetadata, {
+      taskId,
+      status: newStatus as 'queued' | 'cancelled',
       metadata: metadataPatch,
-      updatedAt: now,
-    })
-    .eq('id', taskId)
-    .select('*')
-    .single();
-
-  if (updateError) {
+    });
+  } catch (updateError) {
     console.error('[agent/approvals/POST] update error:', updateError);
+    return NextResponse.json({ error: 'Failed to update task' }, { status: 500 });
+  }
+  if (!updated) {
     return NextResponse.json({ error: 'Failed to update task' }, { status: 500 });
   }
 

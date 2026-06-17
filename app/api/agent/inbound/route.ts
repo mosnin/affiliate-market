@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { fireAgentTrigger } from '@/lib/agent/fire-trigger';
 
 const AGENT_INTERNAL_SECRET = process.env.AGENT_INTERNAL_SECRET ?? '';
@@ -89,13 +90,13 @@ export async function POST(req: NextRequest) {
     .eq('id', contactId)
     .eq('spaceId', spaceId);
 
-  // Mark draft as responded
+  // Mark draft as responded (Convex; scoped to spaceId, best-effort).
   if (draftId) {
-    await supabase
-      .from('AgentDraft')
-      .update({ outcome: 'responded', outcomeDetectedAt: now })
-      .eq('id', draftId)
-      .eq('spaceId', spaceId);
+    await convex().mutation(api.agent.drafts.updateForSpace, {
+      id: draftId,
+      spaceId,
+      patch: { outcome: 'responded', outcomeDetectedAt: now },
+    });
   }
 
   // Fire the inbound_message trigger through the helper so it gets rate-

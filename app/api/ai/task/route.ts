@@ -582,27 +582,17 @@ export async function POST(req: NextRequest) {
 
   try {
     // Budget settings + today's usage are independent reads — fetch together.
-    const [settingsResult, usageResult] = await Promise.all([
-      supabase
-        .from('AgentSettings')
-        .select('dailyTokenBudget')
-        .eq('spaceId', ctx.space.id)
-        .maybeSingle(),
+    // dailyTokenBudget folds the maybeSingle + default into the query; the
+    // default (50_000) matches the AgentSettings.dailyTokenBudget DB column
+    // default (and schemas.py / the settings + usage APIs).
+    const [dailyTokenBudget, usageResult] = await Promise.all([
+      convex().query(api.agent.settings.dailyTokenBudget, { spaceId: ctx.space.id }),
       // Sums ChatUsage rows + the autonomous Redis counter, matching the
       // Settings display. (The old version read AgentTask token columns no
       // code writes, so enforcement silently passed every time.)
       getTodayTokenUsage(ctx.space.id),
     ]);
 
-    // Default must match the AgentSettings.dailyTokenBudget DB column default
-    // (and schemas.py / the settings + usage APIs), which are all 50_000. This
-    // fallback was 500_000, so a space with no AgentSettings row was gated at
-    // 10x the budget every other surface shows and enforces.
-    const dailyTokenBudget: number =
-      ((settingsResult.data as { dailyTokenBudget?: number | null } | null)?.dailyTokenBudget as
-        | number
-        | null
-        | undefined) ?? 50_000;
     const { total: todayTokens } = usageResult;
 
     if (todayTokens >= dailyTokenBudget) {
@@ -824,12 +814,7 @@ export async function POST(req: NextRequest) {
  */
 async function loadWorkspaceModel(spaceId: string): Promise<string> {
   try {
-    const { data } = await supabase
-      .from('AgentSettings')
-      .select('"chatModel"')
-      .eq('spaceId', spaceId)
-      .maybeSingle();
-    const m = (data as { chatModel?: string } | null)?.chatModel;
+    const m = await convex().query(api.agent.settings.chatModel, { spaceId });
     return m && typeof m === 'string' && m.trim() ? m.trim() : DEFAULT_CHAT_MODEL;
   } catch {
     return DEFAULT_CHAT_MODEL;

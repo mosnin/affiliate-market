@@ -160,23 +160,19 @@ export default async function ManagerBriefPage() {
         .order('createdAt', { ascending: false })
         .limit(6),
       spaceIds.length > 0
-        ? supabase
-            .from('AgentDraft')
-            .select('spaceId')
-            .in('spaceId', spaceIds)
-            .eq('status', 'pending')
-            .then((r) => r.data ?? [])
+        ? convex()
+            .query(api.agent.drafts.pendingForSpaces, { spaceIds })
+            .catch(() => [])
         : Promise.resolve([]),
       // Decided drafts in the 30-day window — feeds the Draft impact card.
       // Same shape `aggregateDraftStats` expects; company-wide rollup.
       spaceIds.length > 0
-        ? supabase
-            .from('AgentDraft')
-            .select('feedback_action, edit_distance, decision_ms, outcome_signal')
-            .in('spaceId', spaceIds)
-            .not('feedback_action', 'is', null)
-            .gte('createdAt', draftStatsWindowStart())
-            .then((r) => r.data ?? [])
+        ? convex()
+            .query(api.agent.drafts.decidedStatsForSpaces, {
+              spaceIds,
+              since: draftStatsWindowStart(),
+            })
+            .catch(() => [])
         : Promise.resolve([]),
     ]);
 

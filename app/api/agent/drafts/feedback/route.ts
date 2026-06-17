@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { LEVENSHTEIN_CAP } from '@/lib/draft-feedback';
@@ -61,12 +61,16 @@ export async function POST(req: NextRequest) {
   // Only record feedback on drafts that are still pending. If the draft has
   // already terminated, this ping is stale — drop it on the floor instead of
   // overwriting the terminal feedback_action.
-  const { data: existing } = await supabase
-    .from('AgentDraft')
-    .select('id, status, feedback_action')
-    .eq('id', draftId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  let existing: { status: string } | null = null;
+  try {
+    existing = await convex().query(api.agent.drafts.getByIdForSpace, {
+      id: draftId,
+      spaceId: space.id,
+    });
+  } catch {
+    // Old code ignored the read's error and fell to the `!existing` 404.
+    existing = null;
+  }
 
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (existing.status !== 'pending') {
@@ -74,18 +78,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  const patch: Record<string, unknown> = { feedback_action: 'held' };
+  // held/feedback-only patch — the old route did NOT set updatedAt here, so no
+  // touchUpdatedAt.
+  const patch: {
+    feedback_action: 'held';
+    decision_ms?: number;
+    edit_distance?: number;
+  } = { feedback_action: 'held' };
   if (decisionMs !== null) patch.decision_ms = decisionMs;
   if (editDistance !== null) patch.edit_distance = editDistance;
 
-  const { error } = await supabase
-    .from('AgentDraft')
-    .update(patch)
-    .eq('id', draftId)
-    .eq('spaceId', space.id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    await convex().mutation(api.agent.drafts.updateForSpace, {
+      id: draftId,
+      spaceId: space.id,
+      patch,
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'update failed' },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ ok: true });

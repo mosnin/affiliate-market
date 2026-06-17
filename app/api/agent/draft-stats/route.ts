@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import {
@@ -43,14 +43,12 @@ export async function GET() {
   const space = await getSpaceForUser(userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data, error } = await supabase
-    .from('AgentDraft')
-    .select('feedback_action, edit_distance, decision_ms, outcome_signal')
-    .eq('spaceId', space.id)
-    .not('feedback_action', 'is', null)
-    .gte('createdAt', draftStatsWindowStart());
-
-  if (error) throw error;
+  // Decided drafts (feedback_action not null) in the 30-day window (Convex) —
+  // returns exactly the DraftStatsRow projection the lib aggregates.
+  const data = await convex().query(api.agent.drafts.decidedStatsForSpace, {
+    spaceId: space.id,
+    since: draftStatsWindowStart(),
+  });
 
   const stats = aggregateDraftStats((data ?? []) as DraftStatsRow[]);
   return NextResponse.json(stats);

@@ -32,7 +32,7 @@
  * end-to-end or it doesn't; either way the regex didn't help.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 export interface VoiceSample {
   subject: string | null;
@@ -124,29 +124,27 @@ export async function getRecentVoiceSamples(
 
   const cutoff = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000).toISOString();
 
-  // SELECT only the two columns we return — explicitly NOT contactId/dealId,
-  // not subject-of-deal title, not anything that could leak who the prior
-  // draft was for. Defense at the query layer.
-  const { data, error } = await supabase
-    .from('AgentDraft')
-    .select('subject, content')
-    .eq('spaceId', spaceId)
-    .eq('channel', 'email')
-    .eq('feedback_action', 'edited_and_approved')
-    .in('status', ['sent', 'approved'])
-    .gt('edit_distance', EDIT_DISTANCE_THRESHOLD)
-    .gte('updatedAt', cutoff)
-    .order('updatedAt', { ascending: false })
-    .limit(MAX_SAMPLES);
-
-  if (error || !data) {
+  // The query returns only the two columns we surface — explicitly NOT
+  // contactId/dealId, not subject-of-deal title, not anything that could leak
+  // who the prior draft was for. Defense at the query layer (the Convex fn's
+  // projection mirrors the old column-scoped SELECT). It applies the
+  // channel='email', feedback_action='edited_and_approved',
+  // status in (sent, approved), edit_distance > threshold, updatedAt >= cutoff
+  // filters and the (updatedAt desc, limit MAX_SAMPLES) ordering server-side.
+  let rows: Array<{ subject: string | null; content: string }>;
+  try {
+    rows = await convex().query(api.agent.drafts.voiceSamples, {
+      spaceId,
+      editDistanceThreshold: EDIT_DISTANCE_THRESHOLD,
+      cutoff,
+      limit: MAX_SAMPLES,
+    });
+  } catch {
     // Fail closed — no voice rather than a broken voice. Cache the empty
     // result so a transient DB hiccup doesn't hammer us; TTL is 5 min.
     cache.set(spaceId, { samples: [], expiresAt: Date.now() + TTL_MS });
     return [];
   }
-
-  const rows = data as Array<{ subject: string | null; content: string }>;
 
   // MIN_SAMPLES gate: 1 sample is worse than 0 (overfits to one outlier).
   if (rows.length < MIN_SAMPLES) {

@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { cn } from '@/lib/utils';
 import { TITLE_FONT, BODY_MUTED, SECTION_LABEL } from '@/lib/typography';
 import type { CustomAgent, SwarmRun, SwarmStatus } from '@/lib/swarm-types';
@@ -136,12 +137,10 @@ export default async function SwarmPage({
   if (!spaceOwner) notFound();
 
   // Parallel fetch: active custom agents + recent swarm runs.
-  const [{ data: agentsData }, { data: runsData }] = await Promise.all([
-    supabase
-      .from('CustomAgent')
-      .select('*')
-      .eq('spaceId', space.id)
-      .eq('isActive', true),
+  const [agentsData, { data: runsData }] = await Promise.all([
+    convex()
+      .query(api.agent.customAgents.listActiveBySpace, { spaceId: space.id })
+      .catch(() => [] as CustomAgent[]),
     supabase
       .from('SwarmRun')
       .select('*')

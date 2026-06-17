@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { monitorCron } from '@/lib/cron-monitor';
 
 // Env vars read at request time, not module load. Otherwise tests (and
@@ -111,18 +112,15 @@ async function handler(req: NextRequest) {
 
   // ── 2. Pre-compute pending-draft backlog per space (single query) ──────
   const spaceIds = allSpaces.map((s) => s.id);
-  const { data: pendingRows, error: pendingErr } = await supabase
-    .from('AgentDraft')
-    .select('spaceId')
-    .eq('status', 'pending')
-    .in('spaceId', spaceIds)
-    .limit(20000);
-  if (pendingErr) {
+  let pendingRows: { spaceId: string }[];
+  try {
+    pendingRows = await convex().query(api.agent.drafts.pendingForSpaces, { spaceIds });
+  } catch (pendingErr) {
     console.error('[cron/agent-sweep] Failed to count pending drafts', pendingErr);
     return NextResponse.json({ error: 'DB query failed' }, { status: 500 });
   }
   const pendingBySpace = new Map<string, number>();
-  for (const row of (pendingRows ?? []) as { spaceId: string }[]) {
+  for (const row of pendingRows) {
     pendingBySpace.set(row.spaceId, (pendingBySpace.get(row.spaceId) ?? 0) + 1);
   }
 

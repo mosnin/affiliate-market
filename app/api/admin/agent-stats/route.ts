@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 
 /** GET /api/admin/agent-stats — aggregated agentic system metrics for platform admins */
@@ -23,22 +23,17 @@ export async function GET(req: Request) {
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
 
   try {
+    // Tasks created in the window. One Convex scan returns (status,
+    // estimatedCostUsd, spaceId) — the superset the four old `.gte('createdAt',
+    // since)` reads each pulled a slice of. Folds 1/2/4 run off this single list.
+    const taskRows = await convex().query(api.agent.tasks.listSince, { since });
+
     // ── 1. Task counts by status ──────────────────────────────────────────────
-    const { data: statusRows, error: statusErr } = await supabase
-      .from('AgentTask')
-      .select('status')
-      .gte('createdAt', since);
-
-    if (statusErr) {
-      console.error('[admin/agent-stats] status query failed', statusErr);
-      return NextResponse.json({ error: 'Query failed' }, { status: 500 });
-    }
-
     const tasksByStatus: Record<string, number> = {};
     let totalTasks = 0;
     let failedCount = 0;
 
-    for (const row of statusRows ?? []) {
+    for (const row of taskRows) {
       const s = row.status as string;
       tasksByStatus[s] = (tasksByStatus[s] ?? 0) + 1;
       totalTasks++;
@@ -46,40 +41,20 @@ export async function GET(req: Request) {
     }
 
     // ── 2. Cost aggregates ────────────────────────────────────────────────────
-    const { data: costRows, error: costErr } = await supabase
-      .from('AgentTask')
-      .select('estimatedCostUsd')
-      .gte('createdAt', since);
-
-    if (costErr) {
-      console.error('[admin/agent-stats] cost query failed', costErr);
-      return NextResponse.json({ error: 'Query failed' }, { status: 500 });
-    }
-
     let totalCostUsd = 0;
-    const costRowsTyped = (costRows ?? []) as { estimatedCostUsd: string | number | null }[];
-    for (const row of costRowsTyped) {
+    for (const row of taskRows) {
       totalCostUsd += parseFloat(String(row.estimatedCostUsd ?? 0));
     }
     const avgCostUsd = totalTasks > 0 ? totalCostUsd / totalTasks : 0;
 
     // ── 3. Top tools by call count (via ExecutionStep) ────────────────────────
-    // Join through taskId to scope to the time window — ExecutionStep has no
-    // standalone createdAt index on tasks, but we can fetch the step rows for
-    // tasks in range. For large datasets this is bounded by the 30-day window.
-    const { data: stepRows, error: stepErr } = await supabase
-      .from('ExecutionStep')
-      .select('toolName, AgentTask!inner(createdAt)')
-      .gte('AgentTask.createdAt', since);
-
-    if (stepErr) {
-      console.error('[admin/agent-stats] step query failed', stepErr);
-      return NextResponse.json({ error: 'Query failed' }, { status: 500 });
-    }
+    // The old PostgREST `ExecutionStep!inner(AgentTask.createdAt)` join runs
+    // inside Convex (both tables are this domain's): toolNames for every step
+    // whose parent task was created in the window. The per-tool tally stays here.
+    const toolNames = await convex().query(api.agent.steps.toolNamesForTasksSince, { since });
 
     const toolCounts: Record<string, number> = {};
-    for (const row of stepRows ?? []) {
-      const name = (row as { toolName: string }).toolName;
+    for (const name of toolNames) {
       toolCounts[name] = (toolCounts[name] ?? 0) + 1;
     }
 
@@ -89,18 +64,8 @@ export async function GET(req: Request) {
       .slice(0, 10);
 
     // ── 4. Tasks + cost by space ──────────────────────────────────────────────
-    const { data: spaceRows, error: spaceErr } = await supabase
-      .from('AgentTask')
-      .select('spaceId, estimatedCostUsd')
-      .gte('createdAt', since);
-
-    if (spaceErr) {
-      console.error('[admin/agent-stats] space query failed', spaceErr);
-      return NextResponse.json({ error: 'Query failed' }, { status: 500 });
-    }
-
     const spaceMap: Record<string, { count: number; cost: number }> = {};
-    for (const row of (spaceRows ?? []) as { spaceId: string; estimatedCostUsd: string | number | null }[]) {
+    for (const row of taskRows) {
       const entry = spaceMap[row.spaceId] ?? { count: 0, cost: 0 };
       entry.count++;
       entry.cost += parseFloat(String(row.estimatedCostUsd ?? 0));

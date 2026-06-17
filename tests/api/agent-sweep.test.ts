@@ -7,14 +7,34 @@
  * a JSON summary. None of that was tested before this file existed.
  *
  * Mock strategy:
- *   - `@/lib/supabase`: chainable thenable, two `from()` reads per request
- *     (Space list, AgentDraft count). Mirrors `tests/api/agent-morning.test.ts`.
+ *   - `@/lib/supabase`: chainable thenable for the Space list (still Supabase).
+ *     Mirrors `tests/api/agent-morning.test.ts`.
+ *   - `@/lib/convex-server`: the pending-draft backlog count moved to Convex
+ *     (api.agent.drafts.pendingForSpaces); we steer the returned {spaceId} rows.
  *   - `globalThis.fetch`: single spy, routed by URL. Modal calls are recorded
  *     for assertion; KV `/get/...` and `/set/...` URLs are answered from a
  *     test-controlled in-memory map.
  *   - Env vars: set in `beforeEach`, restored in `afterEach`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// ── Convex mock ─────────────────────────────────────────────────────────────
+// pendingForSpaces → one {spaceId} row per pending draft (the route tallies per
+// space). Steered per-test via `pendingRows`.
+let pendingRows: Array<{ spaceId: string }> = [];
+const { convexQueryMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => [] as unknown),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: vi.fn() }),
+  };
+});
 
 // ── Supabase mock ───────────────────────────────────────────────────────────
 type Terminal = { data?: unknown; error?: unknown; count?: number | null };
@@ -146,21 +166,24 @@ function invoke(authHeader?: string) {
   return GET(req as unknown as Parameters<typeof GET>[0]);
 }
 
-/** Queue the two supabase reads: spaces list, then pending drafts list. */
+/** Queue the Supabase Space list and the Convex pending-draft rows. */
 function queueSweep(opts: {
   spaces: Array<{ id: string; slug: string }>;
   pending: Array<{ spaceId: string }>;
 }) {
-  supabaseQueue = [
-    { data: opts.spaces, error: null },
-    { data: opts.pending, error: null },
-  ];
+  // The Space read is paginated, but one page under SPACE_PAGE_SIZE (1000)
+  // terminates the loop after a single read — so one Space terminal suffices.
+  supabaseQueue = [{ data: opts.spaces, error: null }];
+  pendingRows = opts.pending;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   supabaseQueue = [];
   supabaseCalls.length = 0;
+  pendingRows = [];
+  // pendingForSpaces → the per-test pending rows.
+  convexQueryMock.mockImplementation(async () => pendingRows);
   modalCalls = [];
   kvStore = new Map();
   modalResponder = () => new Response(JSON.stringify({ ok: true }), { status: 200 });

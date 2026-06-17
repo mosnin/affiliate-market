@@ -168,10 +168,20 @@ beforeEach(() => {
   // Re-wire the Convex query/mutation mocks (cleared above), branching on the
   // fn path. getById → the injected row (or null); loadHistory → []; create →
   // a fresh row with a distinct id; setTitleForSpace → null.
+  //
+  // The token-budget gate moved to Convex too: the route reads
+  // api.agent.settings.dailyTokenBudget BEFORE branching and 429s when
+  // today's usage >= the budget. The real query defaults a missing settings
+  // row to 50_000, so the mock must return a positive number — left at the
+  // default null this read returns null and `0 >= null` (→ `0 >= 0`) is true,
+  // tripping a spurious 429 that fails every test in the file. chatModel is the
+  // workspace-model override (null → the route's DEFAULT_CHAT_MODEL fallback).
   convexQueryMock.mockImplementation(async (ref: unknown) => {
     const p = typeof ref === 'function' ? (ref as () => string)() : '';
     if (p.includes('conversations.getById')) return convLookup.row ?? null;
     if (p.includes('messages.loadHistory')) return [];
+    if (p.includes('agent.settings.dailyTokenBudget')) return 50000;
+    if (p.includes('agent.settings.chatModel')) return null;
     return null;
   });
   convexMutationMock.mockImplementation(async (ref: unknown) => {

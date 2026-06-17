@@ -155,6 +155,25 @@ export const countBySpaceStatus = query({
   },
 });
 
+/**
+ * True if the space has any draft OLDER than `before` (createdAt < before) — the
+ * stability-history gate in lib/briefing/tips/tip-categories.ts. Replaces the
+ * Supabase `.lt('createdAt', cutoff)` count (the other count fns are all
+ * `createdAt >= since`). Rides by_space_created and stops at the first hit.
+ */
+export const existsBeforeForSpace = query({
+  args: { spaceId: v.string(), before: v.string() },
+  handler: async (ctx, args): Promise<boolean> => {
+    const row = await ctx.db
+      .query('AgentDraft')
+      .withIndex('by_space_created', (q) =>
+        q.eq('spaceId', args.spaceId).lt('createdAt', args.before),
+      )
+      .first();
+    return row !== null;
+  },
+});
+
 /** Per-space pending counts for a set of spaces (manager brief/layout: `.in('spaceId',
  *  spaceIds).eq('status','pending')` then grouped by space). Returns the raw
  *  (spaceId) rows so the caller tallies exactly as before. */

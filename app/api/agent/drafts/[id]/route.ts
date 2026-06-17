@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { FunctionArgs } from 'convex/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { audit } from '@/lib/audit';
@@ -61,14 +63,12 @@ export async function PATCH(
   }
 
   // Verify the draft belongs to this space and is still pending
-  const { data: existing, error: fetchError } = await supabase
-    .from('AgentDraft')
-    .select('id, status, contactId, dealId, channel, subject, content, outcome')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .single();
+  const existing = await convex().query(api.agent.drafts.getByIdForSpace, {
+    id,
+    spaceId: space.id,
+  });
 
-  if (fetchError || !existing) {
+  if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
@@ -92,9 +92,9 @@ export async function PATCH(
 
   // ── Dismissed: simple status update ──────────────────────────────────────
   if (newStatus === 'dismissed') {
-    const dismissPatch: Record<string, unknown> = {
+    const dismissPatch: FunctionArgs<typeof api.agent.drafts.updateForSpace>['patch'] = {
       status: 'dismissed',
-      updatedAt: new Date().toISOString(),
+      touchUpdatedAt: true, // the old patch always set updatedAt
       feedback_action: 'rejected',
     };
     if (decisionMs !== null) dismissPatch.decision_ms = decisionMs;
@@ -102,15 +102,11 @@ export async function PATCH(
       dismissPatch.outcome = 'no_response';
       dismissPatch.outcomeDetectedAt = new Date().toISOString();
     }
-    const { data: updated, error: updateError } = await supabase
-      .from('AgentDraft')
-      .update(dismissPatch)
-      .eq('id', id)
-      .eq('spaceId', space.id)
-      .select()
-      .single();
-
-    if (updateError) throw updateError;
+    const updated = await convex().mutation(api.agent.drafts.updateForSpace, {
+      id,
+      spaceId: space.id,
+      patch: dismissPatch,
+    });
 
     void audit({
       actorClerkId: userId,
@@ -148,9 +144,9 @@ export async function PATCH(
   // sent=true → "sent"; sent=false → "approved" (human reviewed, delivery unconfigured/failed)
   const finalStatus = deliveryResult.sent ? 'sent' : 'approved';
 
-  const patch: Record<string, unknown> = {
+  const patch: FunctionArgs<typeof api.agent.drafts.updateForSpace>['patch'] = {
     status: finalStatus,
-    updatedAt: new Date().toISOString(),
+    touchUpdatedAt: true, // the old patch always set updatedAt
   };
   if (finalContent !== existing.content) patch.content = finalContent;
 
@@ -171,15 +167,11 @@ export async function PATCH(
     : 0;
   if (decisionMs !== null) patch.decision_ms = decisionMs;
 
-  const { data: updated, error: updateError } = await supabase
-    .from('AgentDraft')
-    .update(patch)
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .select()
-    .single();
-
-  if (updateError) throw updateError;
+  const updated = await convex().mutation(api.agent.drafts.updateForSpace, {
+    id,
+    spaceId: space.id,
+    patch,
+  });
 
   void audit({
     actorClerkId: userId,

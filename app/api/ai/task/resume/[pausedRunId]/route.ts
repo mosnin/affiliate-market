@@ -29,6 +29,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { colaErrorMessage } from '@/lib/ai-tools/cola-voice';
@@ -89,17 +90,17 @@ export async function POST(
   }
 
   // Load + scope check. The userId stored on the row is the Clerk userId.
-  const { data: row, error } = await supabase
-    .from('AgentPausedRun')
-    .select('id, spaceId, userId, conversationId, runState, approvals, status, expiresAt')
-    .eq('id', pausedRunId)
-    .maybeSingle();
-  if (error) {
-    logger.error('[ai/task resume] load failed', { pausedRunId }, error);
+  let row: PausedRunRow | null;
+  try {
+    row = (await convex().query(api.agent.paused.getById, {
+      id: pausedRunId,
+    })) as PausedRunRow | null;
+  } catch (err) {
+    logger.error('[ai/task resume] load failed', { pausedRunId }, err);
     return NextResponse.json({ error: colaErrorMessage('internal') }, { status: 500 });
   }
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const paused = row as PausedRunRow;
+  const paused = row;
   if (paused.userId !== auth.userId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -108,7 +109,7 @@ export async function POST(
   }
   if (paused.expiresAt && new Date(paused.expiresAt).getTime() < Date.now()) {
     // Best-effort flip; ignore failures — the request is over either way.
-    await supabase.from('AgentPausedRun').update({ status: 'expired' }).eq('id', paused.id);
+    await convex().mutation(api.agent.paused.markExpired, { id: paused.id });
     return NextResponse.json({ error: 'Run expired' }, { status: 410 });
   }
 
@@ -159,19 +160,17 @@ export async function POST(
   // AgentPausedRun row — we don't reuse the old one because the run state
   // has advanced past it.
   // Compare-and-swap: only the request that flips pending→resumed proceeds.
-  // Without the status filter two concurrent resumes both passed the
-  // `status !== 'pending'` check above and both ran the approved tool.
-  const { data: marked, error: markErr } = await supabase
-    .from('AgentPausedRun')
-    .update({ status: 'resumed', updatedAt: new Date().toISOString() })
-    .eq('id', paused.id)
-    .eq('status', 'pending')
-    .select('id');
-  if (markErr) {
+  // Without the guard two concurrent resumes both passed the
+  // `status !== 'pending'` check above and both ran the approved tool. The
+  // mutation does the CAS atomically and reports 'lost' if it didn't win.
+  let resumeOutcome: { outcome: 'resumed' | 'lost' | 'missing' };
+  try {
+    resumeOutcome = await convex().mutation(api.agent.paused.markResumed, { id: paused.id });
+  } catch (markErr) {
     logger.error('[ai/task resume] status update failed', { pausedRunId }, markErr);
     return NextResponse.json({ error: colaErrorMessage('internal') }, { status: 500 });
   }
-  if (!marked || marked.length === 0) {
+  if (resumeOutcome.outcome !== 'resumed') {
     return NextResponse.json({ error: 'Run is already resumed' }, { status: 409 });
   }
 

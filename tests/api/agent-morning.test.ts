@@ -31,6 +31,28 @@ vi.mock('@/lib/morning-story-agent', () => ({
   composeAgentSentence: vi.fn(),
 }));
 
+// ── Convex mock ───────────────────────────────────────────────────────────
+// The two count reads inside the route's Promise.all moved off Supabase:
+//   - draftsCount    → api.agent.drafts.countBySpaceStatus (status='pending')
+//   - questionsCount → api.agent.questions.countPending
+// Both return a plain number. We branch on the fn path so each returns its own
+// per-test count. The remaining 7 reads (6 Contact + 1 Deal) stay on Supabase.
+let draftsCount = 0;
+let questionsCount = 0;
+const { convexQueryMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => 0 as unknown),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: vi.fn() }),
+  };
+});
+
 /**
  * Per-test queue of canned terminal values, one per `supabase.from(...)` call.
  * The route makes exactly 9 `from()` calls in `Promise.all`, so the queue is
@@ -117,16 +139,20 @@ const SPACE = {
 } as unknown as NonNullable<Awaited<ReturnType<typeof getSpaceForUser>>>;
 
 /**
- * Queue 9 supabase terminals in the order the route reads them:
- *   0: newPeopleRes (count)
- *   1: hotPeopleRes (count)
- *   2: overdueFollowUpsRes (count)
- *   3: activeDealsRes (data: deals[])
- *   4: draftsRes (count)
- *   5: questionsRes (count)
- *   6: topNewPersonRes (data: row | null)
- *   7: topHotPersonRes (data: row | null)
- *   8: topOverdueRes (data: row | null)
+ * Queue the 7 supabase terminals in the order the route reads them, AND set the
+ * two Convex counts. The route's Promise.all order is:
+ *   0: newPeopleRes (count)          [Supabase Contact]
+ *   1: hotPeopleRes (count)          [Supabase Contact]
+ *   2: overdueFollowUpsRes (count)   [Supabase Contact]
+ *   3: activeDealsRes (data: deals[])[Supabase Deal]
+ *   -: draftsCount                   [Convex agent.drafts.countBySpaceStatus]
+ *   -: questionsCount                [Convex agent.questions.countPending]
+ *   4: topNewPersonRes (data|null)   [Supabase Contact]
+ *   5: topHotPersonRes (data|null)   [Supabase Contact]
+ *   6: topOverdueRes (data|null)     [Supabase Contact]
+ *
+ * `drafts`/`questions` are still accepted as `{ count }` for caller ergonomics,
+ * but they now drive the Convex mock, not the Supabase queue.
  */
 function queueSupabase(terminals: Partial<Record<
   | 'newPeople' | 'hotPeople' | 'overdueFollowUps' | 'activeDeals'
@@ -138,18 +164,27 @@ function queueSupabase(terminals: Partial<Record<
     terminals.hotPeople ?? { count: 0 },
     terminals.overdueFollowUps ?? { count: 0 },
     terminals.activeDeals ?? { data: [] },
-    terminals.drafts ?? { count: 0 },
-    terminals.questions ?? { count: 0 },
     terminals.topNewPerson ?? { data: null },
     terminals.topHotPerson ?? { data: null },
     terminals.topOverdue ?? { data: null },
   ];
+  draftsCount = (terminals.drafts?.count ?? 0) as number;
+  questionsCount = (terminals.questions?.count ?? 0) as number;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   supabaseQueue = [];
   supabaseCalls.length = 0;
+  draftsCount = 0;
+  questionsCount = 0;
+  // Route the two count reads to the Convex mock, by fn path.
+  convexQueryMock.mockImplementation(async (ref: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('agent.drafts.countBySpaceStatus')) return draftsCount;
+    if (p.includes('agent.questions.countPending')) return questionsCount;
+    return 0;
+  });
   mockedAuth.mockResolvedValue({ userId: 'test-user' });
   mockedSpace.mockResolvedValue(SPACE);
   mockedCompose.mockResolvedValue(null);
@@ -349,8 +384,9 @@ describe('GET /api/agent/morning — public contract', () => {
 
     await GET();
 
-    // The route makes 6 Contact queries (3 counts + 3 named-subject reads),
-    // 1 Deal query, 1 AgentDraft, 1 AgentQuestion = 9 from() calls total.
+    // The route makes 6 Contact queries (3 counts + 3 named-subject reads) and
+    // 1 Deal query on Supabase = 7 from() calls. (The drafts + questions counts
+    // moved to Convex, so they no longer touch Supabase.)
     const contactCalls = supabaseCalls.filter((c) => c.table === 'Contact');
     expect(contactCalls).toHaveLength(6);
     for (const call of contactCalls) {

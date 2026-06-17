@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
 const VALID_STATUSES = ['active', 'completed', 'cancelled', 'paused'] as const;
+type GoalStatus = (typeof VALID_STATUSES)[number];
 
 export async function PATCH(
   req: NextRequest,
@@ -26,42 +27,19 @@ export async function PATCH(
     );
   }
 
-  // Verify the goal belongs to this space
-  const { data: existing } = await supabase
-    .from('AgentGoal')
-    .select('id, status')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  // Update status (Convex). Folds the ownership pre-read, the completedAt stamp
+  // on 'completed', and the completionNotes metadata merge into one mutation.
+  const result = await convex().mutation(api.agent.goals.updateStatus, {
+    id,
+    spaceId: space.id,
+    status: body.status as GoalStatus,
+    ...(body.completionNotes !== undefined ? { completionNotes: body.completionNotes } : {}),
+  });
 
-  if (!existing) {
+  if (!result.ok) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-
-  const now = new Date().toISOString();
-  const patch: Record<string, unknown> = {
-    status: body.status,
-    updatedAt: now,
-  };
-
-  if (body.status === 'completed') {
-    patch.completedAt = now;
-  }
-
-  if (body.completionNotes !== undefined) {
-    patch.metadata = { completionNotes: body.completionNotes };
-  }
-
-  const { data, error } = await supabase
-    .from('AgentGoal')
-    .update(patch)
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return NextResponse.json(data);
+  return NextResponse.json(result.goal);
 }
 
 export async function DELETE(
@@ -77,27 +55,11 @@ export async function DELETE(
 
   const { id } = await params;
 
-  // Verify the goal belongs to this space
-  const { data: existing } = await supabase
-    .from('AgentGoal')
-    .select('id, status')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  if (!existing) {
+  // Soft-delete → status 'cancelled' (Convex). Idempotent: an already-cancelled
+  // goal still returns { cancelled: true }, matching the old 200 path.
+  const result = await convex().mutation(api.agent.goals.cancel, { id, spaceId: space.id });
+  if (result.outcome === 'not_found') {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (existing.status === 'cancelled') {
-    return NextResponse.json({ cancelled: true });
-  }
-
-  const { error } = await supabase
-    .from('AgentGoal')
-    .update({ status: 'cancelled', updatedAt: new Date().toISOString() })
-    .eq('id', id)
-    .eq('spaceId', space.id);
-
-  if (error) throw error;
   return NextResponse.json({ cancelled: true });
 }

@@ -334,12 +334,10 @@ export async function spaceHasStabilityHistory(spaceId: string): Promise<boolean
   today.setHours(0, 0, 0, 0);
   const cutoff = new Date(today.getTime() - MIN_STABILITY_DAYS * MS_PER_DAY).toISOString();
 
-  const { count: draftCount } = await supabase
-    .from('AgentDraft')
-    .select('id', { count: 'exact', head: true })
-    .eq('spaceId', spaceId)
-    .lt('createdAt', cutoff);
-  if ((draftCount ?? 0) > 0) return true;
+  // Any draft older than the cutoff means the space has stability history.
+  if (await convex().query(api.agent.drafts.existsBeforeForSpace, { spaceId, before: cutoff })) {
+    return true;
+  }
 
   const { count: contactCount } = await supabase
     .from('Contact')
@@ -407,18 +405,19 @@ export async function tipReplyRateDecline(spaceId: string): Promise<Signal[]> {
   const sevenAgo = new Date(today.getTime() - 7 * MS_PER_DAY);
   const fourteenAgo = new Date(today.getTime() - 14 * MS_PER_DAY);
 
-  const { data: drafts, error } = await supabase
-    .from('AgentDraft')
-    .select('contactId, createdAt')
-    .eq('spaceId', spaceId)
-    .eq('status', 'sent')
-    .gte('createdAt', fourteenAgo.toISOString())
-    .lt('createdAt', today.toISOString());
-
-  if (error || !drafts) return [];
-
   type DraftRow = { contactId: string | null; createdAt: string };
-  const rows = (drafts as DraftRow[]).filter((d) => d.contactId);
+  let drafts: DraftRow[];
+  try {
+    drafts = (await convex().query(api.agent.drafts.sentContactWindow, {
+      spaceId,
+      since: fourteenAgo.toISOString(),
+      before: today.toISOString(),
+    })) as DraftRow[];
+  } catch {
+    return [];
+  }
+
+  const rows = drafts.filter((d) => d.contactId);
   const current = rows.filter((d) => new Date(d.createdAt) >= sevenAgo);
   const prior = rows.filter((d) => new Date(d.createdAt) < sevenAgo);
 
@@ -595,15 +594,19 @@ export async function tipDemoConversionDrop(spaceId: string): Promise<Signal[]> 
   // Conversion = an AgentDraft tagged application/offer within 7 days,
   // OR a Deal stage move within 7 days. Both because some sellers stage
   // applications as deal moves; others draft them as messages.
-  const { data: drafts } = await supabase
-    .from('AgentDraft')
-    .select('contactId, channel, subject, createdAt')
-    .eq('spaceId', spaceId)
-    .in('contactId', allContactIds)
-    .gte('createdAt', baselineStart.toISOString());
-
   type DraftRow = { contactId: string; channel: string; subject: string | null; createdAt: string };
-  const draftRows = ((drafts ?? []) as DraftRow[]).filter((d) =>
+  let drafts: DraftRow[];
+  try {
+    drafts = (await convex().query(api.agent.drafts.forContactsSince, {
+      spaceId,
+      contactIds: allContactIds,
+      since: baselineStart.toISOString(),
+    })) as DraftRow[];
+  } catch {
+    drafts = [];
+  }
+
+  const draftRows = drafts.filter((d) =>
     /application|offer/i.test(`${d.channel} ${d.subject ?? ''}`),
   );
 

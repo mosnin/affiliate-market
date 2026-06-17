@@ -26,6 +26,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { HOT_LEAD_THRESHOLD } from '@/lib/constants';
 import type { Signal, SignalGatherer, SignalKind } from '../types';
 
@@ -71,22 +72,52 @@ export const draftsSource: SignalGatherer = {
   // case the surface wants to attribute (Phase C breadcrumbs).
   source: 'drafts',
   async gather(spaceId: string): Promise<Signal[]> {
-    const { data, error } = await supabase
-      .from('AgentDraft')
-      .select(
-        'id, contactId, channel, subject, priority, Contact:contactId(id, name, leadScore)',
-      )
-      .eq('spaceId', spaceId)
-      .eq('status', 'pending')
-      .order('priority', { ascending: false })
-      .order('createdAt', { ascending: false })
-      .limit(10);
+    // Pending drafts live in Convex; the Contact join (id/name/leadScore) is
+    // still a Supabase table, so this source is hybrid: read the drafts from
+    // Convex, then stitch the contact rows in to reproduce the old shape.
+    let rawDrafts: Array<{
+      id: string;
+      contactId: string | null;
+      channel: 'sms' | 'email' | 'note';
+      subject: string | null;
+      priority: number;
+    }>;
+    try {
+      rawDrafts = (await convex().query(api.agent.drafts.listBySpaceStatus, {
+        spaceId,
+        status: 'pending',
+        limit: 10,
+      })) as typeof rawDrafts;
+    } catch {
+      return [];
+    }
 
-    if (error || !data) return [];
+    const contactIds = Array.from(
+      new Set(rawDrafts.map((d) => d.contactId).filter((id): id is string => Boolean(id))),
+    );
+    const contactById = new Map<string, { id: string; name: string; leadScore: number | null }>();
+    if (contactIds.length > 0) {
+      const { data: contacts } = await supabase
+        .from('Contact')
+        .select('id, name, leadScore')
+        .in('id', contactIds);
+      for (const c of (contacts ?? []) as Array<{ id: string; name: string; leadScore: number | null }>) {
+        contactById.set(c.id, c);
+      }
+    }
+
+    const data: DraftRow[] = rawDrafts.map((d) => ({
+      id: d.id,
+      contactId: d.contactId,
+      channel: d.channel,
+      subject: d.subject,
+      priority: d.priority,
+      Contact: d.contactId ? contactById.get(d.contactId) ?? null : null,
+    }));
 
     const signals: Signal[] = [];
 
-    for (const draft of data as unknown as DraftRow[]) {
+    for (const draft of data) {
       // Drafts without a contact link don't surface on the brief — they're
       // working state for the agent, not actionable for the seller's
       // morning. They still appear in the FocusCard queue if relevant.

@@ -12,7 +12,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 export interface ApprovalTask {
   id: string;
@@ -33,20 +33,35 @@ export async function GET() {
   const space = await getSpaceForUser(userId);
   if (!space) return NextResponse.json({ count: 0, tasks: [] });
 
-  const { data, error } = await supabase
-    .from('AgentTask')
-    .select('id, spaceId, title, goalDescription, status, metadata, createdAt, updatedAt')
-    .eq('spaceId', space.id)
-    .eq('status', 'paused')
-    .not('metadata->approvalRequired', 'is', null)
-    .order('createdAt', { ascending: false })
-    .limit(50);
-
-  if (error) {
-    console.error('[api/cola/approvals] query error:', error);
+  let rows: Array<{
+    id: string;
+    spaceId: string;
+    title: string;
+    goalDescription: string | null;
+    status: string;
+    metadata: unknown;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  try {
+    rows = await convex().query(api.agent.tasks.listPendingApprovals, {
+      spaceId: space.id,
+      limit: 50,
+    });
+  } catch (err) {
+    console.error('[api/cola/approvals] query error:', err);
     return NextResponse.json({ error: 'Could not load approvals' }, { status: 500 });
   }
 
-  const tasks = (data ?? []) as ApprovalTask[];
+  const tasks: ApprovalTask[] = rows.map((t) => ({
+    id: t.id,
+    spaceId: t.spaceId,
+    title: t.title,
+    goalDescription: t.goalDescription,
+    status: t.status,
+    metadata: t.metadata as Record<string, unknown> | null,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  }));
   return NextResponse.json({ count: tasks.length, tasks });
 }

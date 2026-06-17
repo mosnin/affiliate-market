@@ -38,12 +38,42 @@ vi.mock('@/lib/ai-tools/sdk-chat-stream', () => ({
   streamTsResumeTurn: streamResumeMock,
 }));
 
-// Per-table queue so we can return different rows for AgentPausedRun
-// vs Space. Hoisted because vi.mock factories are pulled to the top.
+// Per-table queue so we can return different rows for Space vs User. Hoisted
+// because vi.mock factories are pulled to the top. AgentPausedRun no longer
+// flows through here — its load + CAS resume migrated to Convex (see the
+// convex-server mock below); only Space + User stay on Supabase in this route.
 const { tableQueue, updateMock } = vi.hoisted(() => ({
   tableQueue: {} as Record<string, Array<{ data?: unknown; error?: unknown }>>,
   updateMock: vi.fn(() => Promise.resolve({ data: [{ id: 'run_1' }], error: null })),
 }));
+
+// Convex: the resume route loads the AgentPausedRun via
+// api.agent.paused.getById and does the anti-double-execution CAS via
+// api.agent.paused.markResumed (pending->resumed), with a fire-and-forget
+// api.agent.paused.markExpired on the 410 path. We branch on the fn path:
+//   - paused.getById    → the per-test staged row (or null for the 404)
+//   - paused.markResumed → { outcome: 'resumed' } on the happy path; the
+//                          already-resumed 409 is caught by the route's own
+//                          status guard BEFORE this CAS runs, so the default
+//                          is fine there too
+//   - paused.markExpired → undefined (void; must not throw on the 410 path)
+// `api` is a path proxy so api.<domain>.<module>.<fn> stringifies to its
+// dotted path when called.
+const { pausedHolder, convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  pausedHolder: { row: null as unknown },
+  convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
+  convexMutationMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
 
 vi.mock('@/lib/supabase', () => {
   function chain(table: string) {
@@ -87,6 +117,21 @@ beforeEach(() => {
   // per-test to exercise the mismatch path.
   tableQueue.User = [{ data: { id: 'u_1' } }];
   updateMock.mockResolvedValue({ data: [{ id: 'run_1' }], error: null });
+
+  // Convex: paused.getById → the per-test staged row (default null);
+  // paused.markResumed → won the CAS; paused.markExpired → void.
+  pausedHolder.row = null;
+  convexQueryMock.mockImplementation(async (ref: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('agent.paused.getById')) return pausedHolder.row;
+    return null;
+  });
+  convexMutationMock.mockImplementation(async (ref: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('agent.paused.markResumed')) return { outcome: 'resumed' };
+    if (p.includes('agent.paused.markExpired')) return undefined;
+    return null;
+  });
 });
 
 afterEach(() => {
@@ -129,7 +174,9 @@ const ROW: PausedRow = {
 const SPACE = { id: 's_1', slug: 'jane', name: 'Jane Realty', ownerId: 'u_1' };
 
 function queueRow(row: PausedRow | null) {
-  tableQueue.AgentPausedRun = [{ data: row }];
+  // The paused run now loads from Convex (api.agent.paused.getById), not
+  // Supabase — stage it on the holder the Convex query mock reads.
+  pausedHolder.row = row;
 }
 function queueSpace(space: typeof SPACE | null) {
   tableQueue.Space = [{ data: space }];
