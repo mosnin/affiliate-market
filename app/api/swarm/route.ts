@@ -4,7 +4,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
@@ -42,19 +41,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Space is disabled' }, { status: 403 });
   }
 
-  const { data, error } = await supabase
-    .from('SwarmRun')
-    .select('*')
-    .eq('spaceId', spaceId)
-    .order('createdAt', { ascending: false })
-    .limit(20);
-
-  if (error) {
+  let runs;
+  try {
+    runs = await convex().query(api.swarmvector.swarmRuns.listForSpace, {
+      spaceId,
+      limit: 20,
+    });
+  } catch (error) {
     console.error('[swarm/GET] query error:', error);
     return NextResponse.json({ error: 'Failed to fetch swarm runs' }, { status: 500 });
   }
 
-  return NextResponse.json({ runs: data ?? [] });
+  return NextResponse.json({ runs: runs ?? [] });
 }
 
 // ── POST /api/swarm ───────────────────────────────────────────────────────────
@@ -147,13 +145,14 @@ export async function POST(req: NextRequest) {
   }
 
   // Insert the SwarmRun row.
-  const { data: run, error: insertError } = await supabase
-    .from('SwarmRun')
-    .insert({ spaceId: space.id, goal, status: 'queued' })
-    .select()
-    .single();
-
-  if (insertError || !run) {
+  let run;
+  try {
+    run = await convex().mutation(api.swarmvector.swarmRuns.create, {
+      spaceId: space.id,
+      goal,
+      status: 'queued',
+    });
+  } catch (insertError) {
     console.error('[swarm/POST] insert error:', insertError);
     return NextResponse.json({ error: 'Failed to create swarm run' }, { status: 500 });
   }

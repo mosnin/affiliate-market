@@ -6,7 +6,7 @@
  * and stored as a high-importance space memory.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -35,16 +35,12 @@ export async function GET(_req: NextRequest) {
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   // Find the most recent PRIORITY_LIST memory for this space
-  const { data } = await supabase
-    .from('AgentMemory')
-    .select('content, createdAt')
-    .eq('spaceId', space.id)
-    .eq('entityType', 'space')
-    .eq('entityId', space.id)
-    .like('content', 'PRIORITY_LIST:%')
-    .order('createdAt', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const data = await convex()
+    .query(api.swarmvector.agentMemory.latestSpaceMemoryWithPrefix, {
+      spaceId: space.id,
+      prefix: 'PRIORITY_LIST:',
+    })
+    .catch(() => null);
 
   if (!data?.content) {
     return NextResponse.json({ items: [], generatedAt: null, totalEvaluated: 0 });

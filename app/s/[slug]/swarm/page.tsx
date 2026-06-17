@@ -137,16 +137,13 @@ export default async function SwarmPage({
   if (!spaceOwner) notFound();
 
   // Parallel fetch: active custom agents + recent swarm runs.
-  const [agentsData, { data: runsData }] = await Promise.all([
+  const [agentsData, runsData] = await Promise.all([
     convex()
       .query(api.agent.customAgents.listActiveBySpace, { spaceId: space.id })
       .catch(() => [] as CustomAgent[]),
-    supabase
-      .from('SwarmRun')
-      .select('*')
-      .eq('spaceId', space.id)
-      .order('createdAt', { ascending: false })
-      .limit(10),
+    convex()
+      .query(api.swarmvector.swarmRuns.listForSpace, { spaceId: space.id, limit: 10 })
+      .catch(() => [] as SwarmRun[]),
   ]);
 
   const agents = (agentsData ?? []) as CustomAgent[];

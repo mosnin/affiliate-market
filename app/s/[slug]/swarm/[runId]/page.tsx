@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type { SwarmRun, SwarmMember } from '@/lib/swarm-types';
 import { SwarmMonitor } from '@/components/swarm/swarm-monitor';
 import { CancelSwarmButton } from './cancel-swarm-button';
@@ -43,20 +44,16 @@ export default async function SwarmRunPage({
   if (!spaceOwner) notFound();
 
   // Fetch swarm run
-  const { data: run } = await supabase
-    .from('SwarmRun')
-    .select('*')
-    .eq('id', runId)
-    .maybeSingle();
+  const run = await convex()
+    .query(api.swarmvector.swarmRuns.getById, { id: runId })
+    .catch(() => null);
 
   if (!run || run.spaceId !== space.id) notFound();
 
   // Fetch members
-  const { data: members } = await supabase
-    .from('SwarmMember')
-    .select('*')
-    .eq('swarmRunId', runId)
-    .order('wave', { ascending: true });
+  const members = await convex()
+    .query(api.swarmvector.swarmMembers.listForRun, { swarmRunId: runId })
+    .catch(() => [] as SwarmMember[]);
 
   const typedRun = run as SwarmRun;
   const typedMembers = (members ?? []) as SwarmMember[];

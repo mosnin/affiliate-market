@@ -39,16 +39,13 @@ export async function GET(
   if (contactError) throw contactError;
   if (!contact) return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
 
-  const [memoriesResult, drafts, activity] = await Promise.all([
-    supabase
-      .from('AgentMemory')
-      .select('id, memoryType, content, importance, createdAt')
-      .eq('spaceId', space.id)
-      .eq('entityType', 'contact')
-      .eq('entityId', contactId)
-      .order('importance', { ascending: false })
-      .order('createdAt', { ascending: false })
-      .limit(20),
+  const [memories, drafts, activity] = await Promise.all([
+    convex().query(api.swarmvector.agentMemory.listForEntity, {
+      spaceId: space.id,
+      entityType: 'contact',
+      entityId: contactId,
+      limit: 20,
+    }),
 
     convex().query(api.agent.drafts.listForContact, {
       spaceId: space.id,
@@ -69,7 +66,7 @@ export async function GET(
 
   return NextResponse.json({
     contactId,
-    memories: memoriesResult.data ?? [],
+    memories: memories ?? [],
     drafts,
     activity,
   });

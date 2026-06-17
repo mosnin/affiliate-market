@@ -16,7 +16,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -39,11 +39,12 @@ export async function GET(
   const space = await getSpaceForUser(userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data: run } = await supabase
-    .from('SwarmRun')
-    .select('id, spaceId, status')
-    .eq('id', runId)
-    .maybeSingle();
+  let run;
+  try {
+    run = await convex().query(api.swarmvector.swarmRuns.getById, { id: runId });
+  } catch {
+    run = null;
+  }
 
   if (!run || run.spaceId !== space.id) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -71,13 +72,22 @@ export async function GET(
         await new Promise<void>((r) => setTimeout(r, POLL_INTERVAL_MS));
         pollCount++;
 
-        const { data: events } = await supabase
-          .from('SwarmEvent')
-          .select('id, type, data, memberId, createdAt')
-          .eq('swarmRunId', runId)
-          .gt('createdAt', lastCreatedAt)
-          .order('createdAt', { ascending: true })
-          .limit(50);
+        let events: Array<{
+          type: string;
+          data: unknown;
+          memberId: string | null;
+          id: string;
+          createdAt: string;
+        }> = [];
+        try {
+          events = (await convex().query(api.swarmvector.swarmEvents.listForRunAfter, {
+            swarmRunId: runId,
+            afterCreatedAt: lastCreatedAt,
+            limit: 50,
+          })) as typeof events;
+        } catch {
+          events = [];
+        }
 
         for (const event of events ?? []) {
           send(event.type as string, {

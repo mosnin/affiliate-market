@@ -38,16 +38,13 @@ export async function GET(
   if (dealError) throw dealError;
   if (!deal) return NextResponse.json({ error: 'Deal not found' }, { status: 404 });
 
-  const [memoriesResult, activity] = await Promise.all([
-    supabase
-      .from('AgentMemory')
-      .select('id, memoryType, content, importance, createdAt')
-      .eq('spaceId', space.id)
-      .eq('entityType', 'deal')
-      .eq('entityId', dealId)
-      .order('importance', { ascending: false })
-      .order('createdAt', { ascending: false })
-      .limit(20),
+  const [memories, activity] = await Promise.all([
+    convex().query(api.swarmvector.agentMemory.listForEntity, {
+      spaceId: space.id,
+      entityType: 'deal',
+      entityId: dealId,
+      limit: 20,
+    }),
 
     // The old SELECT named non-existent columns (`action`, `summary`, `dealId`);
     // the table's real columns are actionType, reasoning, relatedDealId. The
@@ -62,7 +59,7 @@ export async function GET(
 
   return NextResponse.json({
     dealId,
-    memories: memoriesResult.data ?? [],
+    memories: memories ?? [],
     activity,
   });
 }

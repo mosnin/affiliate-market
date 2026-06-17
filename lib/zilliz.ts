@@ -1,21 +1,16 @@
-// Vector storage backed by Supabase pgvector.
-// Replaces the previous Zilliz/Milvus integration — same exported interface so
-// lib/vectorize.ts and lib/ai.ts require no import changes.
+// Vector storage backed by Convex (DocumentEmbedding table + vector search).
+// Replaces the previous Supabase pgvector integration — same exported interface
+// so lib/vectorize.ts and lib/ai.ts require no import changes.
 
-import { supabase } from '@/lib/supabase';
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-/** Format a number[] into the Postgres vector literal expected by pgvector. */
-function toVectorLiteral(vector: number[]): string {
-  return `[${vector.join(',')}]`;
-}
+import { convex, api } from '@/lib/convex-server';
 
 // ─── public API ───────────────────────────────────────────────────────────────
 
 /**
  * Upsert (insert or replace) a single embedding row.
  * The `id` is a stable composite key like `contact_<uuid>` or `deal_<uuid>`.
+ * The embedding goes to Convex as a raw number[] (v.array(v.float64())); the
+ * upsert mutation preserves PK uniqueness by read-by-id then insert-or-patch.
  */
 export async function upsertVector(
   spaceId: string,
@@ -25,19 +20,14 @@ export async function upsertVector(
   text: string,
   vector: number[]
 ): Promise<void> {
-  const { error } = await supabase.from('DocumentEmbedding').upsert(
-    {
-      id,
-      spaceId,
-      entityType,
-      entityId,
-      content: text,
-      embedding: toVectorLiteral(vector),
-    },
-    { onConflict: 'id' }
-  );
-
-  if (error) throw error;
+  await convex().mutation(api.swarmvector.documentEmbedding.upsert, {
+    id,
+    spaceId,
+    entityType,
+    entityId,
+    content: text,
+    embedding: vector,
+  });
 }
 
 /**
@@ -45,13 +35,10 @@ export async function upsertVector(
  * The spaceId guard ensures a user can only delete their own vectors.
  */
 export async function deleteVector(spaceId: string, id: string): Promise<void> {
-  const { error } = await supabase
-    .from('DocumentEmbedding')
-    .delete()
-    .eq('id', id)
-    .eq('spaceId', spaceId);
-
-  if (error) throw error;
+  await convex().mutation(api.swarmvector.documentEmbedding.removeInSpace, {
+    id,
+    spaceId,
+  });
 }
 
 /**
@@ -71,55 +58,26 @@ export async function searchVectors(
   topK = 5,
   queryText?: string,
 ): Promise<Array<{ entity_type: string; entity_id: string; text: string; score: number }>> {
-  // When we have the source text, prefer the hybrid RPC. The score it
+  // The query embedding goes to Convex as a raw number[] (no pgvector literal).
+  // Both actions already return the { entity_type, entity_id, text, score }
+  // shape this function exposes, so there's no row mapping to do.
+
+  // When we have the source text, prefer the hybrid action. The score it
   // returns is the RRF score (sum of 1/(60+rank) across the two legs),
   // not a cosine similarity — different scale, same ordering semantics
   // for the caller's purposes.
   if (queryText && queryText.trim().length > 0) {
-    const { data, error } = await supabase.rpc('match_documents_hybrid', {
-      query_embedding: toVectorLiteral(queryVector),
-      query_text: queryText,
-      match_space_id: spaceId,
-      match_count: topK,
+    return await convex().action(api.swarmvector.documentEmbedding.matchDocumentsHybrid, {
+      queryEmbedding: queryVector,
+      queryText,
+      spaceId,
+      matchCount: topK,
     });
-
-    if (!error) {
-      return (data ?? []).map((row: {
-        entity_type: string;
-        entity_id: string;
-        content: string;
-        score: number;
-      }) => ({
-        entity_type: row.entity_type,
-        entity_id: row.entity_id,
-        text: row.content,
-        score: row.score,
-      }));
-    }
-    // Hybrid RPC missing (migration not yet run on this env) → fall through
-    // to cosine-only so callers don't break during the migration window.
-    if (!String(error?.message ?? '').match(/match_documents_hybrid/i)) {
-      throw error;
-    }
   }
 
-  const { data, error } = await supabase.rpc('match_documents', {
-    query_embedding: toVectorLiteral(queryVector),
-    match_space_id: spaceId,
-    match_count: topK,
+  return await convex().action(api.swarmvector.documentEmbedding.matchDocuments, {
+    queryEmbedding: queryVector,
+    spaceId,
+    matchCount: topK,
   });
-
-  if (error) throw error;
-
-  return (data ?? []).map((row: {
-    entity_type: string;
-    entity_id: string;
-    content: string;
-    similarity: number;
-  }) => ({
-    entity_type: row.entity_type,
-    entity_id: row.entity_id,
-    text: row.content,
-    score: row.similarity,
-  }));
 }

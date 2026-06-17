@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -32,15 +33,15 @@ export async function GET(
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   // Fetch the two special memory types
-  const { data: memories } = await supabase
-    .from('AgentMemory')
-    .select('content, createdAt, memoryType')
-    .eq('spaceId', space.id)
-    .eq('entityType', 'contact')
-    .eq('entityId', contactId)
-    .or('content.like.AGENT_BRIEF:%,content.like.SCORE_EXPLANATION:%')
-    .order('createdAt', { ascending: false })
-    .limit(10);
+  const memories = await convex()
+    .query(api.swarmvector.agentMemory.listForEntityWithContentPrefixes, {
+      spaceId: space.id,
+      entityType: 'contact',
+      entityId: contactId,
+      prefixes: ['AGENT_BRIEF:', 'SCORE_EXPLANATION:'],
+      limit: 10,
+    })
+    .catch(() => []);
 
   let brief: string | null = null;
   let briefUpdatedAt: string | null = null;

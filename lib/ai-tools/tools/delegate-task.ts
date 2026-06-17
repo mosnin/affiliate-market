@@ -26,7 +26,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { assertSpaceEnabled } from '@/lib/agent/kill-switch';
 import { defineTool, type ToolContext } from '../types';
@@ -129,21 +129,21 @@ export function buildDelegateTaskTool() {
       }
 
       // Create the SwarmRun the UI will watch. Same shape /api/swarm uses.
-      const { data: run, error: insertError } = await supabase
-        .from('SwarmRun')
-        .insert({ spaceId: ctx.space.id, goal, status: 'queued' })
-        .select('id')
-        .single();
-
-      if (insertError || !run) {
+      let runId: string;
+      try {
+        const run = await convex().mutation(api.swarmvector.swarmRuns.create, {
+          spaceId: ctx.space.id,
+          goal,
+          status: 'queued',
+        });
+        runId = run.id;
+      } catch (insertError) {
         logger.error('[delegate_task] SwarmRun insert failed', { spaceId: ctx.space.id }, insertError);
         return {
           summary: 'Error: I couldn’t start the delegated task. I’ll try to handle it directly.',
           display: 'error',
         };
       }
-
-      const runId = run.id as string;
 
       // Fire-and-forget to Modal. Do NOT await — the chat turn must not block
       // on the sub-agent. The UI's stream subscription carries progress.

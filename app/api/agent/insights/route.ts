@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -19,15 +20,12 @@ export async function GET() {
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   // Recent observations and facts with importance >= 0.3, sorted by recency
-  const { data: memories, error } = await supabase
-    .from('AgentMemory')
-    .select('id, memoryType, content, importance, entityType, entityId, createdAt')
-    .eq('spaceId', space.id)
-    .gte('importance', 0.3)
-    .order('createdAt', { ascending: false })
-    .limit(20);
+  const memories = await convex().query(api.swarmvector.agentMemory.insightsForSpace, {
+    spaceId: space.id,
+    minImportance: 0.3,
+    limit: 20,
+  });
 
-  if (error) throw error;
   if (!memories?.length) return NextResponse.json([]);
 
   // Collect IDs by entity type to batch-fetch names

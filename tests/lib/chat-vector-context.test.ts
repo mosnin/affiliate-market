@@ -58,8 +58,9 @@ vi.mock('@/lib/supabase', () => ({ supabase: supabaseMock }));
 // .listForSpace. `api` is a path proxy; the single query mock serves the
 // canned product rows a test seeds (the tool filters them by spaceId +
 // address substring in-process).
-const { convexQueryMock, productResp } = vi.hoisted(() => ({
+const { convexQueryMock, convexActionMock, productResp } = vi.hoisted(() => ({
   convexQueryMock: vi.fn(),
+  convexActionMock: vi.fn(),
   productResp: { data: [] as Array<Record<string, unknown>> },
 }));
 vi.mock('@/lib/convex-server', () => {
@@ -69,7 +70,7 @@ vi.mock('@/lib/convex-server', () => {
     });
   return {
     api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
-    convex: () => ({ query: convexQueryMock, mutation: vi.fn() }),
+    convex: () => ({ query: convexQueryMock, mutation: vi.fn(), action: convexActionMock }),
   };
 });
 
@@ -93,6 +94,10 @@ beforeEach(() => {
   // products.listForSpace serves whatever a test stages in productResp.data.
   convexQueryMock.mockReset();
   convexQueryMock.mockImplementation(async () => productResp.data);
+  // matchAgentMemory is now a Convex action returning the memory rows directly
+  // (the old supabase.rpc returned { data }). Reuse rpcResp.data as the source.
+  convexActionMock.mockReset();
+  convexActionMock.mockImplementation(async () => rpcResp.data);
 });
 
 describe('retrieveContext — short circuits', () => {
@@ -122,14 +127,17 @@ describe('retrieveContext — happy path', () => {
       k: 3,
     });
     expect(embedMock).toHaveBeenCalledWith('What did Preston say about pricing recently?');
-    expect(supabaseMock.rpc).toHaveBeenCalledWith('match_agent_memory', expect.objectContaining({
-      match_space_id: 'sp1',
-      match_count: 3,
-      filter_memory_type: null,
-      filter_entity_type: null,
-      filter_entity_id: null,
-      min_similarity: 0.5,
-    }));
+    expect(convexActionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        spaceId: 'sp1',
+        matchCount: 3,
+        filterMemoryType: null,
+        filterEntityType: null,
+        filterEntityId: null,
+        minSimilarity: 0.5,
+      }),
+    );
     expect(r.memories).toHaveLength(2);
     expect(r.block).toMatch(/## Workspace context/);
     expect(r.block).toMatch(/Relevant prior notes/);
@@ -178,9 +186,9 @@ describe('retrieveContext — caching', () => {
     const r1 = await retrieveContext({ spaceId: 'sp1', userMessage: m });
     const r2 = await retrieveContext({ spaceId: 'sp1', userMessage: m });
     expect(r1).toBe(r2);
-    // embed + rpc are called exactly once across both retrievals
+    // embed + match action are called exactly once across both retrievals
     expect(embedMock).toHaveBeenCalledTimes(1);
-    expect(supabaseMock.rpc).toHaveBeenCalledTimes(1);
+    expect(convexActionMock).toHaveBeenCalledTimes(1);
   });
 
   it('separates cache entries by spaceId', async () => {

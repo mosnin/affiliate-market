@@ -87,10 +87,6 @@ export function _clearContextCacheForTesting(): void {
   cache.clear();
 }
 
-function vectorLiteral(vec: number[]): string {
-  return '[' + vec.map((x) => x.toFixed(7)).join(',') + ']';
-}
-
 /**
  * Cheap literal-name match. We do a single SQL query per table that ILIKEs
  * against any word longer than 3 chars in the message — `Preston Wilms`
@@ -238,21 +234,26 @@ async function vectorMemorySearch(
     logger.warn('[vector-context] embed failed — skipping memory retrieval', { spaceId }, err);
     return [];
   }
-  const { data, error } = await supabase.rpc('match_agent_memory', {
-    query_embedding: vectorLiteral(embedding),
-    match_space_id: spaceId,
-    match_count: k,
-    filter_memory_type: null,
-    filter_entity_type: null,
-    filter_entity_id: null,
-    min_similarity: 0.5, // floor — sub-0.5 similarities are noise
-  });
-  if (error) {
-    logger.warn('[vector-context] match_agent_memory rpc failed', { spaceId }, error);
+  // Convex vector-search action. Embedding goes as a raw number[] (no pgvector
+  // literal). Returns rows already filtered by min_similarity and capped at
+  // matchCount, ranked by cosine similarity desc.
+  type Row = { content: string; similarity: number | null };
+  let data: Row[];
+  try {
+    data = (await convex().action(api.swarmvector.agentMemory.matchAgentMemory, {
+      queryEmbedding: embedding,
+      spaceId,
+      matchCount: k,
+      filterMemoryType: null,
+      filterEntityType: null,
+      filterEntityId: null,
+      minSimilarity: 0.5, // floor — sub-0.5 similarities are noise
+    })) as Row[];
+  } catch (err) {
+    logger.warn('[vector-context] match_agent_memory rpc failed', { spaceId }, err);
     return [];
   }
-  type Row = { content: string; similarity: number | null };
-  return ((data ?? []) as Row[]).map((r) => ({
+  return (data ?? []).map((r) => ({
     content: r.content,
     similarity: typeof r.similarity === 'number' ? r.similarity : 0,
   }));
