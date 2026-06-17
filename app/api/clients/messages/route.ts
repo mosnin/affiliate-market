@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getClientUser } from '@/lib/client-auth';
 import { clientOwnsContact } from '@/lib/client-portal-data';
 import { sendClientNotification } from '@/lib/client-email';
@@ -25,21 +26,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const { data } = await supabase
-    .from('ClientMessage')
-    .select('id, senderType, body, createdAt')
-    .eq('contactId', contactId)
-    .order('createdAt', { ascending: true });
+  const messages = await convex().query(api.conversations.clientMessages.listForContact, {
+    contactId,
+  });
 
   // Mark seller → client messages read now that the client has loaded them.
-  await supabase
-    .from('ClientMessage')
-    .update({ readAt: new Date().toISOString() })
-    .eq('contactId', contactId)
-    .eq('senderType', 'seller')
-    .is('readAt', null);
+  await convex().mutation(api.conversations.clientMessages.markRead, {
+    contactId,
+    senderType: 'seller',
+  });
 
-  return NextResponse.json({ messages: data ?? [] });
+  return NextResponse.json({ messages });
 }
 
 /**
@@ -75,18 +72,15 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { data: inserted, error } = await supabase
-    .from('ClientMessage')
-    .insert({
+  let inserted;
+  try {
+    inserted = await convex().mutation(api.conversations.clientMessages.send, {
       contactId,
       spaceId: contact.spaceId,
       senderType: 'client',
       body: text,
-    })
-    .select('id, senderType, body, createdAt')
-    .single();
-
-  if (error) {
+    });
+  } catch (error) {
     logger.error('[clients/messages] insert failed', { contactId }, error);
     return NextResponse.json({ error: 'Failed to send.' }, { status: 500 });
   }

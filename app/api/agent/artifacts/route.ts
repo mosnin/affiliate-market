@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import type { FunctionArgs } from 'convex/server';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -36,23 +37,22 @@ export async function GET(req: NextRequest) {
   const taskId = req.nextUrl.searchParams.get('taskId');
   const type = req.nextUrl.searchParams.get('type');
 
-  let query = supabase
-    .from('Artifact')
-    .select('*')
-    .eq('spaceId', spaceId)
-    .order('createdAt', { ascending: false })
-    .limit(50);
+  // The optional filters mirror the old conditional `.eq('taskId')` /
+  // `.eq('artifactType', type)`. artifactType is a literal union in Convex; the
+  // querystring is cast to it (a bogus value simply matches nothing, as before).
+  const listArgs: FunctionArgs<typeof api.conversations.artifacts.listForSpace> = { spaceId };
+  if (taskId) listArgs.taskId = taskId;
+  if (type) listArgs.artifactType = type as NonNullable<typeof listArgs.artifactType>;
 
-  if (taskId) query = query.eq('taskId', taskId);
-  if (type) query = query.eq('artifactType', type);
-
-  const { data, error } = await query;
-  if (error) {
+  let artifacts;
+  try {
+    artifacts = await convex().query(api.conversations.artifacts.listForSpace, listArgs);
+  } catch (error) {
     console.error('[GET /api/agent/artifacts]', error);
     return NextResponse.json({ error: 'Failed to fetch artifacts' }, { status: 500 });
   }
 
-  return NextResponse.json({ artifacts: data ?? [] });
+  return NextResponse.json({ artifacts });
 }
 
 // POST /api/agent/artifacts
@@ -97,56 +97,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Space is disabled' }, { status: 403 });
   }
 
-  // Step 1: insert Artifact without currentVersionId
-  const artifactInsert: Record<string, unknown> = {
+  // One atomic mutation replaces the old three round-trips (insert Artifact ->
+  // insert ArtifactVersion v1 -> patch currentVersionId). artifactType is a
+  // literal union in Convex; the request body's `type` is cast to it.
+  const createArgs: FunctionArgs<typeof api.conversations.artifacts.create> = {
     spaceId,
-    artifactType: type,
+    artifactType: type as FunctionArgs<typeof api.conversations.artifacts.create>['artifactType'],
     title,
+    content,
   };
-  if (taskId) artifactInsert.taskId = taskId;
+  if (taskId) createArgs.taskId = taskId;
 
-  const { data: artifact, error: artifactError } = await supabase
-    .from('Artifact')
-    .insert(artifactInsert)
-    .select()
-    .single();
-
-  if (artifactError || !artifact) {
-    console.error('[POST /api/agent/artifacts] Insert artifact error:', artifactError);
+  let result;
+  try {
+    result = await convex().mutation(api.conversations.artifacts.create, createArgs);
+  } catch (createError) {
+    console.error('[POST /api/agent/artifacts] create error:', createError);
     return NextResponse.json({ error: 'Failed to create artifact' }, { status: 500 });
   }
 
-  // Step 2: insert ArtifactVersion
-  const { data: version, error: versionError } = await supabase
-    .from('ArtifactVersion')
-    .insert({
-      artifactId: artifact.id,
-      content,
-      versionNumber: 1,
-    })
-    .select()
-    .single();
-
-  if (versionError || !version) {
-    console.error('[POST /api/agent/artifacts] Insert version error:', versionError);
-    return NextResponse.json({ error: 'Failed to create artifact version' }, { status: 500 });
-  }
-
-  // Step 3: update Artifact.currentVersionId
-  const { data: updatedArtifact, error: updateError } = await supabase
-    .from('Artifact')
-    .update({ currentVersionId: version.id })
-    .eq('id', artifact.id)
-    .select()
-    .single();
-
-  if (updateError || !updatedArtifact) {
-    console.error('[POST /api/agent/artifacts] Update currentVersionId error:', updateError);
-    return NextResponse.json({ error: 'Failed to link artifact version' }, { status: 500 });
-  }
-
   return NextResponse.json(
-    { artifact: { ...updatedArtifact, currentVersion: version } },
+    { artifact: { ...result.artifact, currentVersion: result.currentVersion } },
     { status: 201 },
   );
 }

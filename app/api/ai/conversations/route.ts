@@ -1,9 +1,10 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { RESERVED_TITLE_LIKE_PATTERNS } from '@/lib/chat/conversation-access';
+import { isReservedConversationTitle } from '@/lib/chat/conversation-access';
 
 const rateLimited = () =>
   NextResponse.json(
@@ -33,43 +34,33 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
     if (!owner) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const { data, error } = await supabase
-      .from('Conversation')
-      .select('*')
-      .eq('spaceId', space.id)
+    let conversations;
+    try {
+      const rows = await convex().query(api.conversations.conversations.listBySpace, {
+        spaceId: space.id,
+      });
       // Reserved manager/team prefixes are sourced from
       // lib/chat/conversation-access so the seller exclusion set lives in one
       // place. The seller surface never serves manager-Cola or team chats.
-      .not('title', 'like', RESERVED_TITLE_LIKE_PATTERNS[0])
-      .not('title', 'like', RESERVED_TITLE_LIKE_PATTERNS[1])
-      .order('updatedAt', { ascending: false });
-    if (error) return NextResponse.json({ error: 'Failed to load conversations' }, { status: 500 });
-
-    const conversations = data ?? [];
+      // Convex has no `NOT LIKE`, so the prefix exclusion runs here in memory —
+      // the same exclusion the old `.not('title','like', …)` performed.
+      conversations = rows.filter((c) => !isReservedConversationTitle(c.title));
+    } catch {
+      return NextResponse.json({ error: 'Failed to load conversations' }, { status: 500 });
+    }
 
     // Fetch the last message for each conversation to provide a preview line.
-    // Single query: grab the most-recent message per conversationId for this
-    // set of conversations, then map them back by id.
+    // The Convex query resolves the newest message per conversationId; the
+    // whitespace-collapse + 60-char truncation stays here, exactly as before.
     const ids = conversations.map((c) => c.id);
-    let previewMap: Record<string, string> = {};
+    const previewMap: Record<string, string> = {};
     if (ids.length > 0) {
-      // PostgREST doesn't support GROUP BY, so we fetch with a high-enough
-      // limit and deduplicate in JS. We order descending so the first row we
-      // see for each conversationId is the latest one.
-      const { data: msgs } = await supabase
-        .from('Message')
-        .select('conversationId, content')
-        .in('conversationId', ids)
-        .order('createdAt', { ascending: false })
-        .limit(ids.length * 20); // generous cap; deduplication below
-
-      if (msgs) {
-        for (const msg of msgs) {
-          if (msg.conversationId && !(msg.conversationId in previewMap)) {
-            const text = (msg.content ?? '').replace(/\s+/g, ' ').trim();
-            previewMap[msg.conversationId] = text.length > 60 ? text.slice(0, 59) + '…' : text;
-          }
-        }
+      const latest = await convex().query(api.conversations.messages.latestPreviewContent, {
+        conversationIds: ids,
+      });
+      for (const [conversationId, content] of Object.entries(latest)) {
+        const text = (content ?? '').replace(/\s+/g, ' ').trim();
+        previewMap[conversationId] = text.length > 60 ? text.slice(0, 59) + '…' : text;
       }
     }
 
@@ -107,19 +98,15 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
     if (!owner) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from('Conversation')
-      .insert({
-        id: crypto.randomUUID(),
+    let data;
+    try {
+      // title defaults to 'New conversation' inside the mutation (the PG default).
+      data = await convex().mutation(api.conversations.conversations.create, {
         spaceId: space.id,
-        title: 'New conversation',
-        createdAt: now,
-        updatedAt: now,
-      })
-      .select()
-      .single();
-    if (error) return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 });
+      });
+    } catch {
+      return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 });
+    }
 
     return NextResponse.json(data, { status: 201 });
   } catch (err) {

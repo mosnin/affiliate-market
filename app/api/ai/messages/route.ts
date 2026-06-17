@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { isReservedConversationTitle } from '@/lib/chat/conversation-access';
 
@@ -27,12 +28,10 @@ export async function GET(req: NextRequest) {
     // FK inference, and the previous code (`conv.Space.ownerId`) silently
     // produced `undefined` in the array case, killing the auth check
     // with a 403 the client couldn't see.
-    const { data: conv, error: convErr } = await supabase
-      .from('Conversation')
-      .select('id, spaceId, title')
-      .eq('id', conversationId)
-      .maybeSingle();
-    if (convErr) {
+    let conv;
+    try {
+      conv = await convex().query(api.conversations.conversations.getById, { id: conversationId });
+    } catch (convErr) {
       console.error('[messages] Conversation lookup failed:', convErr);
       return NextResponse.json({ error: 'Lookup failed' }, { status: 500 });
     }
@@ -71,18 +70,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const { data, error } = await supabase
-      .from('Message')
-      .select('id, role, content, blocks, createdAt')
-      .eq('conversationId', conversationId)
-      .order('createdAt', { ascending: true })
-      .limit(MESSAGE_LIMIT);
-    if (error) {
+    let data;
+    try {
+      data = await convex().query(api.conversations.messages.listForConversation, {
+        conversationId,
+        limit: MESSAGE_LIMIT,
+      });
+    } catch (error) {
       console.error('[messages] Message lookup failed:', error);
       return NextResponse.json({ error: 'Failed to load messages' }, { status: 500 });
     }
 
-    return NextResponse.json(data ?? []);
+    return NextResponse.json(data);
   } catch (err) {
     console.error('[messages] GET error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

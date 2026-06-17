@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getManagerMemberContext } from '@/lib/permissions';
 import { ColaWorkspace } from '@/components/cola/cola-workspace';
 import { MemberDashboard } from './member-dashboard';
@@ -44,13 +44,12 @@ export default async function ManagerHomePage({
   // Manager conversations + messages live in their OWN tables, keyed by
   // companyId — structurally separate from the seller "Conversation"/
   // "Message" tables. No Space lookup, no title-prefix query.
-  const { data: convData } = await supabase
-    .from('ManagerConversation')
-    .select('*')
-    .eq('companyId', ctx.company.id)
-    .order('updatedAt', { ascending: false })
-    .limit(50);
-  const conversations = (convData ?? []) as Conversation[];
+  const convData = await convex().query(api.conversations.managerConversations.listByCompany, {
+    companyId: ctx.company.id,
+  });
+  // Timestamps arrive as ISO strings (as they did from Supabase); the workspace
+  // consumes them as-is, so the cast mirrors the prior `as Conversation[]`.
+  const conversations = convData as unknown as Conversation[];
 
   let initialMessages: { role: 'user' | 'assistant'; content: string; blocks?: MessageBlock[] | null }[] = [];
   let initialConversationId: string | null = null;
@@ -60,30 +59,21 @@ export default async function ManagerHomePage({
     // loading messages. Without this guard an arbitrary conversationId in the
     // URL (another company's) would render its private history. A seller
     // conversation id simply won't exist in "ManagerConversation".
-    const { data: convRow } = await supabase
-      .from('ManagerConversation')
-      .select('id, companyId')
-      .eq('id', urlConversationId)
-      .maybeSingle();
-    const isThisCompanyConversation =
-      convRow != null && (convRow as { companyId: string }).companyId === ctx.company.id;
+    const convRow = await convex().query(api.conversations.managerConversations.getById, {
+      id: urlConversationId,
+    });
+    const isThisCompanyConversation = convRow != null && convRow.companyId === ctx.company.id;
 
     if (isThisCompanyConversation) {
       initialConversationId = urlConversationId;
-      const { data: msgData } = await supabase
-        .from('ManagerMessage')
-        .select('role, content, blocks')
-        .eq('conversationId', urlConversationId)
-        .order('createdAt', { ascending: true })
-        .limit(50);
-      initialMessages = ((msgData ?? []) as {
-        role: string;
-        content: string;
-        blocks: MessageBlock[] | null;
-      }[]).map((m) => ({
+      const msgData = await convex().query(api.conversations.managerMessages.listForConversation, {
+        conversationId: urlConversationId,
+        limit: 50,
+      });
+      initialMessages = msgData.map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
-        blocks: m.blocks,
+        blocks: m.blocks as MessageBlock[] | null,
       }));
     }
     // Foreign / seller / unknown conversation id → new-chat state.

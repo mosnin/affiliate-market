@@ -10,7 +10,7 @@
 
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { resolveManagerContext } from '@/lib/agent/manager-context';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -24,11 +24,9 @@ const rateLimited = () =>
 
 /** Resolve the conversation only if it belongs to the caller's company. */
 async function ownedConversation(conversationId: string, companyId: string) {
-  const { data } = await supabase
-    .from('ManagerConversation')
-    .select('id, companyId')
-    .eq('id', conversationId)
-    .maybeSingle();
+  const data = await convex().query(api.conversations.managerConversations.getById, {
+    id: conversationId,
+  });
   if (!data || data.companyId !== companyId) return null;
   return data;
 }
@@ -49,14 +47,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'title required' }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from('ManagerConversation')
-    .update({ title: title.trim(), updatedAt: new Date().toISOString() })
-    .eq('id', id)
-    .eq('companyId', managerCtx.company.id)
-    .select()
-    .single();
-  if (error) return NextResponse.json({ error: 'Failed to rename conversation' }, { status: 500 });
+  let data;
+  try {
+    data = await convex().mutation(api.conversations.managerConversations.rename, {
+      id,
+      companyId: managerCtx.company.id,
+      title: title.trim(),
+    });
+  } catch {
+    return NextResponse.json({ error: 'Failed to rename conversation' }, { status: 500 });
+  }
+  if (!data) return NextResponse.json({ error: 'Failed to rename conversation' }, { status: 500 });
 
   return NextResponse.json(data);
 }
@@ -72,14 +73,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const conv = await ownedConversation(id, managerCtx.company.id);
   if (!conv) return NextResponse.json({ error: 'Not found or Forbidden' }, { status: 404 });
 
-  // "ManagerMessage" rows cascade on the conversation FK, so deleting the
-  // conversation row removes its messages too.
-  const { error } = await supabase
-    .from('ManagerConversation')
-    .delete()
-    .eq('id', id)
-    .eq('companyId', managerCtx.company.id);
-  if (error) return NextResponse.json({ error: 'Failed to delete conversation' }, { status: 500 });
+  // "ManagerMessage" rows cascaded on the conversation FK in Postgres; the
+  // deleteForCompany mutation removes them explicitly inside one mutation, so
+  // deleting the conversation still removes its messages too.
+  try {
+    await convex().mutation(api.conversations.managerConversations.deleteForCompany, {
+      id,
+      companyId: managerCtx.company.id,
+    });
+  } catch {
+    return NextResponse.json({ error: 'Failed to delete conversation' }, { status: 500 });
+  }
 
   return NextResponse.json({ success: true });
 }

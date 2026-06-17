@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { isReservedConversationTitle } from '@/lib/chat/conversation-access';
 
@@ -11,19 +12,25 @@ const rateLimited = () =>
   );
 
 async function getConversationAndVerifyOwner(conversationId: string, userId: string) {
-  const { data: conv, error } = await supabase
-    .from('Conversation')
-    .select('id, spaceId, title, Space(ownerId)')
-    .eq('id', conversationId)
-    .maybeSingle();
-  if (error) throw error;
+  const conv = await convex().query(api.conversations.conversations.getById, { id: conversationId });
   if (!conv) return null;
+
+  // Verify the caller owns the conversation's space. The old embedded
+  // `Space(ownerId)` join is now two flat lookups: resolve the owning Space's
+  // ownerId (Space stays on Supabase), then confirm a User row matches both the
+  // Clerk id and that owner id.
+  const { data: space } = await supabase
+    .from('Space')
+    .select('ownerId')
+    .eq('id', conv.spaceId)
+    .maybeSingle();
+  if (!space) return null;
 
   const { data: user } = await supabase
     .from('User')
     .select('id')
     .eq('clerkId', userId)
-    .eq('id', (conv as any).Space.ownerId)
+    .eq('id', (space as { ownerId: string }).ownerId)
     .maybeSingle();
   if (!user) return null;
 
@@ -32,7 +39,7 @@ async function getConversationAndVerifyOwner(conversationId: string, userId: str
   // space, so ownership alone is not isolation. Refuse to rename/delete a
   // manager conversation through the seller endpoint. The reserved-title
   // check lives in lib/chat/conversation-access.
-  if (isReservedConversationTitle((conv as { title?: string }).title)) {
+  if (isReservedConversationTitle(conv.title)) {
     return null;
   }
 
@@ -59,13 +66,16 @@ export async function PATCH(
       return NextResponse.json({ error: 'title required' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
-      .from('Conversation')
-      .update({ title: title.trim(), updatedAt: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single();
-    if (error) return NextResponse.json({ error: 'Failed to rename conversation' }, { status: 500 });
+    let data;
+    try {
+      data = await convex().mutation(api.conversations.conversations.rename, {
+        id,
+        title: title.trim(),
+      });
+    } catch {
+      return NextResponse.json({ error: 'Failed to rename conversation' }, { status: 500 });
+    }
+    if (!data) return NextResponse.json({ error: 'Failed to rename conversation' }, { status: 500 });
 
     return NextResponse.json(data);
   } catch (err) {
@@ -89,8 +99,14 @@ export async function DELETE(
     const conv = await getConversationAndVerifyOwner(id, userId);
     if (!conv) return NextResponse.json({ error: 'Not found or Forbidden' }, { status: 404 });
 
-    const { error } = await supabase.from('Conversation').delete().eq('id', id).eq('spaceId', conv.spaceId);
-    if (error) return NextResponse.json({ error: 'Failed to delete conversation' }, { status: 500 });
+    try {
+      await convex().mutation(api.conversations.conversations.deleteForSpace, {
+        id,
+        spaceId: conv.spaceId,
+      });
+    } catch {
+      return NextResponse.json({ error: 'Failed to delete conversation' }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

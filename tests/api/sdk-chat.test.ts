@@ -46,27 +46,59 @@ vi.mock('@/lib/telemetry', () => ({
 }));
 
 // Per-test override for the Conversation row resolveConversation looks up.
-// Default undefined → the mock returns a non-matching (Space-shaped) row, so a
+// Conversation/Message persistence moved from Supabase to Convex, so this row
+// now drives api.conversations.conversations.getById (see the Convex mock
+// below), not a Supabase chain. Default undefined → getById returns null and a
 // fresh conversation is minted. Set it to inject a specific row — e.g. a
 // reserved manager/team title — to exercise the #303 write-path isolation guard.
 const { convLookup } = vi.hoisted(() => ({
   convLookup: { row: undefined as undefined | { id: string; spaceId: string; title: string } },
 }));
 
-// Supabase: minimal chainable mock for resolveConversation + loadHistory +
-// hydrateAttachments. The route also reads the User row inside
-// resolveToolContext → we mock that via the context module instead.
+// Convex: the route resolves/loads the conversation + history through Convex
+// (api.conversations.{conversations,messages}.*). We branch on the fn path:
+//   - conversations.getById  → the injected convLookup.row (or null)
+//   - conversations.create   → a FRESH row with a distinct id, so the #303
+//                              "mints a fresh conversation" assertions see a
+//                              conversationId that differs from the reserved one
+//   - messages.loadHistory   → [] (no prior turns; the route tolerates empty)
+//   - conversations.setTitleForSpace → null (fire-and-forget auto-title)
+// `api` is a path proxy so api.<domain>.<module>.<fn> stringifies to its dotted
+// path when called.
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
+  convexMutationMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
+// Supabase: minimal chainable mock for the billing / token-budget / workspace-
+// model reads that still live on Supabase (Space, Company, AgentSettings,
+// ChatUsage, User). The route also reads the User row inside resolveToolContext
+// → we mock that via the context module instead. Conversation/Message no longer
+// flow through here (see the Convex mock above).
 vi.mock('@/lib/supabase', () => {
-  // Default `data: []` so the route's loadHistory + hydrateAttachments
-  // path treats every read as "no rows" without throwing on .filter().
+  // Default `data: []` so awaited list reads (e.g. ChatUsage) are "no rows"
+  // without throwing on .reduce()/.filter().
   function chain(terminal: { data?: unknown; error?: unknown } = { data: [] }) {
     const obj: Record<string, unknown> = {};
-    for (const m of ['select', 'eq', 'order', 'limit', 'in', 'insert', 'update']) {
+    for (const m of ['select', 'eq', 'order', 'limit', 'in', 'insert', 'update', 'gte']) {
       obj[m] = vi.fn(() => obj);
     }
+    // A Space-shaped row satisfies resolveBillingAccount (no companyId → space
+    // branch), the dunning gate (no stripeSubscriptionStatus → 'inactive'), and
+    // the AgentSettings reads (no budget/model fields → route defaults).
     obj.maybeSingle = vi.fn(() =>
       Promise.resolve({
-        data: convLookup.row ?? { id: 's_1', slug: 'jane', name: 'Jane', ownerId: 'u_1' },
+        data: { id: 's_1', slug: 'jane', name: 'Jane', ownerId: 'u_1' },
       }),
     );
     obj.single = vi.fn(() => Promise.resolve(terminal));
@@ -132,6 +164,24 @@ beforeEach(() => {
   // Restore the saveUserMessage mock implementation after clearAllMocks.
   mockedSaveUser.mockResolvedValue({ messageId: 'msg_user_1' });
   convLookup.row = undefined;
+
+  // Re-wire the Convex query/mutation mocks (cleared above), branching on the
+  // fn path. getById → the injected row (or null); loadHistory → []; create →
+  // a fresh row with a distinct id; setTitleForSpace → null.
+  convexQueryMock.mockImplementation(async (ref: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('conversations.getById')) return convLookup.row ?? null;
+    if (p.includes('messages.loadHistory')) return [];
+    return null;
+  });
+  convexMutationMock.mockImplementation(async (ref: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('conversations.create')) {
+      const id = `conv_fresh_${Math.random().toString(36).slice(2, 10)}`;
+      return { id, spaceId: 's_1', title: 'New conversation', createdAt: '2026-01-01', updatedAt: '2026-01-01' };
+    }
+    return null;
+  });
   // Default to unset — every test sets explicitly.
   delete process.env.COLA_CHAT_RUNTIME;
   process.env.MODAL_CHAT_URL = 'https://modal.example/chat';

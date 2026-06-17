@@ -13,18 +13,15 @@
  * the joined text for legacy readers).
  */
 
-import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { coalesceTextBlocks, type MessageBlock } from '@/lib/ai-tools/blocks';
 
 /** Bump the parent conversation's updatedAt so the sidebar orders by recency. */
 async function touchConversation(conversationId: string): Promise<void> {
-  const { error } = await supabase
-    .from('ManagerConversation')
-    .update({ updatedAt: new Date().toISOString() })
-    .eq('id', conversationId);
-  if (error) {
+  try {
+    await convex().mutation(api.conversations.managerConversations.touch, { id: conversationId });
+  } catch (error) {
     // Non-fatal — the message already saved; ordering is cosmetic.
     logger.warn('[manager-persistence] touch conversation failed', { conversationId }, error);
   }
@@ -39,21 +36,22 @@ export interface SaveManagerUserMessageInput {
 export async function saveManagerUserMessage(
   input: SaveManagerUserMessageInput,
 ): Promise<{ messageId: string }> {
-  const id = crypto.randomUUID();
-  const { error } = await supabase.from('ManagerMessage').insert({
-    id,
-    companyId: input.companyId,
-    conversationId: input.conversationId,
-    role: 'user',
-    content: input.content,
-    // User messages are always plain text — no blocks.
-  });
-  if (error) {
+  let messageId: string;
+  try {
+    ({ messageId } = await convex().mutation(api.conversations.managerMessages.saveUserMessage, {
+      companyId: input.companyId,
+      conversationId: input.conversationId,
+      content: input.content,
+      // User messages are always plain text — no blocks.
+    }));
+  } catch (error) {
     logger.error('[manager-persistence] saveManagerUserMessage failed', { companyId: input.companyId }, error);
-    throw new Error(`Failed to save manager user message: ${error.message}`);
+    throw new Error(
+      `Failed to save manager user message: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   await touchConversation(input.conversationId);
-  return { messageId: id };
+  return { messageId };
 }
 
 export interface SaveManagerAssistantMessageInput {
@@ -72,21 +70,22 @@ export async function saveManagerAssistantMessage(
     .join('\n')
     .trim();
 
-  const id = crypto.randomUUID();
-  const { error } = await supabase.from('ManagerMessage').insert({
-    id,
-    companyId: input.companyId,
-    conversationId: input.conversationId,
-    role: 'assistant',
-    // A pure tool-only turn has no text — store a short placeholder so legacy
-    // readers don't render a blank row.
-    content: content || '(tool-only turn)',
-    blocks: merged as unknown as Record<string, unknown>[],
-  });
-  if (error) {
+  let messageId: string;
+  try {
+    ({ messageId } = await convex().mutation(api.conversations.managerMessages.saveAssistantMessage, {
+      companyId: input.companyId,
+      conversationId: input.conversationId,
+      // A pure tool-only turn has no text — store a short placeholder so legacy
+      // readers don't render a blank row.
+      content: content || '(tool-only turn)',
+      blocks: merged as unknown as Record<string, unknown>[],
+    }));
+  } catch (error) {
     logger.error('[manager-persistence] saveManagerAssistantMessage failed', { companyId: input.companyId }, error);
-    throw new Error(`Failed to save manager assistant message: ${error.message}`);
+    throw new Error(
+      `Failed to save manager assistant message: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   await touchConversation(input.conversationId);
-  return { messageId: id };
+  return { messageId };
 }

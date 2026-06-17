@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -34,14 +34,11 @@ export async function GET(
   const { artifactId } = await params;
   const versionParam = req.nextUrl.searchParams.get('version');
 
-  // 1. Fetch artifact
-  const { data: artifact, error: artifactError } = await supabase
-    .from('Artifact')
-    .select('id, title, artifactType, spaceId, currentVersionId')
-    .eq('id', artifactId)
-    .maybeSingle();
-
-  if (artifactError) {
+  // 1. Fetch artifact (for title/type/ownership; spaceId drives the auth check)
+  let artifact;
+  try {
+    artifact = await convex().query(api.conversations.artifacts.getById, { id: artifactId });
+  } catch (artifactError) {
     console.error('[GET /api/agent/artifacts/[artifactId]/download] artifact fetch:', artifactError);
     return NextResponse.json({ error: 'Failed to fetch artifact' }, { status: 500 });
   }
@@ -55,28 +52,27 @@ export async function GET(
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  // 3. Fetch the target ArtifactVersion
-  let versionQuery = supabase
-    .from('ArtifactVersion')
-    .select('id, versionNumber, content')
-    .eq('artifactId', artifactId);
-
+  // 3. Resolve the target ArtifactVersion. Precedence (unchanged): explicit
+  // ?version=N -> currentVersionId -> highest versionNumber.
+  let parsedVersionNumber: number | undefined;
   if (versionParam !== null) {
     const versionNumber = parseInt(versionParam, 10);
     if (isNaN(versionNumber) || versionNumber < 1) {
       return NextResponse.json({ error: 'Invalid version number' }, { status: 400 });
     }
-    versionQuery = versionQuery.eq('versionNumber', versionNumber);
-  } else if (artifact.currentVersionId) {
-    versionQuery = versionQuery.eq('id', artifact.currentVersionId);
-  } else {
-    // No currentVersionId set — fall back to highest version
-    versionQuery = versionQuery.order('versionNumber', { ascending: false }).limit(1);
+    parsedVersionNumber = versionNumber;
   }
 
-  const { data: version, error: versionError } = await versionQuery.maybeSingle();
-
-  if (versionError) {
+  let version;
+  try {
+    version = await convex().query(api.conversations.artifacts.versionForDownload, {
+      artifactId,
+      ...(parsedVersionNumber !== undefined ? { versionNumber: parsedVersionNumber } : {}),
+      ...(parsedVersionNumber === undefined && artifact.currentVersionId
+        ? { currentVersionId: artifact.currentVersionId }
+        : {}),
+    });
+  } catch (versionError) {
     console.error('[GET /api/agent/artifacts/[artifactId]/download] version fetch:', versionError);
     return NextResponse.json({ error: 'Failed to fetch artifact version' }, { status: 500 });
   }

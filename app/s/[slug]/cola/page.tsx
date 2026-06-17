@@ -10,7 +10,7 @@ import { composioConfigured } from '@/lib/integrations/composio';
 import { loadUserInvocableSkills } from '@/lib/ai-tools/skills/loader';
 import {
   isSellerConversation,
-  RESERVED_TITLE_LIKE_PATTERNS,
+  isReservedConversationTitle,
 } from '@/lib/chat/conversation-access';
 
 // Force dynamic rendering — the page reads searchParams to pick which
@@ -56,20 +56,19 @@ export default async function ColaPage({
   let initialConversationId: string | null = null;
 
   try {
-    const { data: convData } = await supabase
-      .from('Conversation')
-      .select('*')
-      .eq('spaceId', space.id)
-      // Seller surface NEVER shows manager-Cola or team chat. These live in
-      // the same table today (keyed by spaceId), so both reserved prefixes
-      // must be excluded here, exactly as the /api/ai/conversations list does.
-      // Prefixes are sourced from lib/chat/conversation-access so the
-      // exclusion set lives in one place.
-      .not('title', 'like', RESERVED_TITLE_LIKE_PATTERNS[0])
-      .not('title', 'like', RESERVED_TITLE_LIKE_PATTERNS[1])
-      .order('updatedAt', { ascending: false })
-      .limit(50);
-    conversations = (convData ?? []) as Conversation[];
+    const convData = await convex().query(api.conversations.conversations.listBySpace, {
+      spaceId: space.id,
+    });
+    // Seller surface NEVER shows manager-Cola or team chat. These live in the
+    // same table today (keyed by spaceId), distinguished only by a reserved
+    // title prefix. Convex has no `NOT LIKE`, so listBySpace returns the space's
+    // rows and the reserved-prefix exclusion is applied here in memory —
+    // exactly the same exclusion the old `.not('title','like', …)` did, and the
+    // same the /api/ai/conversations list does. The predicate lives in one place
+    // (lib/chat/conversation-access).
+    conversations = convData.filter(
+      (c) => !isReservedConversationTitle(c.title),
+    ) as unknown as Conversation[];
 
     // Pick which conversation to hydrate. URL is the source of truth.
     // No URL param → show the new-chat screen (targetConvId = null).
@@ -79,11 +78,9 @@ export default async function ColaPage({
       // a seller conversation BEFORE loading any messages. Without this guard
       // an arbitrary conversationId in the URL (a company conversation, or
       // another user's) would render its private history on this dashboard.
-      const { data: convRow } = await supabase
-        .from('Conversation')
-        .select('id, spaceId, title')
-        .eq('id', targetConvId)
-        .maybeSingle();
+      const convRow = await convex().query(api.conversations.conversations.getById, {
+        id: targetConvId,
+      });
       const isOwnSellerConversation = isSellerConversation(
         convRow as { spaceId: string; title: string } | null,
         space.id,
@@ -91,17 +88,14 @@ export default async function ColaPage({
 
       if (isOwnSellerConversation) {
         initialConversationId = targetConvId;
-        const { data: msgData } = await supabase
-          .from('Message')
-          .select('role, content, blocks')
-          .eq('spaceId', space.id)
-          .eq('conversationId', targetConvId)
-          .order('createdAt', { ascending: true })
-          .limit(50);
-        initialMessages = ((msgData ?? []) as { role: string; content: string; blocks: MessageBlock[] | null }[]).map((m) => ({
+        const msgData = await convex().query(
+          api.conversations.messages.listForConversationInSpace,
+          { spaceId: space.id, conversationId: targetConvId, limit: 50 },
+        );
+        initialMessages = msgData.map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
-          blocks: m.blocks,
+          blocks: m.blocks as MessageBlock[] | null,
         }));
       }
       // Foreign / manager / unknown conversation id → fall through to the

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -23,18 +23,17 @@ export async function GET(
 
   const { artifactId } = await params;
 
-  // Fetch artifact first to derive spaceId for auth
-  const { data: artifact, error: artifactError } = await supabase
-    .from('Artifact')
-    .select('*')
-    .eq('id', artifactId)
-    .maybeSingle();
-
-  if (artifactError) {
+  // Fetch artifact + its versions (one mutation-free query). The artifact is
+  // loaded first to derive spaceId for auth.
+  let result;
+  try {
+    result = await convex().query(api.conversations.artifacts.getWithVersions, { id: artifactId });
+  } catch (artifactError) {
     console.error('[GET /api/agent/artifacts/[artifactId]]', artifactError);
     return NextResponse.json({ error: 'Failed to fetch artifact' }, { status: 500 });
   }
-  if (!artifact) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (!result) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const { artifact, versions } = result;
 
   // Verify space ownership
   const space = await getSpaceForUser(userId);
@@ -42,19 +41,7 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Fetch all versions ordered by versionNumber ASC
-  const { data: versions, error: versionsError } = await supabase
-    .from('ArtifactVersion')
-    .select('*')
-    .eq('artifactId', artifactId)
-    .order('versionNumber', { ascending: true });
-
-  if (versionsError) {
-    console.error('[GET /api/agent/artifacts/[artifactId]] versions error:', versionsError);
-    return NextResponse.json({ error: 'Failed to fetch artifact versions' }, { status: 500 });
-  }
-
-  return NextResponse.json({ artifact: { ...artifact, versions: versions ?? [] } });
+  return NextResponse.json({ artifact: { ...artifact, versions } });
 }
 
 // PATCH /api/agent/artifacts/[artifactId]
@@ -90,13 +77,10 @@ export async function PATCH(
   }
 
   // Fetch artifact to verify existence and derive spaceId
-  const { data: artifact, error: artifactError } = await supabase
-    .from('Artifact')
-    .select('*')
-    .eq('id', artifactId)
-    .maybeSingle();
-
-  if (artifactError) {
+  let artifact;
+  try {
+    artifact = await convex().query(api.conversations.artifacts.getById, { id: artifactId });
+  } catch (artifactError) {
     console.error('[PATCH /api/agent/artifacts/[artifactId]]', artifactError);
     return NextResponse.json({ error: 'Failed to fetch artifact' }, { status: 500 });
   }
@@ -108,50 +92,16 @@ export async function PATCH(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Get max versionNumber for this artifact
-  const { data: maxRow, error: maxError } = await supabase
-    .from('ArtifactVersion')
-    .select('versionNumber')
-    .eq('artifactId', artifactId)
-    .order('versionNumber', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (maxError) {
-    console.error('[PATCH /api/agent/artifacts/[artifactId]] maxVersion error:', maxError);
-    return NextResponse.json({ error: 'Failed to determine version number' }, { status: 500 });
-  }
-
-  const nextVersionNumber = (maxRow?.versionNumber ?? 0) + 1;
-
-  // Insert new ArtifactVersion
-  const { data: newVersion, error: versionError } = await supabase
-    .from('ArtifactVersion')
-    .insert({
-      artifactId,
-      content,
-      versionNumber: nextVersionNumber,
-    })
-    .select()
-    .single();
-
-  if (versionError || !newVersion) {
-    console.error('[PATCH /api/agent/artifacts/[artifactId]] insert version error:', versionError);
+  // One atomic mutation replaces the old three steps (max versionNumber ->
+  // insert next version -> patch currentVersionId + updatedAt).
+  let result;
+  try {
+    result = await convex().mutation(api.conversations.artifacts.addVersion, { artifactId, content });
+  } catch (versionError) {
+    console.error('[PATCH /api/agent/artifacts/[artifactId]] add version error:', versionError);
     return NextResponse.json({ error: 'Failed to create new version' }, { status: 500 });
   }
+  if (!result.ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Update Artifact.currentVersionId and updatedAt
-  const { data: updatedArtifact, error: updateError } = await supabase
-    .from('Artifact')
-    .update({ currentVersionId: newVersion.id, updatedAt: new Date().toISOString() })
-    .eq('id', artifactId)
-    .select()
-    .single();
-
-  if (updateError || !updatedArtifact) {
-    console.error('[PATCH /api/agent/artifacts/[artifactId]] update artifact error:', updateError);
-    return NextResponse.json({ error: 'Failed to update artifact' }, { status: 500 });
-  }
-
-  return NextResponse.json({ artifact: { ...updatedArtifact, newVersion } });
+  return NextResponse.json({ artifact: { ...result.artifact, newVersion: result.newVersion } });
 }

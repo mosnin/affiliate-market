@@ -116,12 +116,13 @@ function autoTitleConversation(spaceId: string, conversationId: string, userMess
         ? await computeConversationTitle(userMessage)
         : fallbackHeuristic(userMessage);
       if (!title || title === 'New conversation') return;
-      const { error } = await supabase
-        .from('Conversation')
-        .update({ title, updatedAt: new Date().toISOString() })
-        .eq('id', conversationId)
-        .eq('spaceId', spaceId);
-      if (error) {
+      try {
+        await convex().mutation(api.conversations.conversations.setTitleForSpace, {
+          id: conversationId,
+          spaceId,
+          title,
+        });
+      } catch (error) {
         logger.warn('[ai/task] auto-title patch failed', { conversationId }, error);
       }
     } catch (err) {
@@ -136,11 +137,9 @@ async function resolveConversation(
   userMessage: string,
 ): Promise<string> {
   if (conversationId) {
-    const { data } = await supabase
-      .from('Conversation')
-      .select('id, spaceId, title')
-      .eq('id', conversationId)
-      .maybeSingle();
+    const data = await convex().query(api.conversations.conversations.getById, {
+      id: conversationId,
+    });
     // Reject reserved manager/team titles. A manager_owner's personal spaceId
     // equals their seller space, and the pre-migration manager/team rows still
     // live in this shared table — so the spaceId check alone is NOT isolation.
@@ -155,31 +154,20 @@ async function resolveConversation(
     }
   }
 
-  const id = crypto.randomUUID();
-  const { error } = await supabase.from('Conversation').insert({
-    id,
-    spaceId,
-    title: 'New conversation',
-  });
-  if (error) throw error;
-  autoTitleConversation(spaceId, id, userMessage);
-  return id;
+  const created = await convex().mutation(api.conversations.conversations.create, { spaceId });
+  autoTitleConversation(spaceId, created.id, userMessage);
+  return created.id;
 }
 
 async function loadHistory(spaceId: string, conversationId: string): Promise<HistoryRow[]> {
-  const { data } = await supabase
-    .from('Message')
-    .select('role, content, createdAt')
-    .eq('spaceId', spaceId)
-    .eq('conversationId', conversationId)
-    .order('createdAt', { ascending: false })
-    .limit(HISTORY_LIMIT);
-
-  // ascending:false + limit fetches the most RECENT n; reverse to restore
-  // chronological order. The old ascending:true + limit silently fed the
-  // model the OLDEST n messages and dropped every recent turn once a
-  // conversation passed n messages.
-  const rows = ((data ?? []) as Array<{ role: string; content: string }>).reverse();
+  // Newest HISTORY_LIMIT messages for (spaceId, conversationId), returned
+  // chronological (oldest-first) by the Convex query — the same "most-recent n,
+  // then reverse" the old `order('createdAt', desc).limit(n)` + reverse did.
+  const rows = await convex().query(api.conversations.messages.loadHistory, {
+    spaceId,
+    conversationId,
+    limit: HISTORY_LIMIT,
+  });
   return rows
     .filter((r) => r.role === 'user' || r.role === 'assistant')
     .map((r) => ({

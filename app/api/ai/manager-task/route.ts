@@ -38,6 +38,7 @@ import crypto from 'crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { saveManagerUserMessage, saveManagerAssistantMessage } from '@/lib/agent/manager-persistence';
@@ -108,35 +109,28 @@ async function resolveConversation(
   conversationId: string | null | undefined,
 ): Promise<string> {
   if (conversationId) {
-    const { data } = await supabase
-      .from('ManagerConversation')
-      .select('id, companyId')
-      .eq('id', conversationId)
-      .maybeSingle();
+    const data = await convex().query(api.conversations.managerConversations.getById, {
+      id: conversationId,
+    });
     if (data && data.companyId === companyId) {
       return conversationId;
     }
   }
 
-  const id = crypto.randomUUID();
-  const { error } = await supabase.from('ManagerConversation').insert({
-    id,
+  const created = await convex().mutation(api.conversations.managerConversations.create, {
     companyId,
-    title: 'New conversation',
   });
-  if (error) throw error;
-  return id;
+  return created.id;
 }
 
 async function loadHistory(conversationId: string): Promise<HistoryRow[]> {
-  const { data } = await supabase
-    .from('ManagerMessage')
-    .select('role, content, createdAt')
-    .eq('conversationId', conversationId)
-    .order('createdAt', { ascending: false })
-    .limit(HISTORY_LIMIT);
-
-  const rows = ((data ?? []) as Array<{ role: string; content: string }>).reverse();
+  // Newest HISTORY_LIMIT messages, returned chronological (oldest-first) by the
+  // Convex query — the same "most-recent n, then reverse" the old
+  // `order('createdAt', desc).limit(n)` + reverse did.
+  const rows = await convex().query(api.conversations.managerMessages.loadHistory, {
+    conversationId,
+    limit: HISTORY_LIMIT,
+  });
   return rows
     .filter((r) => r.role === 'user' || r.role === 'assistant')
     .map((r) => ({

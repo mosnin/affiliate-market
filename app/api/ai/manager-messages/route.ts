@@ -15,7 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { resolveManagerContext } from '@/lib/agent/manager-context';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -42,12 +42,12 @@ export async function GET(req: NextRequest) {
     // Verify the conversation belongs to THIS company before loading any
     // message. companyId is the boundary — ownership of the conversation row
     // is what gates access, not a title string.
-    const { data: conv, error: convErr } = await supabase
-      .from('ManagerConversation')
-      .select('id, companyId')
-      .eq('id', conversationId)
-      .maybeSingle();
-    if (convErr) {
+    let conv;
+    try {
+      conv = await convex().query(api.conversations.managerConversations.getById, {
+        id: conversationId,
+      });
+    } catch (convErr) {
       console.error('[manager-messages] Conversation lookup failed:', convErr);
       return NextResponse.json({ error: 'Lookup failed' }, { status: 500 });
     }
@@ -55,18 +55,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const { data, error } = await supabase
-      .from('ManagerMessage')
-      .select('id, role, content, blocks, createdAt')
-      .eq('conversationId', conversationId)
-      .order('createdAt', { ascending: true })
-      .limit(MESSAGE_LIMIT);
-    if (error) {
+    let data;
+    try {
+      data = await convex().query(api.conversations.managerMessages.listForConversation, {
+        conversationId,
+        limit: MESSAGE_LIMIT,
+      });
+    } catch (error) {
       console.error('[manager-messages] Message lookup failed:', error);
       return NextResponse.json({ error: 'Failed to load messages' }, { status: 500 });
     }
 
-    return NextResponse.json(data ?? []);
+    return NextResponse.json(data);
   } catch (err) {
     console.error('[manager-messages] GET error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

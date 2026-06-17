@@ -12,10 +12,9 @@
  * Phase 1 scope: create + list conversations the manager has had with Cola.
  */
 
-import crypto from 'crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { resolveManagerContext } from '@/lib/agent/manager-context';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -34,35 +33,27 @@ export async function GET(_req: NextRequest) {
   const { allowed } = await checkRateLimit(`ai:manager-conversations:${managerCtx.company.ownerId}`, 20, 60);
   if (!allowed) return rateLimited();
 
-  const { data, error } = await supabase
-    .from('ManagerConversation')
-    .select('*')
-    .eq('companyId', managerCtx.company.id)
-    .order('updatedAt', { ascending: false })
-    .limit(50);
-  if (error) return NextResponse.json({ error: 'Failed to load conversations' }, { status: 500 });
+  let conversations;
+  try {
+    conversations = await convex().query(api.conversations.managerConversations.listByCompany, {
+      companyId: managerCtx.company.id,
+    });
+  } catch {
+    return NextResponse.json({ error: 'Failed to load conversations' }, { status: 500 });
+  }
 
-  const conversations = data ?? [];
-
-  // Preview line per conversation = the latest message's content. PostgREST
-  // has no GROUP BY, so fetch recent rows for this set and keep the first
-  // (latest) one we see per conversationId.
+  // Preview line per conversation = the latest message's content. The Convex
+  // query resolves the newest message per conversationId; the whitespace
+  // collapse + 60-char truncation stays here, exactly as before.
   const ids = conversations.map((c) => c.id);
   const previewMap: Record<string, string> = {};
   if (ids.length > 0) {
-    const { data: msgs } = await supabase
-      .from('ManagerMessage')
-      .select('conversationId, content')
-      .in('conversationId', ids)
-      .order('createdAt', { ascending: false })
-      .limit(ids.length * 20);
-    if (msgs) {
-      for (const msg of msgs) {
-        if (msg.conversationId && !(msg.conversationId in previewMap)) {
-          const text = (msg.content ?? '').replace(/\s+/g, ' ').trim();
-          previewMap[msg.conversationId] = text.length > 60 ? text.slice(0, 59) + '…' : text;
-        }
-      }
+    const latest = await convex().query(api.conversations.managerMessages.latestPreviewContent, {
+      conversationIds: ids,
+    });
+    for (const [conversationId, content] of Object.entries(latest)) {
+      const text = (content ?? '').replace(/\s+/g, ' ').trim();
+      previewMap[conversationId] = text.length > 60 ? text.slice(0, 59) + '…' : text;
     }
   }
 
@@ -77,19 +68,15 @@ export async function POST(_req: NextRequest) {
   const { allowed } = await checkRateLimit(`ai:manager-conversations:${managerCtx.company.ownerId}`, 20, 60);
   if (!allowed) return rateLimited();
 
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('ManagerConversation')
-    .insert({
-      id: crypto.randomUUID(),
+  let data;
+  try {
+    // title defaults to 'New conversation' inside the mutation (the PG default).
+    data = await convex().mutation(api.conversations.managerConversations.create, {
       companyId: managerCtx.company.id,
-      title: 'New conversation',
-      createdAt: now,
-      updatedAt: now,
-    })
-    .select()
-    .single();
-  if (error) return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 });
+    });
+  } catch {
+    return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 });
+  }
 
   return NextResponse.json(data, { status: 201 });
 }
