@@ -12,6 +12,7 @@
 
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { composeBrief } from '@/lib/briefing/compose';
@@ -68,19 +69,15 @@ export async function POST() {
   const realToday = localDateIn(new Date(), tz);
   const syntheticDate = `TEST-${realToday}-${Date.now()}`;
 
-  const { data: row, error } = await supabase
-    .from('Brief')
-    .insert({
+  let row: { id: string };
+  try {
+    row = await convex().mutation(api.portal.briefs.upsert, {
       spaceId: space.id,
       forDate: syntheticDate,
-      status: 'pending',
       payload: brief,
       cardMeta: [],
-    })
-    .select('id')
-    .single();
-
-  if (error || !row) {
+    });
+  } catch {
     return NextResponse.json({ error: 'Could not stage the test brief.' }, { status: 500 });
   }
 
@@ -88,7 +85,7 @@ export async function POST() {
   if (!ctx) return NextResponse.json({ error: 'Settings not found.' }, { status: 500 });
 
   const result = await deliverBrief({
-    briefId: row.id as string,
+    briefId: row.id,
     brief: brief as Brief,
     forDate: realToday,
     space: ctx,
@@ -97,7 +94,7 @@ export async function POST() {
 
   // Clean up the synthetic row — we never want it in the analytics
   // aggregations or in tomorrow's "yesterday" link.
-  await supabase.from('Brief').delete().eq('id', row.id);
+  await convex().mutation(api.portal.briefs.deleteById, { id: row.id });
 
   return NextResponse.json({ ok: true, result });
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 
 /**
@@ -50,18 +51,15 @@ export async function POST(
   }
 
   // Create the message
-  const { data: message, error: insertError } = await supabase
-    .from('ApplicationMessage')
-    .insert({
+  let message;
+  try {
+    message = await convex().mutation(api.portal.applicationMessages.create, {
       contactId,
       spaceId: contact.spaceId,
       senderType: 'seller',
       content: sanitized,
-    })
-    .select('id, senderType, content, createdAt')
-    .single();
-
-  if (insertError) {
+    });
+  } catch (insertError) {
     console.error('[message] Insert error:', insertError);
     return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
   }
@@ -91,30 +89,29 @@ export async function GET(
   const auth = await requireContactAccess(contactId);
   if (auth instanceof NextResponse) return auth;
 
-  const { data: messages, error } = await supabase
-    .from('ApplicationMessage')
-    .select('id, senderType, content, readAt, createdAt')
-    .eq('contactId', contactId)
-    .order('createdAt', { ascending: true });
-
-  if (error) {
+  let messages;
+  try {
+    messages = await convex().query(api.portal.applicationMessages.listForContact, {
+      contactId,
+    });
+  } catch (error) {
     console.error('[message] Fetch error:', error);
     return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
   }
 
   // Mark unread applicant messages as read
-  const unreadApplicantIds = (messages ?? [])
-    .filter((m: { senderType: string; readAt: string | null }) => m.senderType === 'applicant' && !m.readAt)
-    .map((m: { id: string }) => m.id);
+  const unreadApplicantIds = messages
+    .filter((m) => m.senderType === 'applicant' && !m.readAt)
+    .map((m) => m.id);
 
   if (unreadApplicantIds.length > 0) {
-    await supabase
-      .from('ApplicationMessage')
-      .update({ readAt: new Date().toISOString() })
-      .in('id', unreadApplicantIds);
+    await convex().mutation(api.portal.applicationMessages.markRead, {
+      contactId,
+      ids: unreadApplicantIds,
+    });
   }
 
-  return NextResponse.json({ messages: messages ?? [] });
+  return NextResponse.json({ messages });
 }
 
 async function sendMessageNotification(

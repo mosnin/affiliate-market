@@ -141,16 +141,12 @@ export default async function ApplicationStatusPage({
 
   if (portalMode) {
     const [historyResult, messageResult, demoResult] = await Promise.all([
-      supabase
-        .from('ApplicationStatusUpdate')
-        .select('id, fromStatus, toStatus, note, createdAt')
-        .eq('contactId', contact.id)
-        .order('createdAt', { ascending: true }),
-      supabase
-        .from('ApplicationMessage')
-        .select('id, senderType, content, readAt, createdAt')
-        .eq('contactId', contact.id)
-        .order('createdAt', { ascending: true }),
+      convex().query(api.portal.applicationStatus.listForContact, {
+        contactId: contact.id,
+      }),
+      convex().query(api.portal.applicationMessages.listForContact, {
+        contactId: contact.id,
+      }),
       convex().query(api.demos.demos.listByContact, {
         contactId: contact.id,
         statuses: ['scheduled', 'confirmed', 'completed'],
@@ -158,8 +154,8 @@ export default async function ApplicationStatusPage({
       }),
     ]);
 
-    statusHistory = historyResult.data ?? [];
-    messages = messageResult.data ?? [];
+    statusHistory = historyResult;
+    messages = messageResult;
     demos = demoResult;
 
     // Mark unread seller messages as read
@@ -167,10 +163,10 @@ export default async function ApplicationStatusPage({
       .filter((m) => m.senderType === 'seller' && !m.readAt)
       .map((m) => m.id);
     if (unreadSellerIds.length > 0) {
-      await supabase
-        .from('ApplicationMessage')
-        .update({ readAt: new Date().toISOString() })
-        .in('id', unreadSellerIds);
+      await convex().mutation(api.portal.applicationMessages.markRead, {
+        contactId: contact.id,
+        ids: unreadSellerIds,
+      });
     }
   }
 

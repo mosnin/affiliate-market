@@ -1,4 +1,18 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+
+// briefOpenRate/sourceTapRates/confidenceCalibration now read briefs via Convex
+// (api.portal.briefs.listCreatedBetween). briefRetentionDelta still reads
+// SpaceSetting via the injected Supabase client (a core table, not yet flipped).
+const { convexQueryMock } = vi.hoisted(() => ({ convexQueryMock: vi.fn() }));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (p: string): unknown =>
+    new Proxy(() => p, { get: (_t, k) => (typeof k === 'string' ? makePath(`${p}.${k}`) : p) });
+  return {
+    api: new Proxy({}, { get: (_t, k) => (typeof k === 'string' ? makePath(k) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: vi.fn() }),
+  };
+});
+
 import {
   briefOpenRate,
   sourceTapRates,
@@ -7,14 +21,9 @@ import {
 } from '@/lib/briefing/analytics';
 import type { BriefCardMeta, BriefCardTap } from '@/lib/briefing/types';
 
-/**
- * Mock Supabase client — only implements `.from(table).select(...)` with
- * the gte/lt/eq chains the analytics functions use. Returns rows we
- * pre-stage per test. Enough fidelity to test the aggregation math
- * without standing up a real database.
- */
 type MockRow = Record<string, unknown>;
 
+/** Supabase mock — still used by briefRetentionDelta (SpaceSetting, on Supabase). */
 function makeClient(rows: MockRow[]) {
   const builder: Record<string, unknown> = {};
   const chain = () => builder;
@@ -26,24 +35,27 @@ function makeClient(rows: MockRow[]) {
     resolve({ data: rows, error: null });
   return {
     from: () => builder,
-  } as unknown as Parameters<typeof briefOpenRate>[1];
+  } as unknown as Parameters<typeof briefRetentionDelta>[1];
 }
+
+beforeEach(() => {
+  convexQueryMock.mockReset();
+});
 
 describe('briefing analytics — open rate', () => {
   it('returns 0 when no briefs in the window', async () => {
-    const result = await briefOpenRate(7, makeClient([]));
+    convexQueryMock.mockResolvedValueOnce([]);
+    const result = await briefOpenRate(7);
     expect(result).toEqual({ total: 0, seen: 0, rate: 0 });
   });
 
   it('computes seen / total for a populated window', async () => {
-    const result = await briefOpenRate(
-      7,
-      makeClient([
-        { id: 'b1', seenAt: '2026-05-29T07:01:00Z' },
-        { id: 'b2', seenAt: null },
-        { id: 'b3', seenAt: '2026-05-28T07:05:00Z' },
-      ]),
-    );
+    convexQueryMock.mockResolvedValueOnce([
+      { id: 'b1', seenAt: '2026-05-29T07:01:00Z' },
+      { id: 'b2', seenAt: null },
+      { id: 'b3', seenAt: '2026-05-28T07:05:00Z' },
+    ]);
+    const result = await briefOpenRate(7);
     expect(result.total).toBe(3);
     expect(result.seen).toBe(2);
     expect(result.rate).toBeCloseTo(2 / 3, 4);
@@ -66,13 +78,11 @@ describe('briefing analytics — source tap rates', () => {
       { cardIndex: 0, source: 'pipeline', kind: 'review', tappedAt: '2026-05-30T07:01:00Z' },
     ];
 
-    const result = await sourceTapRates(
-      30,
-      makeClient([
-        { cardMeta: meta1, cardTaps: taps1 },
-        { cardMeta: meta2, cardTaps: taps2 },
-      ]),
-    );
+    convexQueryMock.mockResolvedValueOnce([
+      { cardMeta: meta1, cardTaps: taps1 },
+      { cardMeta: meta2, cardTaps: taps2 },
+    ]);
+    const result = await sourceTapRates(30);
 
     const pipeline = result.find((r) => r.source === 'pipeline' && r.kind === 'review');
     expect(pipeline).toBeDefined();
@@ -88,7 +98,8 @@ describe('briefing analytics — source tap rates', () => {
   });
 
   it('returns empty array for an empty window', async () => {
-    const result = await sourceTapRates(30, makeClient([]));
+    convexQueryMock.mockResolvedValueOnce([]);
+    const result = await sourceTapRates(30);
     expect(result).toEqual([]);
   });
 });
@@ -102,7 +113,8 @@ describe('briefing analytics — confidence calibration', () => {
     const taps: BriefCardTap[] = [
       { cardIndex: 0, source: 'pipeline', kind: 'review', tappedAt: 'x' },
     ];
-    const result = await confidenceCalibration(30, makeClient([{ cardMeta: meta, cardTaps: taps }]));
+    convexQueryMock.mockResolvedValueOnce([{ cardMeta: meta, cardTaps: taps }]);
+    const result = await confidenceCalibration(30);
 
     const high = result.find((r) => r.confidenceBucket === 9);
     const low = result.find((r) => r.confidenceBucket === 7);
@@ -121,12 +133,9 @@ describe('briefing analytics — retention delta', () => {
     const result = await briefRetentionDelta(
       14,
       makeClient([
-        // Enabled cohort, eligible (≥14 days enabled)
         { briefEnabled: true, briefEnabledAt: ancient, Space: { stripeSubscriptionStatus: 'active' } },
         { briefEnabled: true, briefEnabledAt: ancient, Space: { stripeSubscriptionStatus: 'canceled' } },
-        // Enabled but inside warm-up — should be excluded
         { briefEnabled: true, briefEnabledAt: recent, Space: { stripeSubscriptionStatus: 'active' } },
-        // Disabled cohort
         { briefEnabled: false, briefEnabledAt: null, Space: { stripeSubscriptionStatus: 'canceled' } },
         { briefEnabled: false, briefEnabledAt: null, Space: { stripeSubscriptionStatus: 'active' } },
       ]),

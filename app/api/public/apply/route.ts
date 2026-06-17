@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { redis } from '@/lib/redis';
 import { getSpaceFromSlug } from '@/lib/space';
 import { scoreLeadApplicationDynamic } from '@/lib/lead-scoring';
@@ -623,16 +624,15 @@ export async function POST(req: NextRequest) {
     if (insertError) throw insertError;
     const contact = contacts![0] as Contact;
     // Create initial status update record for audit trail
-    const { error: statusAuditErr } = await supabase
-      .from('ApplicationStatusUpdate')
-      .insert({
+    try {
+      await convex().mutation(api.portal.applicationStatus.create, {
         contactId: contact.id,
         spaceId: space.id,
         fromStatus: null,
         toStatus: 'received',
         note: null,
       });
-    if (statusAuditErr) {
+    } catch (statusAuditErr) {
       logger.warn('[apply] initial status audit insert failed (non-fatal)', { contactId: contact.id }, statusAuditErr);
     }
 

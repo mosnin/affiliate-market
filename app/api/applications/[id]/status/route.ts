@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 import { sendStatusUpdateEmail } from '@/lib/email';
 
@@ -81,15 +82,15 @@ export async function PATCH(
   }
 
   // Create audit trail record
-  const { error: auditError } = await supabase.from('ApplicationStatusUpdate').insert({
-    contactId,
-    spaceId: contact.spaceId,
-    fromStatus,
-    toStatus: status,
-    note: note?.trim() || null,
-  });
-
-  if (auditError) {
+  try {
+    await convex().mutation(api.portal.applicationStatus.create, {
+      contactId,
+      spaceId: contact.spaceId,
+      fromStatus,
+      toStatus: status,
+      note: note?.trim() || null,
+    });
+  } catch (auditError) {
     console.error('[status] Audit insert failed:', auditError);
     // Non-fatal — status was updated successfully
   }

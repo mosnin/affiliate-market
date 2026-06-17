@@ -170,14 +170,12 @@ export async function POST(
       ? `✓ Confirmed demo ${demoTime}${propLine}.${safeNotes ? `\n\n${safeNotes}` : ''}`
       : `✗ Can't make demo ${demoTime}${propLine}.${safeNotes ? `\n\n${safeNotes}` : ''}`;
 
-  await supabase
-    .from('ApplicationMessage')
-    .insert({
-      contactId: contact.id,
-      spaceId: contact.spaceId,
-      senderType: 'applicant',
-      content: messageBody,
-    });
+  await convex().mutation(api.portal.applicationMessages.create, {
+    contactId: contact.id,
+    spaceId: contact.spaceId,
+    senderType: 'applicant',
+    content: messageBody,
+  });
 
   return NextResponse.json({
     ok: true,

@@ -17,7 +17,7 @@ import {
 } from 'crypto';
 import { cookies } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 export const CLIENT_SESSION_COOKIE = 'cola_client_session';
@@ -78,24 +78,14 @@ export interface ClientUserRow {
   emailVerifiedAt: string | null;
 }
 
-const USER_COLS = 'id, email, "emailLower", name, phone, "emailVerifiedAt"';
-
 export async function findClientByEmail(email: string): Promise<(ClientUserRow & { passwordHash: string }) | null> {
-  const { data } = await supabase
-    .from('ClientUser')
-    .select(`${USER_COLS}, "passwordHash"`)
-    .eq('emailLower', email.trim().toLowerCase())
-    .maybeSingle();
-  return (data as (ClientUserRow & { passwordHash: string }) | null) ?? null;
+  return await convex().query(api.portal.clientUsers.findByEmail, {
+    emailLower: email.trim().toLowerCase(),
+  });
 }
 
 export async function findClientById(id: string): Promise<ClientUserRow | null> {
-  const { data } = await supabase
-    .from('ClientUser')
-    .select(USER_COLS)
-    .eq('id', id)
-    .maybeSingle();
-  return (data as ClientUserRow | null) ?? null;
+  return await convex().query(api.portal.clientUsers.findById, { id });
 }
 
 export async function createClientUser(params: {
@@ -104,37 +94,34 @@ export async function createClientUser(params: {
   name?: string;
   phone?: string;
 }): Promise<ClientUserRow | null> {
-  const emailLower = params.email.trim().toLowerCase();
-  const { data, error } = await supabase
-    .from('ClientUser')
-    .insert({
+  // emailLower + passwordHash computed here (scrypt stays in lib); the Convex
+  // mutation returns null on the UNIQUE(emailLower) conflict, exactly as the old
+  // insert returned null on the unique-violation error.
+  try {
+    return await convex().mutation(api.portal.clientUsers.create, {
       email: params.email.trim(),
-      emailLower,
+      emailLower: params.email.trim().toLowerCase(),
       passwordHash: hashPassword(params.password),
       name: params.name?.trim() || null,
       phone: params.phone?.trim() || null,
-    })
-    .select(USER_COLS)
-    .single();
-  if (error) {
-    logger.warn('[client-auth] createClientUser failed', { err: error.message });
+    });
+  } catch (error) {
+    logger.warn('[client-auth] createClientUser failed', {
+      err: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
-  return data as ClientUserRow;
 }
 
 export async function markEmailVerified(emailLower: string): Promise<void> {
-  await supabase
-    .from('ClientUser')
-    .update({ emailVerifiedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
-    .eq('emailLower', emailLower);
+  await convex().mutation(api.portal.clientUsers.markEmailVerified, { emailLower });
 }
 
 export async function setClientPassword(emailLower: string, password: string): Promise<void> {
-  await supabase
-    .from('ClientUser')
-    .update({ passwordHash: hashPassword(password), updatedAt: new Date().toISOString() })
-    .eq('emailLower', emailLower);
+  await convex().mutation(api.portal.clientUsers.setPassword, {
+    emailLower,
+    passwordHash: hashPassword(password),
+  });
 }
 
 /** Issue a one-time code, store its hash, and return the plaintext to email. */
@@ -147,20 +134,22 @@ export async function issueCode(
   // Invalidate any prior unconsumed codes for this (email, purpose) so only the
   // newest code is ever valid — closes the window where a resend/race leaves
   // multiple live codes that each satisfy the one-time guarantee.
-  await supabase
-    .from('ClientAuthCode')
-    .update({ consumedAt: new Date().toISOString() })
-    .eq('emailLower', emailLower)
-    .eq('purpose', purpose)
-    .is('consumedAt', null);
-  const { error } = await supabase.from('ClientAuthCode').insert({
-    emailLower,
-    codeHash: hashCode(code),
-    purpose,
-    expiresAt: new Date(Date.now() + CODE_TTL_MINUTES * 60_000).toISOString(),
-  });
-  if (error) {
-    logger.warn('[client-auth] issueCode failed', { purpose, err: error.message });
+  try {
+    await convex().mutation(api.portal.clientAuthCodes.invalidatePrior, {
+      emailLower,
+      purpose,
+    });
+    await convex().mutation(api.portal.clientAuthCodes.issue, {
+      emailLower,
+      codeHash: hashCode(code),
+      purpose,
+      expiresAt: new Date(Date.now() + CODE_TTL_MINUTES * 60_000).toISOString(),
+    });
+  } catch (error) {
+    logger.warn('[client-auth] issueCode failed', {
+      purpose,
+      err: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
   return code;
@@ -173,18 +162,14 @@ export async function consumeCode(
   purpose: 'verify' | 'login' | 'reset',
 ): Promise<boolean> {
   const emailLower = email.trim().toLowerCase();
-  const { data } = await supabase
-    .from('ClientAuthCode')
-    .select('id, codeHash, attempts')
-    .eq('emailLower', emailLower)
-    .eq('purpose', purpose)
-    .is('consumedAt', null)
-    .gt('expiresAt', new Date().toISOString())
-    .order('createdAt', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // The newest unconsumed, unexpired candidate. `now` is passed so the expiry
+  // boundary uses this caller's clock (matching the old `.gt('expiresAt', now)`).
+  const row = await convex().query(api.portal.clientAuthCodes.findCandidate, {
+    emailLower,
+    purpose,
+    now: new Date().toISOString(),
+  });
 
-  const row = data as { id: string; codeHash: string; attempts: number } | null;
   if (!row) return false;
   if (row.attempts >= MAX_CODE_ATTEMPTS) return false;
 
@@ -193,10 +178,10 @@ export async function consumeCode(
     timingSafeEqual(Buffer.from(row.codeHash, 'hex'), Buffer.from(hashCode(code), 'hex'));
 
   if (!ok) {
-    await supabase.from('ClientAuthCode').update({ attempts: row.attempts + 1 }).eq('id', row.id);
+    await convex().mutation(api.portal.clientAuthCodes.incrementAttempts, { id: row.id });
     return false;
   }
-  await supabase.from('ClientAuthCode').update({ consumedAt: new Date().toISOString() }).eq('id', row.id);
+  await convex().mutation(api.portal.clientAuthCodes.consume, { id: row.id });
   return true;
 }
 

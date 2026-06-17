@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import crypto from 'crypto';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getClientUser } from '@/lib/client-auth';
 import { clientOwnsContact } from '@/lib/client-portal-data';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -52,24 +53,20 @@ export async function GET(req: NextRequest) {
   }
 
   if (docId) {
-    const { data: doc } = await supabase
-      .from('ClientDocument')
-      .select('fileKey')
-      .eq('id', docId)
-      .eq('contactId', contactId)
-      .maybeSingle();
-    if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    const url = await getSignedDownloadUrl((doc as { fileKey: string }).fileKey);
+    const fileKey = await convex().query(api.portal.clientDocuments.fileKeyForDownload, {
+      id: docId,
+      contactId,
+    });
+    if (!fileKey) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const url = await getSignedDownloadUrl(fileKey);
     return NextResponse.json({ url });
   }
 
-  const { data } = await supabase
-    .from('ClientDocument')
-    .select('id, fileName, contentType, sizeBytes, uploadedBy, createdAt')
-    .eq('contactId', contactId)
-    .order('createdAt', { ascending: false });
+  const documents = await convex().query(api.portal.clientDocuments.listForContact, {
+    contactId,
+  });
 
-  return NextResponse.json({ documents: data ?? [] });
+  return NextResponse.json({ documents });
 }
 
 /**
@@ -129,9 +126,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
   }
 
-  const { data: doc, error } = await supabase
-    .from('ClientDocument')
-    .insert({
+  let doc;
+  try {
+    doc = await convex().mutation(api.portal.clientDocuments.create, {
       contactId,
       spaceId,
       fileKey,
@@ -139,13 +136,10 @@ export async function POST(req: NextRequest) {
       contentType: file.type,
       sizeBytes: file.size,
       uploadedBy: 'client',
-    })
-    .select('id, fileName, contentType, sizeBytes, uploadedBy, createdAt')
-    .single();
-
-  if (error) {
+    });
+  } catch (error) {
     await deleteObject(fileKey).catch(() => undefined);
-    logger.error('[clients/documents] insert failed', { contactId }, error);
+    logger.error('[clients/documents] insert failed', { contactId }, error as Error);
     return NextResponse.json({ error: 'Failed to save document' }, { status: 500 });
   }
 

@@ -164,13 +164,11 @@ export default async function DealDetailPage({
     // document row. A single indexed lookup; swallow errors so an as-yet-
     // unapplied migration on another branch doesn't break the page.
     try {
-      const { data: sigRows } = await supabase
-        .from('SignatureRequest')
-        .select('id, documentId, status, signerEmail, signerName, subject, createdAt')
-        .eq('dealId', id)
-        .eq('spaceId', space.id)
-        .order('createdAt', { ascending: false });
-      signatureRequests = (sigRows ?? []) as SignatureRequestLite[];
+      const sigRows = await convex().query(api.portal.signatures.listForDeal, {
+        dealId: id,
+        spaceId: space.id,
+      });
+      signatureRequests = sigRows as SignatureRequestLite[];
     } catch (sigErr) {
       console.warn('[deal-detail] signature lookup failed (ignored)', sigErr);
     }

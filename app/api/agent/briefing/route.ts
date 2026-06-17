@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { composeBrief } from '@/lib/briefing/compose';
@@ -72,12 +73,10 @@ export async function GET(req: NextRequest) {
       (tz?.timezone as string | undefined) ?? DEFAULT_TIMEZONE,
       -1,
     );
-    const { data: yRow } = await supabase
-      .from('Brief')
-      .select('id, status, payload, createdAt, seenAt, actedAt')
-      .eq('spaceId', space.id)
-      .eq('forDate', yForDate)
-      .maybeSingle();
+    const yRow = await convex().query(api.portal.briefs.getBySpaceDate, {
+      spaceId: space.id,
+      forDate: yForDate,
+    });
 
     if (!yRow) return NextResponse.json({ brief: null });
     return NextResponse.json({
@@ -102,12 +101,10 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
   const showIntro = setting?.briefIntroSeenAt == null;
 
-  const { data: existing } = await supabase
-    .from('Brief')
-    .select('id, status, payload, createdAt, seenAt, actedAt')
-    .eq('spaceId', space.id)
-    .eq('forDate', forDate)
-    .maybeSingle();
+  const existing = await convex().query(api.portal.briefs.getBySpaceDate, {
+    spaceId: space.id,
+    forDate,
+  });
 
   if (existing) {
     return NextResponse.json({
@@ -124,19 +121,15 @@ export async function GET(req: NextRequest) {
   // No row yet — compose on demand and persist. The seller sees their
   // brief; tomorrow's cron tick fills the gap for everyone systematically.
   const { brief, cardMeta } = await composeBrief(space.id);
-  const { data: created, error } = await supabase
-    .from('Brief')
-    .insert({
+  let created;
+  try {
+    created = await convex().mutation(api.portal.briefs.upsert, {
       spaceId: space.id,
       forDate,
-      status: 'pending',
       payload: brief,
       cardMeta,
-    })
-    .select('id, status, payload, createdAt, seenAt, actedAt')
-    .single();
-
-  if (error || !created) {
+    });
+  } catch {
     // Persist failed but the brief itself is fine — return it anyway
     // so the surface doesn't get stuck on a transient DB hiccup.
     return NextResponse.json({
@@ -198,12 +191,10 @@ export async function PATCH(req: NextRequest) {
   }
 
   const forDate = await todayLocalDate(space.id);
-  const { data: existing } = await supabase
-    .from('Brief')
-    .select('id, seenAt, actedAt, status, cardTaps')
-    .eq('spaceId', space.id)
-    .eq('forDate', forDate)
-    .maybeSingle();
+  const existing = await convex().query(api.portal.briefs.getBySpaceDate, {
+    spaceId: space.id,
+    forDate,
+  });
 
   if (!existing) return NextResponse.json({ ok: true });
 
@@ -246,7 +237,13 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (Object.keys(update).length > 0) {
-    await supabase.from('Brief').update(update).eq('id', existing.id);
+    await convex().mutation(api.portal.briefs.patchEngagement, {
+      id: existing.id,
+      ...(update.seenAt !== undefined ? { seenAt: update.seenAt as string } : {}),
+      ...(update.actedAt !== undefined ? { actedAt: update.actedAt as string } : {}),
+      ...(update.status !== undefined ? { status: update.status as string } : {}),
+      ...(update.cardTaps !== undefined ? { cardTaps: update.cardTaps } : {}),
+    });
   }
 
   // The first ever 'seen' PATCH stamps briefIntroSeenAt so the one-line

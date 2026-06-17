@@ -15,7 +15,7 @@
  *     stability needs a real new week before re-firing.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -53,29 +53,20 @@ export async function canFireTip(
   tipCategory: string,
   subjectId: string | null,
 ): Promise<boolean> {
-  const query = supabase
-    .from('BriefTipHistory')
-    .select('firedAt, outcome')
-    .eq('spaceId', spaceId)
-    .eq('tipCategory', tipCategory)
-    .order('firedAt', { ascending: false })
-    .limit(1);
+  // subjectId is tri-state: null selects the no-subject (trend) cool-down key; a
+  // value selects that exact subject. The Convex fn distinguishes absent vs equal
+  // exactly as Postgres `is null` vs `eq` did.
+  const data = await convex().query(api.portal.briefTips.latestFire, {
+    spaceId,
+    tipCategory,
+    subjectId,
+  });
+  if (!data) return true; // never fired → can fire
 
-  // Postgres treats `is null` and `eq null` differently — explicit null check.
-  if (subjectId === null) {
-    query.is('subjectId', null);
-  } else {
-    query.eq('subjectId', subjectId);
-  }
-
-  const { data, error } = await query.maybeSingle();
-  if (error || !data) return true;
-
-  const firedAt = new Date((data as { firedAt: string }).firedAt);
+  const firedAt = new Date(data.firedAt);
   if (isNaN(firedAt.getTime())) return true;
 
-  const outcome = (data as { outcome: 'shown' | 'acted' | 'dismissed' }).outcome;
-  const coolDownMs = coolDownDaysFor(tipCategory, outcome) * MS_PER_DAY;
+  const coolDownMs = coolDownDaysFor(tipCategory, data.outcome) * MS_PER_DAY;
   return Date.now() - firedAt.getTime() >= coolDownMs;
 }
 
@@ -88,7 +79,7 @@ export async function recordTipFired(
   tipCategory: string,
   subjectId: string | null,
 ): Promise<void> {
-  await supabase.from('BriefTipHistory').insert({
+  await convex().mutation(api.portal.briefTips.record, {
     spaceId,
     tipCategory,
     subjectId,

@@ -11,9 +11,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { requireSpaceOwner } from '@/lib/api-auth';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { buildCma, generateShareToken, type SubjectFields } from '@/lib/cma';
@@ -21,10 +20,6 @@ import { buildCma, generateShareToken, type SubjectFields } from '@/lib/cma';
 export const runtime = 'nodejs';
 
 const TITLE_MAX = 200;
-
-// The list view never needs the (potentially large) payload — select lean.
-const LIST_COLUMNS =
-  'id, spaceId, subjectAddress, subjectProductId, shareToken, title, status, createdAt, updatedAt';
 
 // ── GET — the space's CMAs ────────────────────────────────────────────────────
 
@@ -36,19 +31,18 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { space } = auth;
 
-  const { data, error } = await supabase
-    .from('CmaReport')
-    .select(LIST_COLUMNS)
-    .eq('spaceId', space.id)
-    .order('createdAt', { ascending: false })
-    .limit(100);
-
-  if (error) {
-    logger.error('[cma] list failed', { spaceId: space.id, err: error.message });
+  let reports;
+  try {
+    reports = await convex().query(api.portal.cmaReports.listForSpace, { spaceId: space.id });
+  } catch (err) {
+    logger.error('[cma] list failed', {
+      spaceId: space.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'Could not load your reports.' }, { status: 500 });
   }
 
-  return NextResponse.json({ reports: data ?? [] });
+  return NextResponse.json({ reports });
 }
 
 // ── POST — build + persist a CMA ──────────────────────────────────────────────
@@ -133,12 +127,10 @@ export async function POST(req: NextRequest) {
   }
 
   const title = typeof body.title === 'string' ? body.title.trim().slice(0, TITLE_MAX) || null : null;
-  const now = new Date().toISOString();
 
-  const { data, error } = await supabase
-    .from('CmaReport')
-    .insert({
-      id: crypto.randomUUID(),
+  let data;
+  try {
+    data = await convex().mutation(api.portal.cmaReports.create, {
       spaceId: space.id,
       subjectAddress: payload.subject.address,
       subjectProductId: payload.subject.productId,
@@ -146,14 +138,12 @@ export async function POST(req: NextRequest) {
       title,
       status: 'draft',
       payload,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .select(LIST_COLUMNS)
-    .single();
-
-  if (error || !data) {
-    logger.error('[cma] insert failed', { spaceId: space.id, err: error?.message });
+    });
+  } catch (err) {
+    logger.error('[cma] insert failed', {
+      spaceId: space.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'Could not save the report. Try again.' }, { status: 500 });
   }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { requireSpaceOwner } from '@/lib/api-auth';
 
@@ -145,19 +146,11 @@ export async function POST(req: NextRequest) {
   }));
 
   try {
-    const { error } = await supabase
-      .from('FormAnalyticsEvent')
-      .insert(sanitizedEvents);
-
-    if (error) {
-      console.error('[form-analytics] insert failed', error);
-      return NextResponse.json({ error: 'Failed to store events' }, { status: 500 });
-    }
-
+    await convex().mutation(api.portal.formAnalytics.insertBatch, { events: sanitizedEvents });
     return NextResponse.json({ success: true, count: sanitizedEvents.length });
   } catch (err) {
-    console.error('[form-analytics] unexpected error', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    console.error('[form-analytics] insert failed', err);
+    return NextResponse.json({ error: 'Failed to store events' }, { status: 500 });
   }
 }
 
@@ -184,25 +177,11 @@ export async function GET(req: NextRequest) {
   const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
 
   try {
-    // Build query
-    let query = supabase
-      .from('FormAnalyticsEvent')
-      .select('id, sessionId, formConfigVersion, eventType, stepIndex, stepTitle, durationMs, metadata, createdAt')
-      .eq('spaceId', space.id)
-      .gte('createdAt', cutoff)
-      .order('createdAt', { ascending: true })
-      .limit(10000);
-
-    if (formVersion !== undefined) {
-      query = query.eq('formConfigVersion', formVersion);
-    }
-
-    const { data: events, error } = await query;
-
-    if (error) {
-      console.error('[form-analytics] query failed', error);
-      return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 });
-    }
+    const events = await convex().query(api.portal.formAnalytics.listForSpace, {
+      spaceId: space.id,
+      cutoff,
+      formConfigVersion: formVersion,
+    });
 
     type EventRow = {
       id: string;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 /**
@@ -117,16 +118,12 @@ export async function POST(req: NextRequest) {
     .filter(Boolean)
     .join('\n');
 
-  const messageInsert = supabase
-    .from('ApplicationMessage')
-    .insert({
-      contactId: contact.id,
-      spaceId: contact.spaceId,
-      senderType: 'applicant',
-      content: messageBody,
-    })
-    .select('id, senderType, content, createdAt')
-    .single();
+  const messageInsert = convex().mutation(api.portal.applicationMessages.create, {
+    contactId: contact.id,
+    spaceId: contact.spaceId,
+    senderType: 'applicant',
+    content: messageBody,
+  });
 
   // Compose the AgentQuestion that surfaces in the seller's Cola focus
   // card. The question itself is action-oriented; the context carries the
@@ -152,16 +149,21 @@ export async function POST(req: NextRequest) {
     .select('id')
     .single();
 
-  const [messageRes, questionRes] = await Promise.all([messageInsert, questionInsert]);
+  // Message (Convex, throws on failure) and AgentQuestion (Supabase, returns
+  // {error}) run concurrently; allSettled lets each fail on its own terms.
+  const [messageRes, questionRes] = await Promise.allSettled([messageInsert, questionInsert]);
 
-  if (messageRes.error) {
-    console.error('[portal/demo-request] Message insert error:', messageRes.error);
+  if (messageRes.status === 'rejected') {
+    console.error('[portal/demo-request] Message insert error:', messageRes.reason);
     return NextResponse.json({ error: 'Failed to send demo request' }, { status: 500 });
   }
-  if (questionRes.error) {
+  if (questionRes.status === 'rejected' || questionRes.value.error) {
     // Soft-fail the AgentQuestion — the message landed, the seller sees it.
     // Log for observability but don't 500 the user.
-    console.error('[portal/demo-request] Question insert error:', questionRes.error);
+    console.error(
+      '[portal/demo-request] Question insert error:',
+      questionRes.status === 'rejected' ? questionRes.reason : questionRes.value.error,
+    );
   }
 
   // Notify seller (fire and forget — same pattern as message endpoint).
@@ -175,7 +177,7 @@ export async function POST(req: NextRequest) {
     console.error('[portal/demo-request] Seller notification failed:', err),
   );
 
-  return NextResponse.json({ message: messageRes.data }, { status: 201 });
+  return NextResponse.json({ message: messageRes.value }, { status: 201 });
 }
 
 /**

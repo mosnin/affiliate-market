@@ -22,6 +22,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { composeBrief } from '@/lib/briefing/compose';
 import { shouldGenerateFor } from '@/lib/briefing/timing';
 import { deliverBrief, loadDeliveryContext, getAppOrigin } from '@/lib/briefing/delivery';
@@ -53,22 +54,16 @@ async function generateOne(spaceId: string, forDate: string): Promise<'ok' | 'fa
       throw err;
     }
     const { brief, cardMeta } = await composeBrief(spaceId);
-    const { data: row, error } = await supabase
-      .from('Brief')
-      .upsert(
-        {
-          spaceId,
-          forDate,
-          status: 'pending',
-          payload: brief,
-          cardMeta,
-        },
-        { onConflict: 'spaceId,forDate' },
-      )
-      .select('id')
-      .single();
-    if (error) {
-      console.error(`[cron/daily-briefing] upsert failed for ${spaceId}:`, error.message);
+    let row: { id: string };
+    try {
+      row = await convex().mutation(api.portal.briefs.upsert, {
+        spaceId,
+        forDate,
+        payload: brief,
+        cardMeta,
+      });
+    } catch (upsertErr) {
+      console.error(`[cron/daily-briefing] upsert failed for ${spaceId}:`, upsertErr);
       return 'failed';
     }
 
@@ -79,9 +74,9 @@ async function generateOne(spaceId: string, forDate: string): Promise<'ok' | 'fa
     // the brief surface itself is canon, delivery is best-effort.
     try {
       const space = await loadDeliveryContext(spaceId);
-      if (space && row) {
+      if (space) {
         await deliverBrief({
-          briefId: row.id as string,
+          briefId: row.id,
           brief,
           forDate,
           space,

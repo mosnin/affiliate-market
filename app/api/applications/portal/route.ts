@@ -53,18 +53,14 @@ export async function GET(req: NextRequest) {
   }
 
   // Fetch status history
-  const { data: statusHistory } = await supabase
-    .from('ApplicationStatusUpdate')
-    .select('id, fromStatus, toStatus, note, createdAt')
-    .eq('contactId', contact.id)
-    .order('createdAt', { ascending: true });
+  const statusHistory = await convex().query(api.portal.applicationStatus.listForContact, {
+    contactId: contact.id,
+  });
 
   // Fetch messages
-  const { data: messages } = await supabase
-    .from('ApplicationMessage')
-    .select('id, senderType, content, readAt, createdAt')
-    .eq('contactId', contact.id)
-    .order('createdAt', { ascending: true });
+  const messages = await convex().query(api.portal.applicationMessages.listForContact, {
+    contactId: contact.id,
+  });
 
   // Fetch demos linked to this contact. Filter to active/recent statuses
   // — applicants don't need to see cancelled demos linger in their portal.
@@ -75,15 +71,15 @@ export async function GET(req: NextRequest) {
   });
 
   // Mark unread seller messages as read
-  if (messages?.some((m: { senderType: string; readAt: string | null }) => m.senderType === 'seller' && !m.readAt)) {
+  if (messages.some((m) => m.senderType === 'seller' && !m.readAt)) {
     const unreadIds = messages
-      .filter((m: { senderType: string; readAt: string | null }) => m.senderType === 'seller' && !m.readAt)
-      .map((m: { id: string }) => m.id);
+      .filter((m) => m.senderType === 'seller' && !m.readAt)
+      .map((m) => m.id);
 
-    await supabase
-      .from('ApplicationMessage')
-      .update({ readAt: new Date().toISOString() })
-      .in('id', unreadIds);
+    await convex().mutation(api.portal.applicationMessages.markRead, {
+      contactId: contact.id,
+      ids: unreadIds,
+    });
   }
 
   // Fetch business name for display

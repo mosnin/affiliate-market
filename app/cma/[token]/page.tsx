@@ -15,6 +15,7 @@
 
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { formatCurrency } from '@/lib/formatting';
 import type { CmaPayload, CmaComp } from '@/lib/cma';
 
@@ -68,14 +69,10 @@ const BASIS_NOTE: Record<CmaPayload['stats']['basis'], string> = {
 export default async function CmaPublicPage({ params }: Props) {
   const { token } = await params;
 
-  const { data: row } = await supabase
-    .from('CmaReport')
-    .select('id, spaceId, subjectAddress, title, status, payload')
-    .eq('shareToken', token)
-    .maybeSingle();
+  const row = await convex().query(api.portal.cmaReports.getByShareToken, { shareToken: token });
 
   if (!row) notFound();
-  const report = row as ReportRow;
+  const report = row as unknown as ReportRow;
 
   // A draft is private. Only published reports are visible to an outsider.
   if (report.status !== 'published') notFound();

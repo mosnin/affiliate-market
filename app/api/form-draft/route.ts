@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { sendDraftResumeEmail } from '@/lib/email';
 
@@ -85,35 +86,21 @@ export async function POST(req: NextRequest) {
 
   try {
     // Check for existing non-expired draft for this space + email
-    const { data: existingDraft } = await supabase
-      .from('FormDraft')
-      .select('id, resumeToken, createdAt')
-      .eq('spaceId', spaceId)
-      .eq('email', normalizedEmail)
-      .is('completedAt', null)
-      .gt('expiresAt', new Date().toISOString())
-      .order('createdAt', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const existingDraft = await convex().query(api.portal.formDrafts.findOpenForEmail, {
+      spaceId,
+      email: normalizedEmail,
+      now: new Date().toISOString(),
+    });
 
     if (existingDraft) {
       // Update existing draft
-      const updatePayload: Record<string, unknown> = {
+      await convex().mutation(api.portal.formDrafts.update, {
+        id: existingDraft.id,
         answers,
         currentStep,
         formConfigVersion: formConfigVersion ?? null,
-        updatedAt: new Date().toISOString(),
-      };
-      if (completed) {
-        updatePayload.completedAt = new Date().toISOString();
-      }
-
-      const { error: updateError } = await supabase
-        .from('FormDraft')
-        .update(updatePayload)
-        .eq('id', existingDraft.id);
-
-      if (updateError) throw updateError;
+        completed: completed ?? undefined,
+      });
 
       return NextResponse.json({
         draftId: existingDraft.id,
@@ -125,21 +112,15 @@ export async function POST(req: NextRequest) {
     const resumeToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
 
-    const { data: newDraft, error: insertError } = await supabase
-      .from('FormDraft')
-      .insert({
-        spaceId,
-        email: normalizedEmail,
-        resumeToken,
-        answers,
-        currentStep,
-        formConfigVersion: formConfigVersion ?? null,
-        expiresAt,
-      })
-      .select('id')
-      .single();
-
-    if (insertError) throw insertError;
+    const newDraft = await convex().mutation(api.portal.formDrafts.create, {
+      spaceId,
+      email: normalizedEmail,
+      resumeToken,
+      answers,
+      currentStep,
+      formConfigVersion: formConfigVersion ?? null,
+      expiresAt,
+    });
 
     // Fetch the business name for the email
     const { data: settings } = await supabase
@@ -197,13 +178,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { data: draft, error } = await supabase
-      .from('FormDraft')
-      .select('id, answers, currentStep, formConfigVersion, spaceId, completedAt, expiresAt')
-      .eq('resumeToken', token)
-      .maybeSingle();
-
-    if (error) throw error;
+    const draft = await convex().query(api.portal.formDrafts.getByResumeToken, {
+      resumeToken: token,
+    });
 
     if (!draft) {
       return NextResponse.json({ error: 'Draft not found' }, { status: 404 });

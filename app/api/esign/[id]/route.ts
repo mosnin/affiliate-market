@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSpaceOwner } from '@/lib/api-auth';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { refreshEnvelopeStatus } from '@/lib/esign';
 
 export const runtime = 'nodejs';
@@ -26,12 +26,10 @@ export async function GET(
   const { userId, space } = auth;
 
   // Scope the request to this space before any DocuSign work.
-  const { data: row } = await supabase
-    .from('SignatureRequest')
-    .select('id, spaceId')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const row = await convex().query(api.portal.signatures.getByIdForSpace, {
+    id,
+    spaceId: space.id,
+  });
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const result = await refreshEnvelopeStatus({ userId, signatureRequestId: id });
@@ -50,13 +48,9 @@ export async function GET(
   }
   // no_envelope / refresh_failed — return the stored row's status unchanged so
   // the UI still renders a pill rather than erroring.
-  const { data: stored } = await supabase
-    .from('SignatureRequest')
-    .select(
-      'id, spaceId, dealId, contactId, documentId, envelopeId, subject, signerEmail, signerName, status, signedDocumentUrl, completedAt, createdAt, updatedAt',
-    )
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const stored = await convex().query(api.portal.signatures.getByIdForSpace, {
+    id,
+    spaceId: space.id,
+  });
   return NextResponse.json({ request: stored ?? null });
 }

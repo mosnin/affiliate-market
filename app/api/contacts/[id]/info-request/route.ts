@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 import { sendClientNotification } from '@/lib/client-email';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -35,13 +36,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { allowed } = await checkRateLimit(`contacts:inforeq:${userId}`, 30, 60);
   if (!allowed) return NextResponse.json({ error: 'Too many requests.' }, { status: 429 });
 
-  const { data: inserted, error } = await supabase
-    .from('ClientInfoRequest')
-    .insert({ contactId, spaceId: space.id, message, status: 'pending' })
-    .select('id, message, status, response, createdAt, fulfilledAt')
-    .single();
-  if (error) {
-    logger.error('[contacts/info-request] insert failed', { contactId }, error);
+  let inserted;
+  try {
+    inserted = await convex().mutation(api.portal.clientInfoRequests.create, {
+      contactId,
+      spaceId: space.id,
+      message,
+    });
+  } catch (error) {
+    logger.error('[contacts/info-request] insert failed', { contactId }, error as Error);
     return NextResponse.json({ error: 'Failed to create request.' }, { status: 500 });
   }
 

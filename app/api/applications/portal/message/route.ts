@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 /**
@@ -92,18 +93,15 @@ export async function POST(req: NextRequest) {
     .replace(/[^\w\s.,!?;:'"@#$%&*()\-/+=\[\]{}~`^\n\r\t]/g, '');
 
   // Create the message
-  const { data: message, error: insertError } = await supabase
-    .from('ApplicationMessage')
-    .insert({
+  let message;
+  try {
+    message = await convex().mutation(api.portal.applicationMessages.create, {
       contactId: contact.id,
       spaceId: contact.spaceId,
       senderType: 'applicant',
       content: sanitized,
-    })
-    .select('id, senderType, content, createdAt')
-    .single();
-
-  if (insertError) {
+    });
+  } catch (insertError) {
     console.error('[portal/message] Insert error:', insertError);
     return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
   }

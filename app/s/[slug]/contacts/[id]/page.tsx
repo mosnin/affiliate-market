@@ -148,13 +148,11 @@ export default async function ClientDetailPage({
     signableDocs = (docRows ?? []) as { id: string; label: string; dealId: string }[];
   }
   {
-    const { data: sigRows } = await supabase
-      .from('SignatureRequest')
-      .select('id, documentId, status, signerEmail, signerName, subject, createdAt')
-      .eq('contactId', contact.id)
-      .eq('spaceId', space.id)
-      .order('createdAt', { ascending: false });
-    contactSignatureRequests = (sigRows ?? []) as SignatureRequestLite[];
+    const sigRows = await convex().query(api.portal.signatures.listForContact, {
+      contactId: contact.id,
+      spaceId: space.id,
+    });
+    contactSignatureRequests = sigRows as SignatureRequestLite[];
   }
   const docusignConnected = await isDocusignConnected(userId);
   const latestContactRequest = contactSignatureRequests[0] ?? null;
