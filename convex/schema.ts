@@ -8,6 +8,16 @@ import { notificationsTables } from './schema/notifications';
 import { supportTables } from './schema/support';
 import { marketplaceTables } from './schema/marketplace';
 import { demosTables } from './schema/demos';
+import { contactsTables } from './schema/contacts';
+import { dealsTables } from './schema/deals';
+import { workspaceTables } from './schema/workspace';
+import { orgTables } from './schema/org';
+import { affiliatesTables } from './schema/affiliates';
+import { agentTables } from './schema/agent';
+import { conversationsTables } from './schema/conversations';
+import { swarmvectorTables } from './schema/swarmvector';
+import { infraTables } from './schema/infra';
+import { portalTables } from './schema/portal';
 
 /**
  * Convex schema for Cola — the migration target replacing Supabase/Postgres.
@@ -30,4 +40,14 @@ export default defineSchema({
   ...supportTables,
   ...marketplaceTables,
   ...demosTables,
+  ...contactsTables,
+  ...dealsTables,
+  ...workspaceTables,
+  ...orgTables,
+  ...affiliatesTables,
+  ...agentTables,
+  ...conversationsTables,
+  ...swarmvectorTables,
+  ...infraTables,
+  ...portalTables,
 });
