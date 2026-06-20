@@ -49,7 +49,7 @@ function queryCall(i = 0): { path: string; args: Record<string, unknown> } {
   return { path: typeof ref === 'function' ? (ref as () => string)() : '', args: (args ?? {}) as Record<string, unknown> };
 }
 
-// ── Supabase mock (Space + User only now) ───────────────────────────────────
+// ── Supabase mock (kept for safety; routines route is now fully on Convex) ───
 type Terminal = { data?: unknown; error?: unknown; count?: number | null };
 let supabaseQueue: Terminal[] = [];
 const supabaseCalls: Array<{ table: string; chain: Array<[string, unknown[]]> }> = [];
@@ -156,9 +156,13 @@ interface DueRoutine {
   instruction: string;
 }
 
-/** Set up a tick: due routines → Convex `due`; Space (with ownerId+sub status)
- *  then User (owner→clerkId) → Supabase queue. Stamps surface as Convex
- *  `stampRun` calls (no queueing needed; the mutation mock resolves {ok:true}). */
+// Per-tick data for Convex space + user lookups (was Supabase).
+let spaceRowsForTick: Array<{ id: string; ownerId: string | null; stripeSubscriptionStatus: string }> = [];
+let userRowsForTick: Array<{ id: string; clerkId: string | null }> = [];
+
+/** Set up a tick: due routines → Convex `due`; Space + User → Convex
+ * `listByIds`. Stamps surface as Convex `stampRun` calls. The Convex query
+ * mock branches on the fn path to route each query to its data bucket. */
 function queueTick(opts: {
   due: DueRoutine[];
   activeSpaceIds: string[];
@@ -167,20 +171,13 @@ function queueTick(opts: {
   runnableCount?: number;
 }) {
   dueRoutines = opts.due;
-  const spaceRows = opts.due.map((r) => ({
+  spaceRowsForTick = opts.due.map((r) => ({
     id: r.spaceId,
     ownerId: opts.ownersBySpace?.[r.spaceId] ?? null,
     stripeSubscriptionStatus: opts.activeSpaceIds.includes(r.spaceId) ? 'active' : 'cancelled',
   }));
   const ownerIds = Object.values(opts.ownersBySpace ?? {});
-  const userRows = ownerIds.map((id) => ({ id, clerkId: opts.clerkIdByOwner?.[id] ?? null }));
-  const queue: Terminal[] = [{ data: spaceRows, error: null }];
-  // The User lookup only runs when at least one active space has an ownerId;
-  // mirror the route's branch so we don't queue a phantom response.
-  if (ownerIds.length > 0) {
-    queue.push({ data: userRows, error: null });
-  }
-  supabaseQueue = queue;
+  userRowsForTick = ownerIds.map((id) => ({ id, clerkId: opts.clerkIdByOwner?.[id] ?? null }));
 }
 
 beforeEach(() => {
@@ -188,8 +185,19 @@ beforeEach(() => {
   supabaseQueue = [];
   supabaseCalls.length = 0;
   dueRoutines = [];
-  // due → the per-test due routines; stampRun → {ok:true}.
-  convexQueryMock.mockImplementation(async () => dueRoutines);
+  spaceRowsForTick = [];
+  userRowsForTick = [];
+  // Branch on fn path:
+  //   - api.agent.routines.due → due routines
+  //   - api.workspace.spaces.listByIds → space rows (subscription status + ownerId)
+  //   - api.org.users.listByIds → user rows (id → clerkId)
+  convexQueryMock.mockImplementation(async (ref?: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('agent.routines.due')) return dueRoutines;
+    if (p.includes('workspace.spaces.listByIds')) return spaceRowsForTick;
+    if (p.includes('org.users.listByIds')) return userRowsForTick;
+    return [];
+  });
   convexMutationMock.mockImplementation(async () => ({ ok: true }));
   modalCalls = [];
   modalResponder = () => new Response(JSON.stringify({ ok: true }), { status: 200 });

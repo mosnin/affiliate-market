@@ -126,7 +126,7 @@ import { PATCH as patchConversation, DELETE as deleteConversation } from '@/app/
 function wireConvex() {
   convexQueryMock.mockImplementation(async (ref: unknown) => {
     const p = typeof ref === 'function' ? (ref as () => string)() : '';
-    if (p.includes('conversations.conversations.getById') || (p.includes('conversations.getById') && !p.includes('messages'))) return convexState.conversation;
+    if (p.includes('conversations.getById')) return convexState.conversation;
     if (p.includes('conversations.listBySpace')) return convexState.list;
     if (p.includes('messages.listForConversation')) return convexState.messages;
     if (p.includes('messages.latestPreviewContent')) return convexState.preview;
@@ -233,7 +233,8 @@ describe('GET /api/ai/conversations — list excludes BOTH reserved prefixes', (
     // reserved ones; the route filters them in memory. Seed a manager + team +
     // plain row and assert ONLY the plain seller row survives — the observable
     // equivalent of the old `.not('title','like', prefix)` DB filters.
-    seedTable('User', { data: { id: 'u_1' } });
+    // The route resolves the caller via api.org.users.getByClerkId (Convex).
+    convexState.user = { id: 'u_1' };
     convexState.list = [
       { id: 'c_manager_1', spaceId: 's_seller_1', title: '[MANAGER_COLA] private notes' },
       { id: 'c_team_1', spaceId: 's_seller_1', title: '[COMPANY_CHAT] team room' },
@@ -254,7 +255,7 @@ describe('GET /api/ai/conversations — list excludes BOTH reserved prefixes', (
     // Confirm the route surfaces exactly what the (filtered) query returns and
     // nothing extra: a plain row passes, while a co-seeded manager + team row
     // are excluded by the in-memory reserved-title filter.
-    seedTable('User', { data: { id: 'u_1' } });
+    convexState.user = { id: 'u_1' };
     convexState.list = [
       { id: 'c_seller_1', spaceId: 's_seller_1', title: 'Garcias' },
       { id: 'c_manager_1', spaceId: 's_seller_1', title: '[MANAGER_COLA] private notes' },
@@ -275,11 +276,11 @@ describe('GET /api/ai/conversations — list excludes BOTH reserved prefixes', (
 
 describe('PATCH /api/ai/conversations/[id] — manager conversation denied', () => {
   it('404s renaming a [MANAGER_COLA] conversation even when ownership matches', async () => {
-    // Ownership passes (Space.ownerId -> matching User). The reserved-title
+    // Ownership passes (space.ownerId == user.id via Convex). The reserved-title
     // guard is what denies the rename.
     convexState.conversation = { id: 'c_manager_1', spaceId: 's_seller_1', title: '[MANAGER_COLA] private' };
-    seedTable('Space', { data: { ownerId: 'u_1' } });
-    seedTable('User', { data: { id: 'u_1' } });
+    convexState.space = { id: 's_seller_1', ownerId: 'u_1' };
+    convexState.user = { id: 'u_1' };
 
     const res = await patchConversation(idRequest({ title: 'hijacked' }), idParams);
     expect(res.status).toBe(404);
@@ -289,8 +290,8 @@ describe('PATCH /api/ai/conversations/[id] — manager conversation denied', () 
 describe('DELETE /api/ai/conversations/[id] — manager conversation denied', () => {
   it('404s deleting a [MANAGER_COLA] conversation even when ownership matches', async () => {
     convexState.conversation = { id: 'c_manager_1', spaceId: 's_seller_1', title: '[MANAGER_COLA] private' };
-    seedTable('Space', { data: { ownerId: 'u_1' } });
-    seedTable('User', { data: { id: 'u_1' } });
+    convexState.space = { id: 's_seller_1', ownerId: 'u_1' };
+    convexState.user = { id: 'u_1' };
 
     const res = await deleteConversation(idRequest(), idParams);
     expect(res.status).toBe(404);
@@ -298,8 +299,8 @@ describe('DELETE /api/ai/conversations/[id] — manager conversation denied', ()
 
   it('404s deleting a [COMPANY_CHAT] conversation even when ownership matches', async () => {
     convexState.conversation = { id: 'c_team_1', spaceId: 's_seller_1', title: '[COMPANY_CHAT] team' };
-    seedTable('Space', { data: { ownerId: 'u_1' } });
-    seedTable('User', { data: { id: 'u_1' } });
+    convexState.space = { id: 's_seller_1', ownerId: 'u_1' };
+    convexState.user = { id: 'u_1' };
 
     const res = await deleteConversation(idRequest(), idParams);
     expect(res.status).toBe(404);

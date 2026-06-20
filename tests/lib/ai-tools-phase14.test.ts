@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// ── Per-table mock state (kept for tools still hitting Supabase) ────────────
 let mockByTable: Record<
   string,
   { rows?: Array<Record<string, unknown>>; error?: { message: string } | null; single?: Record<string, unknown> | null }
@@ -42,6 +43,28 @@ vi.mock('@/lib/supabase', () => {
     return chain;
   }
   return { supabase: { from: vi.fn((table: string) => makeChain(table)) } };
+});
+
+// ── Convex mock — Contact/Deal/Activity operations migrated from Supabase ────
+// All phase-14 tools use convex().query(api.contacts.contacts.getById, ...) and
+// convex().mutation(api.contacts.{activity.create,contacts.update}, ...).
+// For Deal tools: api.deals.deals.getById / api.deals.deals.update.
+// We branch on the fn path; per-test data is read from `mockByTable` just like
+// the Supabase mock, keyed by the same table names (Contact, Deal, ...) so test
+// bodies don't need to change.
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
 });
 
 const { syncContactMock, syncDealMock } = vi.hoisted(() => ({
@@ -80,6 +103,44 @@ beforeEach(() => {
   mockByTable = {};
   syncContactMock.mockClear();
   syncDealMock.mockClear();
+  convexQueryMock.mockReset();
+  convexMutationMock.mockReset();
+  // Route Convex queries to the same mockByTable data the Supabase mock used.
+  // Contact tools call api.contacts.contacts.getById → Contact table single.
+  // Deal tools call api.deals.deals.getById → Deal table single.
+  // Mutations (activity.create, contacts.update, deals.update) return the
+  // updated row from the same table single, or a no-op void.
+  convexQueryMock.mockImplementation(async (ref?: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('contacts.contacts.getById') || p.includes('contacts.contacts.findByEmailInSpace') || p.includes('contacts.contacts.findByPhoneInSpace')) {
+      const override = mockByTable['Contact'];
+      const raw = override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+      // Ensure companyId: null so the workspace-only filter (companyId !== null)
+      // passes for valid contacts that don't explicitly set the field.
+      if (raw && !Object.prototype.hasOwnProperty.call(raw, 'companyId')) {
+        return { ...raw, companyId: null };
+      }
+      return raw;
+    }
+    if (p.includes('deals.deals.getById')) {
+      const override = mockByTable['Deal'];
+      return override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+    }
+    return null;
+  });
+  convexMutationMock.mockImplementation(async (ref?: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('contacts.contacts.update')) {
+      const override = mockByTable['Contact'];
+      const raw = override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+      if (raw && !Object.prototype.hasOwnProperty.call(raw, 'companyId')) {
+        return { ...raw, companyId: null };
+      }
+      return raw;
+    }
+    // activity.create, deals.update → return void/null (non-fatal)
+    return null;
+  });
 });
 
 // ── log_call ─────────────────────────────────────────────────────────────
