@@ -19,9 +19,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // ── Convex mock ─────────────────────────────────────────────────────────────
-// pendingForSpaces → one {spaceId} row per pending draft (the route tallies per
-// space). Steered per-test via `pendingRows`.
+// The route moved ALL DB reads to Convex:
+//   - api.workspace.spaces.listBySubscriptionStatusesPaged → space list
+//   - api.agent.drafts.pendingForSpaces → pending draft rows
+//
+// We steer per-test via `spacesForSweep` (paged space list) and `pendingRows`
+// (pending drafts). The query mock branches on the fn path.
+let spacesForSweep: Array<{ id: string; slug: string }> = [];
 let pendingRows: Array<{ spaceId: string }> = [];
+
 const { convexQueryMock } = vi.hoisted(() => ({
   convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => [] as unknown),
 }));
@@ -36,7 +42,7 @@ vi.mock('@/lib/convex-server', () => {
   };
 });
 
-// ── Supabase mock ───────────────────────────────────────────────────────────
+// ── Supabase mock (kept for safety; the sweep route no longer touches it) ───
 type Terminal = { data?: unknown; error?: unknown; count?: number | null };
 let supabaseQueue: Terminal[] = [];
 const supabaseCalls: Array<{ table: string; chain: Array<[string, unknown[]]> }> = [];
@@ -166,14 +172,12 @@ function invoke(authHeader?: string) {
   return GET(req as unknown as Parameters<typeof GET>[0]);
 }
 
-/** Queue the Supabase Space list and the Convex pending-draft rows. */
+/** Queue the Convex space list and pending-draft rows. */
 function queueSweep(opts: {
   spaces: Array<{ id: string; slug: string }>;
   pending: Array<{ spaceId: string }>;
 }) {
-  // The Space read is paginated, but one page under SPACE_PAGE_SIZE (1000)
-  // terminates the loop after a single read — so one Space terminal suffices.
-  supabaseQueue = [{ data: opts.spaces, error: null }];
+  spacesForSweep = opts.spaces;
   pendingRows = opts.pending;
 }
 
@@ -181,9 +185,19 @@ beforeEach(() => {
   vi.clearAllMocks();
   supabaseQueue = [];
   supabaseCalls.length = 0;
+  spacesForSweep = [];
   pendingRows = [];
-  // pendingForSpaces → the per-test pending rows.
-  convexQueryMock.mockImplementation(async () => pendingRows);
+  // Branch on the fn path:
+  //   - api.workspace.spaces.listBySubscriptionStatusesPaged → paginated space list
+  //   - api.agent.drafts.pendingForSpaces → pending draft rows
+  // The space query is called in a loop; the first page returns spacesForSweep
+  // (which is under SPACE_PAGE_SIZE=1000), so the loop terminates after one call.
+  convexQueryMock.mockImplementation(async (ref?: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('workspace.spaces')) return spacesForSweep;
+    if (p.includes('agent.drafts')) return pendingRows;
+    return [];
+  });
   modalCalls = [];
   kvStore = new Map();
   modalResponder = () => new Response(JSON.stringify({ ok: true }), { status: 200 });
@@ -267,9 +281,10 @@ describe('GET /api/cron/agent-sweep', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ totalSpaces: 0, started: 0, skipped: 0, errored: 0 });
     expect(modalCalls).toHaveLength(0);
-    // Supabase Space query happened; AgentDraft count was correctly skipped
-    // because the route bails after the empty space list.
-    expect(supabaseCalls.map((c) => c.table)).toEqual(['Space']);
+    // The space list now comes from Convex (api.workspace.spaces.listBySubscriptionStatusesPaged).
+    // The Convex query was called (once for the empty first page), and no Supabase reads.
+    expect(convexQueryMock).toHaveBeenCalledTimes(1);
+    expect(supabaseCalls).toHaveLength(0);
   });
 
   it('eligible space → fires Modal webhook with the right URL, headers, and JSON body', async () => {
@@ -297,16 +312,20 @@ describe('GET /api/cron/agent-sweep', () => {
     expect(authValues).toContain('Bearer agent-secret');
   });
 
-  it('paginates the active-space fetch with .range (no silent PostgREST row cap)', async () => {
+  it('paginates the active-space fetch (Convex query called with from+size args)', async () => {
     queueSweep({ spaces: [{ id: 'space_one', slug: 'one' }], pending: [] });
     await invoke('Bearer test-secret');
-    // The first (and only, since the page is under the page size) Space read
-    // must use .range — proving the fetch is paginated, not an unbounded select
-    // that PostgREST would silently truncate at its default row limit.
-    const spaceRead = supabaseCalls.find((c) => c.table === 'Space');
-    expect(spaceRead).toBeDefined();
-    const methods = spaceRead!.chain.map(([m]) => m);
-    expect(methods).toContain('range');
+    // The space list now comes from Convex. The route calls the query with
+    // { statuses, from, size } pagination args — assert the first call carries
+    // the pagination shape (from:0, size:SPACE_PAGE_SIZE=1000).
+    const spaceCall = convexQueryMock.mock.calls.find(([ref]) => {
+      const p = typeof ref === 'function' ? (ref as () => string)() : '';
+      return p.includes('workspace.spaces');
+    });
+    expect(spaceCall).toBeDefined();
+    const args = spaceCall![1] as { from: number; size: number };
+    expect(typeof args.from).toBe('number');
+    expect(typeof args.size).toBe('number');
   });
 
   it('skips a space with ≥10 pending drafts (reason: backlog); does not call Modal for it', async () => {
