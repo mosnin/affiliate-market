@@ -118,7 +118,6 @@ export async function PUT(req: NextRequest) {
     await convex().mutation(api.org.companies.updateById, {
       id: ctx.company.id,
       // The form-config jsonb columns are accepted by the patch validator (v.any()).
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       patch: { [column]: formConfig } as any,
     });
   } catch (updateErr) {
@@ -192,7 +191,6 @@ export async function DELETE(req: NextRequest) {
       id: ctx.company.id,
       // `updates` is the runtime-built form-config reset bag; the jsonb columns are
       // accepted by the patch validator (v.any()).
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       patch: updates as any,
     });
   } catch (updateErr) {

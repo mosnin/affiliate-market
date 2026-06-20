@@ -338,7 +338,6 @@ export async function PATCH(req: Request) {
       id: ctx.company.id,
       // `updates` is the runtime-validated writable bag; Convex re-validates each
       // field against the patch validator at the boundary.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       patch: updates as any,
     });
   } catch (updateErr) {

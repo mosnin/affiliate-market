@@ -82,7 +82,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const bodyBuyer = formConfigSchema.safeParse(body.buyerFormConfig);
 
   // 1. Load the company's current standard forms (source of truth).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let company: { companyFormConfig: any; companyRentalFormConfig: any; companyBuyerFormConfig: any } | null;
   try {
     company = await convex().query(api.org.companies.getById, { id: ctx.company.id });

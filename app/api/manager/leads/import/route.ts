@@ -243,7 +243,6 @@ export async function POST(req: NextRequest) {
     for (let i = 0; i < contactsToInsert.length; i += BATCH_SIZE) {
       const batch = contactsToInsert.slice(i, i + BATCH_SIZE);
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await convex().mutation(api.contacts.contacts.createMany, { rows: batch as any });
         imported += batch.length;
       } catch (insertError) {
