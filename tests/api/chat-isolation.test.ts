@@ -50,20 +50,16 @@ vi.mock('@/lib/space', () => ({
   getSpaceFromSlug: vi.fn(async () => ({ id: 's_seller_1', slug: 'jane', ownerId: 'u_1' })),
 }));
 
-// ── Convex mock — Conversation + Message reads ──────────────────────────────
+// ── Convex mock — ALL data reads (conversations, messages, users, spaces) ────
 //
-// The routes call convex().query against api.conversations.{conversations,
-// messages}.*. We steer each call by branching on the fn path (call the path
-// proxy: `typeof ref === 'function' ? ref() : ''`). Per scenario the test seeds:
-//   - convexState.conversation : the row api.conversations.conversations.getById
-//                                returns (or null)
-//   - convexState.list         : rows api.conversations.conversations.listBySpace
-//                                returns (the route filters reserved in memory)
-//   - convexState.messages     : rows api.conversations.messages.listForConversation
-//                                returns
-//   - convexState.preview      : the { [conversationId]: content } map
-//                                api.conversations.messages.latestPreviewContent
-//                                returns
+// All routes in this test are fully migrated to Convex. We steer each call by
+// branching on the fn path. Per scenario the test seeds:
+//   - convexState.conversation : api.conversations.conversations.getById → ConvRow | null
+//   - convexState.list         : api.conversations.conversations.listBySpace → ConvRow[]
+//   - convexState.messages     : api.conversations.messages.listForConversation → MsgRow[]
+//   - convexState.preview      : api.conversations.messages.latestPreviewContent → map
+//   - convexState.user         : api.org.users.getByClerkId → { id } | null
+//   - convexState.space        : api.workspace.spaces.getById → { id, ownerId } | null
 
 type ConvRow = { id: string; spaceId: string; title: string };
 type MsgRow = { id: string; role: string; content: string; blocks: unknown; createdAt: string };
@@ -73,7 +69,9 @@ const convexState: {
   list: ConvRow[];
   messages: MsgRow[];
   preview: Record<string, string>;
-} = { conversation: null, list: [], messages: [], preview: {} };
+  user: { id: string } | null;
+  space: { id: string; ownerId: string } | null;
+} = { conversation: null, list: [], messages: [], preview: {}, user: { id: 'u_1' }, space: null };
 
 const { convexQueryMock } = vi.hoisted(() => ({
   convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
@@ -90,42 +88,24 @@ vi.mock('@/lib/convex-server', () => {
   };
 });
 
-// ── Supabase mock (User + Space ownership only) ─────────────────────────────
-//
-// A per-table response queue. Each table name maps to a FIFO list of results
-// that successive queries against that table resolve to (either via
-// `.maybeSingle()` / `.single()` or by awaiting the chain directly). The
-// Conversation/Message tables moved to Convex, so only User and Space flow
-// through here now — but the queue keeps any table name for safety.
-
+// ── Supabase mock (kept for safety; these routes no longer use it) ────────────
 type TableResult = { data?: unknown; error?: unknown };
-
 const tableQueues: Record<string, TableResult[]> = {};
 
 function seedTable(table: string, ...results: TableResult[]) {
   tableQueues[table] = (tableQueues[table] ?? []).concat(results);
 }
 
-function nextResult(table: string): TableResult {
-  const q = tableQueues[table];
-  if (q && q.length > 0) return q.shift() as TableResult;
-  // Default: no rows. The route treats this as "not found" / empty.
-  return { data: null };
-}
-
-function makeChain(table: string) {
-  // `result` is resolved lazily on the terminal call so that the chain can be
-  // built first and the queued result pulled when the query actually runs.
+function makeChain(_table: string) {
   const chain: Record<string, unknown> = {};
   const passthroughMethods = ['select', 'eq', 'order', 'limit', 'in', 'insert', 'update', 'delete', 'not'];
   for (const m of passthroughMethods) {
     chain[m] = vi.fn(() => chain);
   }
-  chain.maybeSingle = vi.fn(() => Promise.resolve(nextResult(table)));
-  chain.single = vi.fn(() => Promise.resolve(nextResult(table)));
-  // Awaiting the chain directly (list queries) resolves the next result.
+  chain.maybeSingle = vi.fn(() => Promise.resolve({ data: null }));
+  chain.single = vi.fn(() => Promise.resolve({ data: null }));
   (chain as { then: unknown }).then = (resolve: (v: unknown) => unknown) =>
-    Promise.resolve(nextResult(table)).then(resolve);
+    Promise.resolve({ data: null }).then(resolve);
   return chain;
 }
 
@@ -140,13 +120,18 @@ import { PATCH as patchConversation, DELETE as deleteConversation } from '@/app/
 
 // ── Convex steering ─────────────────────────────────────────────────────────
 // Wire the query mock to the per-scenario convexState, branching on fn path.
+// The messages route calls: getById (conv), getByClerkId (user), getById (space),
+// listForConversation (messages). The conversations route calls: getByClerkId
+// (user), listBySpace (convs), latestPreviewContent (previews).
 function wireConvex() {
   convexQueryMock.mockImplementation(async (ref: unknown) => {
     const p = typeof ref === 'function' ? (ref as () => string)() : '';
-    if (p.includes('conversations.getById')) return convexState.conversation;
+    if (p.includes('conversations.conversations.getById') || (p.includes('conversations.getById') && !p.includes('messages'))) return convexState.conversation;
     if (p.includes('conversations.listBySpace')) return convexState.list;
     if (p.includes('messages.listForConversation')) return convexState.messages;
     if (p.includes('messages.latestPreviewContent')) return convexState.preview;
+    if (p.includes('org.users.getByClerkId')) return convexState.user;
+    if (p.includes('workspace.spaces.getById')) return convexState.space;
     return null;
   });
 }
@@ -158,6 +143,9 @@ beforeEach(() => {
   convexState.list = [];
   convexState.messages = [];
   convexState.preview = {};
+  // Default: caller is u_1, space owned by u_1 (so ownership check passes).
+  convexState.user = { id: 'u_1' };
+  convexState.space = null;
   wireConvex();
 });
 
@@ -198,8 +186,8 @@ describe('GET /api/ai/messages — manager/team conversations are denied', () =>
     // The caller legitimately owns the space (manager_owner owns their seller
     // space). Ownership passes; the reserved-title guard is what denies.
     convexState.conversation = { id: 'c_manager_1', spaceId: 's_seller_1', title: '[MANAGER_COLA] private notes' };
-    seedTable('User', { data: { id: 'u_1' } });
-    seedTable('Space', { data: { id: 's_seller_1', ownerId: 'u_1' } });
+    convexState.user = { id: 'u_1' };
+    convexState.space = { id: 's_seller_1', ownerId: 'u_1' };
     // If the guard were missing, this is the row set that would leak.
     convexState.messages = [{ id: 'm_1', role: 'assistant', content: 'manager secret', blocks: null, createdAt: '2026-01-01' }];
 
@@ -212,8 +200,8 @@ describe('GET /api/ai/messages — manager/team conversations are denied', () =>
 
   it('404s a [COMPANY_CHAT] conversation and returns NO message rows', async () => {
     convexState.conversation = { id: 'c_team_1', spaceId: 's_seller_1', title: '[COMPANY_CHAT] team room' };
-    seedTable('User', { data: { id: 'u_1' } });
-    seedTable('Space', { data: { id: 's_seller_1', ownerId: 'u_1' } });
+    convexState.user = { id: 'u_1' };
+    convexState.space = { id: 's_seller_1', ownerId: 'u_1' };
     convexState.messages = [{ id: 'm_1', role: 'assistant', content: 'team secret', blocks: null, createdAt: '2026-01-01' }];
 
     const res = await getMessages(messagesRequest('c_team_1'));
@@ -225,8 +213,8 @@ describe('GET /api/ai/messages — manager/team conversations are denied', () =>
 
   it('serves a plain seller conversation (control: the guard is not over-broad)', async () => {
     convexState.conversation = { id: 'c_seller_1', spaceId: 's_seller_1', title: 'Follow up with the Garcias' };
-    seedTable('User', { data: { id: 'u_1' } });
-    seedTable('Space', { data: { id: 's_seller_1', ownerId: 'u_1' } });
+    convexState.user = { id: 'u_1' };
+    convexState.space = { id: 's_seller_1', ownerId: 'u_1' };
     convexState.messages = [{ id: 'm_1', role: 'user', content: 'hi', blocks: null, createdAt: '2026-01-01' }];
 
     const res = await getMessages(messagesRequest('c_seller_1'));
