@@ -107,6 +107,22 @@ beforeEach(() => {
   notifyNewDealMock.mockClear();
   convexQueryMock.mockReset();
   convexMutationMock.mockReset();
+  // Route Convex queries to mockByTable:
+  //   - api.contacts.contacts.getById → Contact table single (with companyId: null)
+  //   - api.demos.demos.create mutation → handled by convexMutationMock default
+  //   - api.contacts.activity.create / contacts.contacts.findByPhoneInSpace → null/void
+  convexQueryMock.mockImplementation(async (ref?: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('contacts.contacts.getById') || p.includes('contacts.contacts.findByPhoneInSpace')) {
+      const override = mockByTable['Contact'];
+      const raw = override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+      if (raw && !Object.prototype.hasOwnProperty.call(raw, 'companyId')) {
+        return { ...raw, companyId: null };
+      }
+      return raw;
+    }
+    return null;
+  });
 });
 
 // ── move_deal_stage ──────────────────────────────────────────────────────
