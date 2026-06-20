@@ -1,21 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ── Mock supabase chain + email delivery + logger ──────────────────────────
+// ── Per-table mock state ───────────────────────────────────────────────────
 let mockByTable: Record<
   string,
   { rows?: Array<Record<string, unknown>>; error?: { message: string } | null; single?: Record<string, unknown> | null }
 > = {};
 
+// ── Supabase mock (kept for safety; send_email tool is fully on Convex now) ─
 vi.mock('@/lib/supabase', () => {
-  function makeChain(table: string): Record<string, unknown> {
-    const override = mockByTable[table];
-    const rows = override?.rows ?? [];
-    const error = override?.error ?? null;
-    const single = override?.single;
-
-    const termThen = Promise.resolve({ data: rows, error });
-    const singleThen = Promise.resolve({ data: single ?? rows[0] ?? null, error });
-
+  function makeChain(_table: string): Record<string, unknown> {
+    const termThen = Promise.resolve({ data: [], error: null });
+    const singleThen = Promise.resolve({ data: null, error: null });
     const chain: Record<string, unknown> = {
       select: vi.fn(() => chain),
       eq: vi.fn(() => chain),
@@ -32,6 +27,26 @@ vi.mock('@/lib/supabase', () => {
     return chain;
   }
   return { supabase: { from: vi.fn((table: string) => makeChain(table)) } };
+});
+
+// ── Convex mock — send_email uses Convex for contacts, settings, and audit ──
+// api.contacts.contacts.getById → Contact row (with companyId: null for workspace contacts)
+// api.contacts.contacts.findByEmailInSpace → same, or null for unknowns
+// api.workspace.settings.getBySpace → SpaceSetting row (businessName)
+// api.contacts.activity.create, api.infra.files.listByIdsForSpace → non-fatal
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
 });
 
 const { sendEmailFromCRMMock } = vi.hoisted(() => ({ sendEmailFromCRMMock: vi.fn(async () => undefined) }));
@@ -51,6 +66,29 @@ function makeCtx(): ToolContext {
 beforeEach(() => {
   mockByTable = {};
   sendEmailFromCRMMock.mockClear();
+  convexQueryMock.mockReset();
+  convexMutationMock.mockReset();
+  // Route Convex queries to mockByTable:
+  //   Contact queries → Contact table single (companyId: null injected if absent).
+  //   SpaceSetting → SpaceSetting table single.
+  //   Mutations (activity.create) → void/null.
+  convexQueryMock.mockImplementation(async (ref?: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('contacts.contacts.getById') || p.includes('contacts.contacts.findByEmailInSpace')) {
+      const override = mockByTable['Contact'];
+      const raw = override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+      if (raw && !Object.prototype.hasOwnProperty.call(raw, 'companyId')) {
+        return { ...raw, companyId: null };
+      }
+      return raw;
+    }
+    if (p.includes('workspace.settings.getBySpace')) {
+      const override = mockByTable['SpaceSetting'];
+      return override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+    }
+    return null;
+  });
+  convexMutationMock.mockResolvedValue(null);
 });
 
 describe('sendEmailTool schema', () => {
