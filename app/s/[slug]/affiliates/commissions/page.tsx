@@ -136,6 +136,7 @@ export default async function AffiliateCommissionsPage({
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium hidden md:table-cell')}>Order</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-right font-medium')}>Amount</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Status</th>
+                  <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium hidden lg:table-cell')}>Tier</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-right font-medium')}></th>
                 </tr>
               </thead>
@@ -167,6 +168,13 @@ export default async function AffiliateCommissionsPage({
                       )}
                       {c.status !== 'approved' && c.status !== 'paid' && c.status !== 'pending' && c.status !== 'rejected' && (
                         <span className={cn(CHIP_NEUTRAL)}>{c.status}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-middle hidden lg:table-cell">
+                      {c.level === 2 ? (
+                        <span className={cn(CHIP_NEUTRAL)}>Tier 2</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Direct</span>
                       )}
                     </td>
                     <td className="px-4 py-3 align-middle text-right">

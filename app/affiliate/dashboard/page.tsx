@@ -275,6 +275,7 @@ export default async function AffiliateDashboardPage() {
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Order</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-right font-medium')}>Amount</th>
                   <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium')}>Status</th>
+                  <th className={cn(SECTION_LABEL, 'px-4 py-2.5 text-left font-medium hidden sm:table-cell')}>Type</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
@@ -301,6 +302,13 @@ export default async function AffiliateDashboardPage() {
                       )}
                       {c.status !== 'approved' && c.status !== 'paid' && c.status !== 'pending' && c.status !== 'rejected' && (
                         <span className={cn(CHIP_NEUTRAL)}>{c.status}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-middle hidden sm:table-cell">
+                      {c.level === 2 ? (
+                        <span className={cn(CHIP_NEUTRAL)}>Recruiter</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Direct</span>
                       )}
                     </td>
                   </tr>

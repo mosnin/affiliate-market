@@ -357,6 +357,7 @@ export const listForSpace = query({
       amountCents: c.amountCents ?? 0,
       currency: c.currency ?? 'usd',
       status: c.status,
+      level: c.level ?? 1,
       createdAt: c.createdAt,
       approvedAt: c.approvedAt ?? null,
     }));

@@ -38,6 +38,7 @@ export interface CommissionRow {
   amountCents: number;
   currency: string;
   status: CommissionStatus;
+  level: number;
   createdAt: string;
   approvedAt: string | null;
 }
@@ -92,7 +93,7 @@ export async function listCommissions(
 ): Promise<CommissionRow[]> {
   let query = supabase
     .from('AffiliateCommission')
-    .select('id, partnerId, referralId, orderId, amountCents, currency, status, createdAt, approvedAt')
+    .select('id, partnerId, referralId, orderId, amountCents, currency, status, level, createdAt, approvedAt')
     .eq('spaceId', spaceId)
     .order('createdAt', { ascending: false })
     .limit(200);
@@ -118,6 +119,7 @@ export async function listCommissions(
     amountCents: r.amountCents ?? 0,
     currency: r.currency ?? 'usd',
     status: r.status as CommissionStatus,
+    level: r.level ?? 1,
     createdAt: r.createdAt,
     approvedAt: r.approvedAt ?? null,
   }));
@@ -127,14 +129,14 @@ export async function listCommissions(
 export async function listCommissionsForPartner(
   partnerId: string,
   limit = 50,
-): Promise<Array<Pick<CommissionRow, 'id' | 'orderId' | 'amountCents' | 'currency' | 'status' | 'createdAt'>>> {
+): Promise<Array<Pick<CommissionRow, 'id' | 'orderId' | 'amountCents' | 'currency' | 'status' | 'level' | 'createdAt'>>> {
   const { data } = await supabase
     .from('AffiliateCommission')
-    .select('id, orderId, amountCents, currency, status, createdAt')
+    .select('id, orderId, amountCents, currency, status, level, createdAt')
     .eq('partnerId', partnerId)
     .order('createdAt', { ascending: false })
     .limit(limit);
-  return (data ?? []) as Array<
-    Pick<CommissionRow, 'id' | 'orderId' | 'amountCents' | 'currency' | 'status' | 'createdAt'>
+  return (data ?? []).map((r) => ({ ...r, level: r.level ?? 1 })) as Array<
+    Pick<CommissionRow, 'id' | 'orderId' | 'amountCents' | 'currency' | 'status' | 'level' | 'createdAt'>
   >;
 }
