@@ -119,8 +119,45 @@ beforeEach(() => {
   recallMemoryMock.mockReset();
   convexQueryMock.mockReset();
   convexMutationMock.mockReset();
-  // Calendar reads default to empty; the block-time mutation returns a row.
-  convexQueryMock.mockResolvedValue([]);
+  // Default Convex query routing: branch on fn path so each tool finds its data.
+  //
+  // - Calendar/Demo queries (check_availability) → path-steered in per-test overrides
+  //   (mockImplementation) when needed; default to [].
+  // - Contact queries (find_quiet_hot_persons, find_overdue_followups, log_sms_sent,
+  //   summarize_seller, assign_lead_to_seller) → read from mockByTable['Contact'].
+  // - User/CompanyMembership queries → read from their respective mockByTable entries.
+  // - Any other query → [].
+  convexQueryMock.mockImplementation(async (ref?: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    // Contact-list queries return rows from mockByTable.Contact.
+    if (p.includes('contacts.contacts.topByScoreForSpace') || p.includes('contacts.contacts.followUpsForSpaces')) {
+      return (mockByTable['Contact']?.rows ?? []).map((r) =>
+        Object.prototype.hasOwnProperty.call(r, 'companyId') ? r : { ...r, companyId: null },
+      );
+    }
+    // Contact-single queries (log_sms_sent, summarize_seller, assign_lead_to_seller).
+    if (p.includes('contacts.contacts.getById') || p.includes('contacts.contacts.findByEmailInSpace') || p.includes('contacts.contacts.findByPhoneInSpace')) {
+      const override = mockByTable['Contact'];
+      const raw = override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+      if (raw && !Object.prototype.hasOwnProperty.call(raw, 'companyId')) return { ...raw, companyId: null };
+      return raw;
+    }
+    // Activity list (find_quiet_hot_persons).
+    if (p.includes('contacts.activity.listForContacts')) {
+      return mockByTable['ContactActivity']?.rows ?? [];
+    }
+    // User/CompanyMembership queries for manager-gated tools.
+    if (p.includes('org.users.getByClerkId') || p.includes('org.users.getById')) {
+      const override = mockByTable['User'];
+      return override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+    }
+    if (p.includes('org.memberships')) {
+      return mockByTable['CompanyMembership']?.rows ?? [];
+    }
+    // Calendar/Demo (check_availability, block_time) — default empty; tests can
+    // override with mockImplementation for per-case branching.
+    return [];
+  });
   convexMutationMock.mockResolvedValue({ id: 'ev_default', date: '2026-05-01', time: '14:00', title: 'Blocked' });
 });
 
