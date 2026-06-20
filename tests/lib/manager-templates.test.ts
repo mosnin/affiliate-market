@@ -140,6 +140,23 @@ vi.mock('@/lib/supabase', () => {
 // returns the existing MessageTemplate copies a test seeds; the mutations
 // return the create/update result shapes the route expects.
 const convexExistingCopies: Array<Record<string, unknown>> = [];
+
+// Per-test state for org.templates.* + org.memberships.* + workspace.spaces.* queries.
+const convexTemplateState: {
+  row: Record<string, unknown> | null;
+  list: Array<Record<string, unknown>>;
+} = { row: null, list: [] };
+const convexMembershipsState: { rows: Array<Record<string, unknown>> } = { rows: [] };
+const convexSpacesState: { rows: Array<Record<string, unknown>> } = { rows: [] };
+
+// Capture args for org.templates.* mutations so tests can assert on payloads.
+const convexOrgMutArgs: {
+  create: Array<Record<string, unknown>>;
+  applyPatch: Array<Record<string, unknown>>;
+  deleteCount: number;
+  stampPublished: Array<Record<string, unknown>>;
+} = { create: [], applyPatch: [], deleteCount: 0, stampPublished: [] };
+
 const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
   convexQueryMock: vi.fn(),
   convexMutationMock: vi.fn(),
@@ -239,6 +256,11 @@ function deleteReq(url: string): Request {
 // counters did.
 const convexCreateArgs: Array<Record<string, unknown>> = [];
 const convexUpdateArgs: Array<Record<string, unknown>> = [];
+// Capture args from org.templates mutations so assertions can inspect payloads.
+const convexTemplateCreateArgs: Array<Record<string, unknown>> = [];
+const convexTemplatePatchArgs: Array<Record<string, unknown>> = [];
+const convexTemplateDeleteArgs: Array<Record<string, unknown>> = [];
+const convexTemplateStampArgs: Array<Record<string, unknown>> = [];
 
 beforeEach(() => {
   mockByTable = {};
@@ -249,20 +271,74 @@ beforeEach(() => {
   convexExistingCopies.length = 0;
   convexCreateArgs.length = 0;
   convexUpdateArgs.length = 0;
+  convexTemplateCreateArgs.length = 0;
+  convexTemplatePatchArgs.length = 0;
+  convexTemplateDeleteArgs.length = 0;
+  convexTemplateStampArgs.length = 0;
   convexQueryMock.mockReset();
   convexMutationMock.mockReset();
-  // findCopiesBySource → the existing MessageTemplate copies a test seeds.
-  convexQueryMock.mockImplementation(async () => convexExistingCopies);
-  // createFromSource → { id }; updateFromSource → { updated: true }. Branch on
-  // the dotted api path so call order doesn't matter, and record the args. The
-  // path proxy yields its dotted path when CALLED (ref()), not via String().
+  // Route Convex queries by path:
+  //   org.templates.getByIdScoped → mockByTable.CompanyTemplate.single
+  //   org.memberships.listByCompany → mockByTable.CompanyMembership.rows
+  //   workspace.spaces.listByCompanyId → mockByTable.Space.rows
+  //   support.templates.findCopiesBySource → convexExistingCopies
+  convexQueryMock.mockImplementation(async (ref?: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('org.templates.getByIdScoped')) {
+      const override = mockByTable['CompanyTemplate'];
+      return override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+    }
+    if (p.includes('org.templates.listByCompany')) {
+      return mockByTable['CompanyTemplate']?.rows ?? [];
+    }
+    if (p.includes('org.memberships.listByCompany')) {
+      return mockByTable['CompanyMembership']?.rows ?? [];
+    }
+    if (p.includes('workspace.spaces.listByCompanyId')) {
+      return mockByTable['Space']?.rows ?? [];
+    }
+    if (p.includes('support.templates.findCopiesBySource')) {
+      return convexExistingCopies;
+    }
+    return null;
+  });
+  // Route Convex mutations by path, capturing args for assertions:
+  //   org.templates.create → return mockByTable.CompanyTemplate.single (the inserted row)
+  //   org.templates.applyPatch → return mockByTable.CompanyTemplate.single (the updated row)
+  //   org.templates.deleteByIdScoped → return templateId string (non-null = found)
+  //   org.templates.stampPublished → no-op (stamp success)
+  //   support.templates.createFromSource → return { id }
+  //   support.templates.updateFromSource → return { updated: true }
   convexMutationMock.mockImplementation(async (ref: unknown, args: Record<string, unknown>) => {
     const p = typeof ref === 'function' ? String((ref as () => string)()) : String(ref);
-    if (p.includes('createFromSource')) {
+    if (p.includes('org.templates.create')) {
+      convexTemplateCreateArgs.push(args);
+      const override = mockByTable['CompanyTemplate'];
+      return override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+    }
+    if (p.includes('org.templates.applyPatch')) {
+      convexTemplatePatchArgs.push(args);
+      const override = mockByTable['CompanyTemplate'];
+      const base = override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+      // Merge the patch into the base row so the route's `updated` check passes.
+      return base ? { ...base, ...((args.patch as Record<string, unknown>) ?? {}) } : null;
+    }
+    if (p.includes('org.templates.deleteByIdScoped')) {
+      convexTemplateDeleteArgs.push(args);
+      // Return the templateId string to signal found; null = 404.
+      const override = mockByTable['CompanyTemplate'];
+      const row = override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+      return row ? (args.id as string) : null;
+    }
+    if (p.includes('org.templates.stampPublished')) {
+      convexTemplateStampArgs.push(args);
+      return undefined;
+    }
+    if (p.includes('support.templates.createFromSource')) {
       convexCreateArgs.push(args);
       return { id: `mt_${convexCreateArgs.length}` };
     }
-    if (p.includes('updateFromSource')) {
+    if (p.includes('support.templates.updateFromSource')) {
       convexUpdateArgs.push(args);
       return { updated: true };
     }
@@ -382,11 +458,10 @@ describe('POST /api/manager/templates', () => {
     const json = (await res.json()) as Record<string, unknown>;
     expect(json.version).toBe(1);
 
-    // The insert payload should have been primed with version=1.
-    const inserted = insertCalls.CompanyTemplate ?? [];
-    expect(inserted.length).toBeGreaterThanOrEqual(1);
-    const lastInsert = inserted[inserted.length - 1] ?? {};
-    expect(lastInsert.version).toBe(1);
+    // The Convex create mutation should have been called with the payload.
+    // The route derives version=1 on the Convex side (Convex schema sets it),
+    // but we verify the returned row (from mockByTable) carries version=1.
+    expect(convexTemplateCreateArgs.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -429,13 +504,13 @@ describe('PATCH /api/manager/templates/[id]', () => {
     // else, the assertion below will make that obvious.
     expect(res.status).toBe(200);
 
-    const updates = updateCalls.CompanyTemplate ?? [];
-    expect(updates.length).toBeGreaterThanOrEqual(1);
-    const payload = updates[updates.length - 1] ?? {};
-    // Either `version: 2` (literal) or an `increment: 1` style bump — we
-    // assert on the literal write which is the straight-forward impl.
-    expect(payload.version).toBe(2);
-    expect(payload.body).toBe('NEW body');
+    // The Convex applyPatch mutation receives { id, companyId, patch }.
+    // The patch object carries the incremented version and the new body.
+    expect(convexTemplatePatchArgs.length).toBeGreaterThanOrEqual(1);
+    const patchCall = convexTemplatePatchArgs[convexTemplatePatchArgs.length - 1] ?? {};
+    const patch = (patchCall.patch ?? {}) as Record<string, unknown>;
+    expect(patch.version).toBe(2);
+    expect(patch.body).toBe('NEW body');
   });
 
   it('empty patch body → 400 rather than bumping version', async () => {
@@ -448,10 +523,9 @@ describe('PATCH /api/manager/templates/[id]', () => {
     const res = await invoke('t_1', {});
     expect(res.status).toBe(400);
 
-    // And no update should have fired — version must NOT have been bumped
-    // just because `updatedAt` would change.
-    const updates = updateCalls.CompanyTemplate ?? [];
-    expect(updates.length).toBe(0);
+    // And no Convex applyPatch mutation should have fired — version must NOT
+    // have been bumped just because `updatedAt` would change.
+    expect(convexTemplatePatchArgs.length).toBe(0);
   });
 });
 
@@ -472,7 +546,7 @@ describe('DELETE /api/manager/templates/[id]', () => {
     };
     const res = await invoke('t_1');
     expect(res.status).toBe(204);
-    expect(deleteCalls.CompanyTemplate ?? 0).toBeGreaterThanOrEqual(1);
+    expect(convexTemplateDeleteArgs.length).toBeGreaterThanOrEqual(1);
   });
 
   it('404 when row not in company', async () => {
@@ -557,13 +631,12 @@ describe('POST /api/manager/templates/[id]/publish', () => {
     expect(convexUpdateArgs).toHaveLength(2);
     expect(convexCreateArgs).toHaveLength(0);
 
-    // CompanyTemplate should have been updated with publishedCount=2 (and
-    // publishedAt set).
-    const tmplUpdates = updateCalls.CompanyTemplate ?? [];
-    expect(tmplUpdates.length).toBeGreaterThanOrEqual(1);
-    const lastTmplUpdate = tmplUpdates[tmplUpdates.length - 1] ?? {};
-    expect(lastTmplUpdate.publishedCount).toBe(2);
-    expect(lastTmplUpdate.publishedAt).toBeTruthy();
+    // CompanyTemplate should have been stamped with publishedCount=2 (and
+    // publishedAt set) via the stampPublished Convex mutation.
+    expect(convexTemplateStampArgs.length).toBeGreaterThanOrEqual(1);
+    const lastStamp = convexTemplateStampArgs[convexTemplateStampArgs.length - 1] ?? {};
+    expect(lastStamp.publishedCount).toBe(2);
+    expect(lastStamp.publishedAt).toBeTruthy();
   });
 
   it('pushes into a fresh agent (no prior MessageTemplate) via INSERT', async () => {
