@@ -38,29 +38,35 @@ vi.mock('@/lib/ai-tools/sdk-chat-stream', () => ({
   streamTsResumeTurn: streamResumeMock,
 }));
 
-// Per-table queue so we can return different rows for Space vs User. Hoisted
-// because vi.mock factories are pulled to the top. AgentPausedRun no longer
-// flows through here — its load + CAS resume migrated to Convex (see the
-// convex-server mock below); only Space + User stay on Supabase in this route.
+// Per-table queue retained for any residual Supabase reads. Hoisted because
+// vi.mock factories are pulled to the top. AgentPausedRun, Space AND User all
+// migrated to Convex (see the convex-server mock below) — this route makes no
+// Supabase calls anymore, but the mock stays so an accidental read fails safe.
 const { tableQueue, updateMock } = vi.hoisted(() => ({
   tableQueue: {} as Record<string, Array<{ data?: unknown; error?: unknown }>>,
   updateMock: vi.fn(() => Promise.resolve({ data: [{ id: 'run_1' }], error: null })),
 }));
 
 // Convex: the resume route loads the AgentPausedRun via
-// api.agent.paused.getById and does the anti-double-execution CAS via
-// api.agent.paused.markResumed (pending->resumed), with a fire-and-forget
-// api.agent.paused.markExpired on the 410 path. We branch on the fn path:
-//   - paused.getById    → the per-test staged row (or null for the 404)
-//   - paused.markResumed → { outcome: 'resumed' } on the happy path; the
-//                          already-resumed 409 is caught by the route's own
-//                          status guard BEFORE this CAS runs, so the default
-//                          is fine there too
-//   - paused.markExpired → undefined (void; must not throw on the 410 path)
+// api.agent.paused.getById, resolves the Space via api.workspace.spaces.getById,
+// maps the caller's Clerk id to the internal User via api.org.users.getByClerkId,
+// and does the anti-double-execution CAS via api.agent.paused.markResumed
+// (pending->resumed), with a fire-and-forget api.agent.paused.markExpired on the
+// 410 path. We branch on the fn path:
+//   - paused.getById       → the per-test staged row (or null for the 404)
+//   - workspace.spaces.getById → the per-test staged space (or null for the 404)
+//   - org.users.getByClerkId   → the caller's internal User row ({ id })
+//   - paused.markResumed   → { outcome: 'resumed' } on the happy path; the
+//                            already-resumed 409 is caught by the route's own
+//                            status guard BEFORE this CAS runs, so the default
+//                            is fine there too
+//   - paused.markExpired   → undefined (void; must not throw on the 410 path)
 // `api` is a path proxy so api.<domain>.<module>.<fn> stringifies to its
 // dotted path when called.
-const { pausedHolder, convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+const { pausedHolder, spaceHolder, userHolder, convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
   pausedHolder: { row: null as unknown },
+  spaceHolder: { row: null as unknown },
+  userHolder: { row: { id: 'u_1' } as unknown },
   convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
   convexMutationMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
 }));
@@ -112,18 +118,22 @@ beforeEach(() => {
   process.env.COLA_CHAT_RUNTIME = 'ts';
   mockedAuth.mockResolvedValue({ userId: 'user_clerk_123' });
   for (const k of Object.keys(tableQueue)) delete tableQueue[k];
-  // Default: the User lookup (clerkId -> internal id) resolves to the space
-  // owner (SPACE.ownerId), so the resume ownership re-check passes. Override
-  // per-test to exercise the mismatch path.
-  tableQueue.User = [{ data: { id: 'u_1' } }];
   updateMock.mockResolvedValue({ data: [{ id: 'run_1' }], error: null });
 
   // Convex: paused.getById → the per-test staged row (default null);
+  // workspace.spaces.getById → the per-test staged space (default null);
+  // org.users.getByClerkId → the caller's internal User (default { id: 'u_1' },
+  // the space owner, so the resume ownership re-check passes — override the
+  // holder per-test to exercise the mismatch path);
   // paused.markResumed → won the CAS; paused.markExpired → void.
   pausedHolder.row = null;
+  spaceHolder.row = null;
+  userHolder.row = { id: 'u_1' };
   convexQueryMock.mockImplementation(async (ref: unknown) => {
     const p = typeof ref === 'function' ? (ref as () => string)() : '';
     if (p.includes('agent.paused.getById')) return pausedHolder.row;
+    if (p.includes('workspace.spaces.getById')) return spaceHolder.row;
+    if (p.includes('org.users.getByClerkId')) return userHolder.row;
     return null;
   });
   convexMutationMock.mockImplementation(async (ref: unknown) => {
@@ -179,7 +189,9 @@ function queueRow(row: PausedRow | null) {
   pausedHolder.row = row;
 }
 function queueSpace(space: typeof SPACE | null) {
-  tableQueue.Space = [{ data: space }];
+  // The space now loads from Convex (api.workspace.spaces.getById), not
+  // Supabase — stage it on the holder the Convex query mock reads.
+  spaceHolder.row = space;
 }
 
 describe('POST /api/ai/task/resume/[pausedRunId] — flag gate', () => {
