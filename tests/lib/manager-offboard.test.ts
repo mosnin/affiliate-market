@@ -44,35 +44,20 @@ const { rpcMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/supabase', () => {
-  function makeChain(table: string): Record<string, unknown> {
-    const getNextSingle = (): SingleResult => {
-      const state = tableState[table];
-      const entry = state?.singles.shift();
-      return entry ?? { data: null, error: null };
-    };
-    const getNextRows = (): RowsResult => {
-      const state = tableState[table];
-      const entry = state?.rows.shift();
-      return entry ?? { data: [], error: null };
-    };
-
+  function makeChain(_table: string): Record<string, unknown> {
+    // The offboard route migrated CompanyMembership + User lookups to Convex.
+    // Supabase is only used for the rpc() call. Keep the chain stub so any
+    // accidental .from() call doesn't crash; the rpc mock carries the real work.
+    const noopThen = Promise.resolve({ data: null, error: null });
     const chain: Record<string, unknown> = {
       select: vi.fn(() => chain),
       eq: vi.fn(() => chain),
       in: vi.fn(() => chain),
       is: vi.fn(() => chain),
-      insert: vi.fn(() => {
-        // Used only by audit — return a no-op thenable.
-        const p = Promise.resolve({ data: null, error: null });
-        return {
-          ...chain,
-          then: (r: (v: unknown) => unknown, e?: (e: unknown) => unknown) => p.then(r, e),
-        };
-      }),
-      maybeSingle: vi.fn(() => Promise.resolve(getNextSingle())),
-      // Thenable at the end of a chain that didn't go through maybeSingle — e.g. `.in()`.
+      insert: vi.fn(() => ({ ...chain, then: (r: (v: unknown) => unknown, e?: (e: unknown) => unknown) => noopThen.then(r, e) })),
+      maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })),
       then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-        Promise.resolve(getNextRows()).then(resolve, reject),
+        Promise.resolve({ data: [], error: null }).then(resolve, reject),
     };
     return chain;
   }
@@ -82,6 +67,25 @@ vi.mock('@/lib/supabase', () => {
       from: vi.fn((table: string) => makeChain(table)),
       rpc: rpcMock,
     },
+  };
+});
+
+// ── Convex mock — CompanyMembership + User lookups migrated from Supabase ────
+// api.org.memberships.getByIdScoped → single membership row (scoped to company).
+//   Called twice: first for the target, second for the destination.
+//   We use the same FIFO queue as the old Supabase singles queue.
+// api.org.users.listByIds → array of User rows (leaving + destination).
+const { convexQueryMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: vi.fn() }),
   };
 });
 
@@ -200,6 +204,24 @@ beforeEach(() => {
   rpcMock.mockClear();
   auditMock.mockClear();
   setCaller('manager_owner');
+  convexQueryMock.mockReset();
+  // Wire Convex to the existing tableState queues:
+  //   api.org.memberships.getByIdScoped → CompanyMembership singles (FIFO via tableState)
+  //   api.org.users.listByIds → User rows (array from tableState)
+  convexQueryMock.mockImplementation(async (ref?: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('org.memberships.getByIdScoped')) {
+      const state = tableState['CompanyMembership'];
+      const entry = state?.singles.shift();
+      return entry?.data ?? null;
+    }
+    if (p.includes('org.users.listByIds')) {
+      const state = tableState['User'];
+      const entry = state?.rows.shift();
+      return entry?.data ?? [];
+    }
+    return null;
+  });
 });
 
 // ── Tests ───────────────────────────────────────────────────────────────────
