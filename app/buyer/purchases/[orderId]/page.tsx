@@ -19,8 +19,8 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_TONE: Record<string, string> = {
-  pending: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
-  paid: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
+  pending: 'text-muted-foreground bg-muted',
+  paid: 'text-positive bg-positive-subtle',
   refunded: 'text-muted-foreground bg-muted',
   canceled: 'text-muted-foreground bg-muted',
 };

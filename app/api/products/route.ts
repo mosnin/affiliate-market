@@ -242,11 +242,9 @@ export async function POST(req: NextRequest) {
   const { out, errors } = sanitiseBody(body, 'create');
   if (errors.length) return NextResponse.json({ error: errors.join(', ') }, { status: 400 });
 
-  // `out` is the sanitised writable bag (no id/spaceId/verified). Preserve the
-  // route's defaults: listingStatus 'active' (NOT the mutation's 'draft'), photos [].
   const fields = {
     ...out,
-    listingStatus: out.listingStatus ?? 'active',
+    listingStatus: out.listingStatus ?? 'draft',
     photos: out.photos ?? [],
     // `out` is the runtime-sanitised bag (Record<string, unknown>); Convex
     // re-validates against writableFields at the boundary, so cast to the create

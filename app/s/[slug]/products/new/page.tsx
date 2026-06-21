@@ -95,13 +95,6 @@ export default function NewProductPage() {
 
       const marketplaceSlug = published ? slugify(name) : null;
 
-      // NOTE: /api/products sanitiseBody only whitelists the old real-estate
-      // fields (address, beds, baths, etc.) and ignores unknown keys —
-      // so tagline, category, pricingModel, priceCents, billingPeriod,
-      // features, logoUrl, websiteUrl, published, marketplaceSlug will be
-      // SILENTLY DROPPED by the current API handler. These fields need to be
-      // added to sanitiseBody in app/api/products/route.ts for persistence.
-      // For now, we send them so they are ready once the API is updated.
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -24,9 +24,9 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function CheckoutSuccessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ orderId?: string }>;
+  searchParams: Promise<{ orderId?: string; session_id?: string }>;
 }) {
-  const { orderId } = await searchParams;
+  const { orderId, session_id } = await searchParams;
   if (!orderId) notFound();
 
   const [order, license] = await Promise.all([
@@ -35,6 +35,18 @@ export default async function CheckoutSuccessPage({
   ]);
 
   if (!order) notFound();
+
+  // When Stripe redirects here it injects session_id into the URL. Verify it
+  // matches so an adversary who knows an orderId can't harvest the license key.
+  // Orders created without Stripe (mock/dev mode) have no stripeCheckoutSessionId,
+  // so we skip the check when neither is set.
+  if (
+    session_id &&
+    order.stripeCheckoutSessionId &&
+    session_id !== order.stripeCheckoutSessionId
+  ) {
+    notFound();
+  }
 
   const amount = centsToDisplay(order.amountCents, order.currency);
   const statusLabel = STATUS_LABEL[order.status] ?? order.status;

@@ -129,14 +129,16 @@ export async function listCommissions(
 export async function listCommissionsForPartner(
   partnerId: string,
   limit = 50,
-): Promise<Array<Pick<CommissionRow, 'id' | 'orderId' | 'amountCents' | 'currency' | 'status' | 'level' | 'createdAt'>>> {
+): Promise<Array<Pick<CommissionRow, 'id' | 'orderId' | 'amountCents' | 'currency' | 'status' | 'level' | 'createdAt'> & { netCents: number }>> {
   const { data } = await supabase
     .from('AffiliateCommission')
-    .select('id, orderId, amountCents, currency, status, level, createdAt')
+    .select('id, orderId, amountCents, netCents, currency, status, level, createdAt')
     .eq('partnerId', partnerId)
     .order('createdAt', { ascending: false })
     .limit(limit);
-  return (data ?? []).map((r) => ({ ...r, level: r.level ?? 1 })) as Array<
-    Pick<CommissionRow, 'id' | 'orderId' | 'amountCents' | 'currency' | 'status' | 'level' | 'createdAt'>
-  >;
+  return (data ?? []).map((r) => ({
+    ...r,
+    level: r.level ?? 1,
+    netCents: r.netCents ?? r.amountCents ?? 0,
+  })) as Array<Pick<CommissionRow, 'id' | 'orderId' | 'amountCents' | 'currency' | 'status' | 'level' | 'createdAt'> & { netCents: number }>;
 }

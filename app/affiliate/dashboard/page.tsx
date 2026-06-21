@@ -288,7 +288,7 @@ export default async function AffiliateDashboardPage() {
                       {c.orderId ? c.orderId.slice(0, 8) + '…' : '—'}
                     </td>
                     <td className={cn('px-4 py-3 align-middle text-right text-sm font-medium tabular-nums text-foreground')}>
-                      {formatCurrency(c.amountCents / 100)}
+                      {formatCurrency(c.netCents / 100)}
                     </td>
                     <td className="px-4 py-3 align-middle">
                       {(c.status === 'approved' || c.status === 'paid') && (
