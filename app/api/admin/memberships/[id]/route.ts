@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logAdminAction } from '@/lib/admin';
 
@@ -9,7 +9,7 @@ type Params = { params: Promise<{ id: string }> };
 
 /**
  * DELETE /api/admin/memberships/[id]
- * Remove a brokerage membership and unlink the user's space from the brokerage.
+ * Remove a company membership and unlink the user's space from the company.
  */
 export async function DELETE(_req: Request, { params }: Params) {
   let admin: Awaited<ReturnType<typeof requirePlatformAdmin>>;
@@ -28,27 +28,23 @@ export async function DELETE(_req: Request, { params }: Params) {
     return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
   }
 
-  // Fetch membership first so we can unlink the space
-  const { data: membership } = await supabase
-    .from('BrokerageMembership')
-    .select('userId, brokerageId')
-    .eq('id', id)
-    .maybeSingle();
+  // Fetch membership first so we can unlink the space. getById reads by id alone
+  // (companyId is what we're discovering here).
+  const membership = await convex().query(api.org.memberships.getById, { id });
 
   if (!membership) return NextResponse.json({ error: 'Membership not found' }, { status: 404 });
 
-  // Unlink space from brokerage (best-effort)
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id')
-    .eq('ownerId', membership.userId)
-    .maybeSingle();
+  // Unlink space from company (best-effort)
+  const space = await convex().query(api.workspace.spaces.getByOwnerId, {
+    ownerId: membership.userId,
+  });
   if (space) {
-    await supabase.from('Space').update({ brokerageId: null }).eq('id', space.id);
+    await convex().mutation(api.workspace.spaces.unlinkCompany, { spaceId: space.id });
   }
 
-  const { error } = await supabase.from('BrokerageMembership').delete().eq('id', id);
-  if (error) {
+  try {
+    await convex().mutation(api.org.memberships.deleteById, { id });
+  } catch (error) {
     console.error('[admin/memberships] delete failed', error);
     return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
   }

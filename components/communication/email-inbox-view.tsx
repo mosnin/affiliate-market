@@ -43,7 +43,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ShimmerText } from '@/components/chippi/shimmer-text';
+import { ShimmerText } from '@/components/cola/shimmer-text';
 import { cn } from '@/lib/utils';
 import { EASE_APPLE } from '@/lib/motion';
 import {
@@ -514,7 +514,7 @@ function FilterChips({
 }
 
 /** Star icon with a one-shot scale pulse when the value transitions
- *  false → true (the moment the realtor stars something). Unstarring
+ *  false → true (the moment the seller stars something). Unstarring
  *  is intentionally quiet — the row already lost amber, that's feedback
  *  enough. First paint never pulses; only an in-session toggle does. */
 function StarPulse({
@@ -558,7 +558,7 @@ function EmailRow({
   onOpen: () => void;
   onToggleStar: () => void;
 }) {
-  // For Sent: show the recipient, not the realtor themselves.
+  // For Sent: show the recipient, not the seller themselves.
   const isSent = filter === 'sent';
   const displayName = isSent
     ? item.toName || item.toAddress || '(no recipient)'
@@ -666,7 +666,7 @@ function EmailRow({
             className={cn(
               'transition-colors duration-200',
               item.starred
-                ? 'fill-amber-500 text-amber-500'
+                ? 'fill-lead-warm text-muted-foreground'
                 : 'text-muted-foreground hover:text-foreground',
             )}
             size={15}

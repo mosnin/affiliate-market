@@ -1,7 +1,7 @@
 /**
  * GET /api/agent/morning
  *
- * The composed morning story for the /chippi home. Returns counts AND named
+ * The composed morning story for the /cola home. Returns counts AND named
  * subjects so the brand voice can say "The Chen deal hasn't moved in 14
  * days" instead of just "1 deal is stuck." Specific over generic. Names
  * over counts. The home's job is to be the deepest surface, not the
@@ -12,12 +12,13 @@
  * picks). This one is a tight summary feed used by the home greeting only:
  * one fetch, one shape, one sentence.
  *
- * Realtor space only — brokerage-routed contacts (brokerageId !== null) are
- * excluded so the realtor's morning briefing reflects what's on _their_
+ * Seller space only — company-routed contacts (companyId !== null) are
+ * excluded so the seller's morning briefing reflects what's on _their_
  * desk, not what's been routed past them.
  */
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { dealHealth } from '@/lib/deals/health';
@@ -103,8 +104,8 @@ export async function GET() {
     hotPeopleRes,
     overdueFollowUpsRes,
     activeDealsRes,
-    draftsRes,
-    questionsRes,
+    draftsCount,
+    questionsCount,
     topNewPersonRes,
     topHotPersonRes,
     topOverdueRes,
@@ -114,19 +115,19 @@ export async function GET() {
       .from('Contact')
       .select('id', { count: 'exact', head: true })
       .eq('spaceId', space.id)
-      .is('brokerageId', null)
+      .is('companyId', null)
       .contains('tags', ['new-lead']),
     supabase
       .from('Contact')
       .select('id', { count: 'exact', head: true })
       .eq('spaceId', space.id)
-      .is('brokerageId', null)
+      .is('companyId', null)
       .gte('leadScore', HOT_LEAD_THRESHOLD),
     supabase
       .from('Contact')
       .select('id', { count: 'exact', head: true })
       .eq('spaceId', space.id)
-      .is('brokerageId', null)
+      .is('companyId', null)
       .not('followUpAt', 'is', null)
       .lt('followUpAt', nowIso),
 
@@ -139,17 +140,9 @@ export async function GET() {
       .eq('status', 'active')
       .limit(500),
 
-    // ── Counts continued ──────────────────────────────────────────────────
-    supabase
-      .from('AgentDraft')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', space.id)
-      .eq('status', 'pending'),
-    supabase
-      .from('AgentQuestion')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', space.id)
-      .eq('status', 'pending'),
+    // ── Counts continued (Convex) ─────────────────────────────────────────
+    convex().query(api.agent.drafts.countBySpaceStatus, { spaceId: space.id, status: 'pending' }),
+    convex().query(api.agent.questions.countPending, { spaceId: space.id }),
 
     // ── Named subjects (1 row each — light reads) ─────────────────────────
     // Most-recent new applicant.
@@ -157,7 +150,7 @@ export async function GET() {
       .from('Contact')
       .select('id, name')
       .eq('spaceId', space.id)
-      .is('brokerageId', null)
+      .is('companyId', null)
       .contains('tags', ['new-lead'])
       .order('createdAt', { ascending: false })
       .limit(1)
@@ -167,7 +160,7 @@ export async function GET() {
       .from('Contact')
       .select('id, name')
       .eq('spaceId', space.id)
-      .is('brokerageId', null)
+      .is('companyId', null)
       .gte('leadScore', HOT_LEAD_THRESHOLD)
       .order('leadScore', { ascending: false })
       .limit(1)
@@ -177,7 +170,7 @@ export async function GET() {
       .from('Contact')
       .select('id, name, followUpAt')
       .eq('spaceId', space.id)
-      .is('brokerageId', null)
+      .is('companyId', null)
       .not('followUpAt', 'is', null)
       .lt('followUpAt', nowIso)
       .order('followUpAt', { ascending: true })
@@ -251,8 +244,8 @@ export async function GET() {
     overdueFollowUpsCount: overdueFollowUpsRes.count ?? 0,
     stuckDealsCount,
     closingThisWeekCount,
-    draftsCount: draftsRes.count ?? 0,
-    questionsCount: questionsRes.count ?? 0,
+    draftsCount: draftsCount ?? 0,
+    questionsCount: questionsCount ?? 0,
     topStuckDeal,
     topOverdueFollowUp,
     topNewPerson,

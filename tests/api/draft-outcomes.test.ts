@@ -14,13 +14,51 @@
  *   - stageChangedAt before draft.updatedAt → 'none'
  *   - Batch cap respected (limit forwarded to supabase)
  *
- * Mock strategy mirrors `tests/api/agent-sweep.test.ts`: chainable thenable
- * for supabase reads, with a per-table queue of terminals. Update calls also
- * surface through the same mock and are recorded for assertion.
+ * Mock strategy: the draft candidate pull + the per-draft outcome write moved
+ * to Convex (api.agent.drafts.outcomeCandidates / labelOutcome). The Deal +
+ * DealStage joins STAY on Supabase. So we drive the drafts via the Convex mock
+ * and keep a chainable Supabase thenable (per-table queue) for Deal/DealStage.
+ * The label writes surface as labelOutcome mutation calls, recorded for the
+ * outcome_signal assertions.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-// ── Supabase mock ───────────────────────────────────────────────────────────
+// ── Convex mock ─────────────────────────────────────────────────────────────
+// outcomeCandidates → the candidate draft list (was the first Supabase read).
+// labelOutcome      → records {id, outcomeSignal, checkedAt}; returns
+//                     {updated:true}. The route counts advanced/none on a
+//                     successful call regardless of the guard, so a plain
+//                     resolve is enough; we steer rejections per-test.
+let candidateDrafts: unknown[] = [];
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => [] as unknown),
+  convexMutationMock: vi.fn(async (_ref?: unknown, _args?: unknown) => ({ updated: true }) as unknown),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
+/** The labelOutcome mutation calls (the per-draft outcome writes). */
+function labelCalls(): Array<{ path: string; args: Record<string, unknown> }> {
+  return convexMutationMock.mock.calls.map(([ref, args]) => ({
+    path: typeof ref === 'function' ? (ref as () => string)() : '',
+    args: (args ?? {}) as Record<string, unknown>,
+  }));
+}
+/** The fn ref + args of the i-th Convex query call (the candidate pull). */
+function queryCall(i = 0): { path: string; args: Record<string, unknown> } {
+  const [ref, args] = convexQueryMock.mock.calls[i] as [unknown, Record<string, unknown>];
+  return { path: typeof ref === 'function' ? (ref as () => string)() : '', args: (args ?? {}) as Record<string, unknown> };
+}
+
+// ── Supabase mock (Deal + DealStage only now) ───────────────────────────────
 type Terminal = { data?: unknown; error?: unknown; count?: number | null };
 let supabaseQueue: Terminal[] = [];
 const supabaseCalls: Array<{ table: string; chain: Array<[string, unknown[]]> }> = [];
@@ -115,20 +153,23 @@ type DealFixture = {
 type StageFixture = { id: string; kind: string | null };
 
 /**
- * Queue the supabase reads in route order:
- *   1. AgentDraft list (drafts to process)
- *   2. Deal list (only if any draft has dealId)
- *   3. DealStage list (only if any deal has stageId)
- *   Then one terminal per draft for the per-row update.
+ * Set up a run:
+ *   - drafts → the Convex candidate pull (outcomeCandidates)
+ *   - Supabase queue holds only the Deal list (if any draft has a dealId) then
+ *     the DealStage list (if any deal has a stageId), in route order.
+ *   - per-draft outcome writes go to the Convex labelOutcome mutation; override
+ *     its behaviour via the optional `labelImpl` (e.g. to reject).
  */
 function queueRun(opts: {
   drafts: DraftFixture[];
   deals?: DealFixture[];
   stages?: StageFixture[];
-  /** Override per-update terminals; defaults to {error: null} for each draft. */
-  updateResults?: Terminal[];
+  /** Override the labelOutcome mutation impl (default resolves {updated:true}). */
+  labelImpl?: (args: Record<string, unknown>) => Promise<unknown>;
 }) {
-  const queue: Terminal[] = [{ data: opts.drafts, error: null }];
+  candidateDrafts = opts.drafts;
+
+  const queue: Terminal[] = [];
   const hasDealLinks = opts.drafts.some((d) => d.dealId);
   if (hasDealLinks) {
     queue.push({ data: opts.deals ?? [], error: null });
@@ -137,16 +178,24 @@ function queueRun(opts: {
       queue.push({ data: opts.stages ?? [], error: null });
     }
   }
-  const updates =
-    opts.updateResults ?? opts.drafts.map(() => ({ error: null }) as Terminal);
-  queue.push(...updates);
   supabaseQueue = queue;
+
+  if (opts.labelImpl) {
+    const impl = opts.labelImpl;
+    convexMutationMock.mockImplementation(async (_ref: unknown, args: unknown) =>
+      impl((args ?? {}) as Record<string, unknown>),
+    );
+  }
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   supabaseQueue = [];
   supabaseCalls.length = 0;
+  candidateDrafts = [];
+  // outcomeCandidates → candidate drafts; labelOutcome → {updated:true}.
+  convexQueryMock.mockImplementation(async () => candidateDrafts);
+  convexMutationMock.mockImplementation(async () => ({ updated: true }));
 
   snapshotEnv();
   process.env.CRON_SECRET = 'test-secret';
@@ -166,12 +215,14 @@ describe('GET /api/cron/draft-outcomes', () => {
     const body = await res.json();
     expect(body).toEqual({ error: 'Unauthorized' });
     expect(supabaseCalls).toHaveLength(0);
+    expect(convexQueryMock).not.toHaveBeenCalled();
   });
 
   it('rejects when Authorization header carries the wrong secret → 401', async () => {
     const res = await invoke('Bearer wrong-secret');
     expect(res.status).toBe(401);
     expect(supabaseCalls).toHaveLength(0);
+    expect(convexQueryMock).not.toHaveBeenCalled();
   });
 
   it('rejects when CRON_SECRET env var is unset → 500 (server misconfigured)', async () => {
@@ -181,6 +232,7 @@ describe('GET /api/cron/draft-outcomes', () => {
     const body = await res.json();
     expect(body).toEqual({ error: 'Server misconfigured' });
     expect(supabaseCalls).toHaveLength(0);
+    expect(convexQueryMock).not.toHaveBeenCalled();
   });
 
   it('CRON_OUTCOMES_DISABLED=1 short-circuits → 200 {status:"disabled"}', async () => {
@@ -194,8 +246,9 @@ describe('GET /api/cron/draft-outcomes', () => {
     const res = await invoke('Bearer test-secret');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'disabled' });
-    // Not a single supabase read.
+    // Not a single DB read on either side.
     expect(supabaseCalls).toHaveLength(0);
+    expect(convexQueryMock).not.toHaveBeenCalled();
   });
 
   it('no candidate drafts → 200 with zeroed telemetry', async () => {
@@ -206,8 +259,11 @@ describe('GET /api/cron/draft-outcomes', () => {
     expect(body.processed).toBe(0);
     expect(body.advanced).toBe(0);
     expect(body.none).toBe(0);
-    // Only one read (AgentDraft); we don't bother fetching deals when empty.
-    expect(supabaseCalls.map((c) => c.table)).toEqual(['AgentDraft']);
+    // The candidate pull is now a single Convex query; with no candidates we
+    // never touch Supabase (no deals to fetch).
+    expect(convexQueryMock).toHaveBeenCalledTimes(1);
+    expect(queryCall(0).path).toContain('agent.drafts.outcomeCandidates');
+    expect(supabaseCalls).toHaveLength(0);
   });
 
   it('happy path: deal advanced after draft sent → marks deal_advanced', async () => {
@@ -234,12 +290,12 @@ describe('GET /api/cron/draft-outcomes', () => {
     expect(body.advanced).toBe(1);
     expect(body.none).toBe(0);
 
-    // The update call must set outcome_signal='deal_advanced'.
-    const updateCall = supabaseCalls.find((c) => c.chain.some(([m]) => m === 'update'));
-    expect(updateCall).toBeDefined();
-    const updateArgs = updateCall!.chain.find(([m]) => m === 'update')![1] as unknown[];
-    expect(updateArgs[0]).toMatchObject({ outcome_signal: 'deal_advanced' });
-    expect((updateArgs[0] as { outcome_checked_at: string }).outcome_checked_at).toBeDefined();
+    // The labelOutcome mutation must set outcomeSignal='deal_advanced'.
+    const labels = labelCalls();
+    expect(labels).toHaveLength(1);
+    expect(labels[0].path).toContain('agent.drafts.labelOutcome');
+    expect(labels[0].args).toMatchObject({ id: 'd1', outcomeSignal: 'deal_advanced' });
+    expect(typeof labels[0].args.checkedAt).toBe('string');
   });
 
   it('draft with no dealId → marks none (no deal lookup)', async () => {
@@ -255,8 +311,10 @@ describe('GET /api/cron/draft-outcomes', () => {
     expect(body.advanced).toBe(0);
     expect(body.none).toBe(1);
 
-    // No Deal or DealStage reads when there's nothing to look up.
-    expect(supabaseCalls.map((c) => c.table)).toEqual(['AgentDraft', 'AgentDraft']);
+    // No Deal or DealStage reads when there's nothing to look up. The draft
+    // pull + the label write are both Convex now, so Supabase is never touched.
+    expect(supabaseCalls).toHaveLength(0);
+    expect(labelCalls()[0].args).toMatchObject({ id: 'd1', outcomeSignal: 'none' });
   });
 
   it('terminal stage kind=closed → none even if stage changed after sent', async () => {
@@ -282,9 +340,8 @@ describe('GET /api/cron/draft-outcomes', () => {
     expect(body.advanced).toBe(0);
     expect(body.none).toBe(1);
 
-    const updateCall = supabaseCalls.find((c) => c.chain.some(([m]) => m === 'update'));
-    const updateArgs = updateCall!.chain.find(([m]) => m === 'update')![1] as unknown[];
-    expect(updateArgs[0]).toMatchObject({ outcome_signal: 'none' });
+    const labels = labelCalls();
+    expect(labels[0].args).toMatchObject({ outcomeSignal: 'none' });
   });
 
   it('terminal deal status (won) → none', async () => {
@@ -346,28 +403,27 @@ describe('GET /api/cron/draft-outcomes', () => {
     expect(body.none).toBe(1);
   });
 
-  it('forwards the 200-row batch cap as a .limit() to supabase', async () => {
+  it('forwards the 200-row batch cap + the [lower, upper] window to the Convex candidate query', async () => {
     queueRun({ drafts: [] });
+    const before = Date.now();
     await invoke('Bearer test-secret');
 
-    const draftCall = supabaseCalls.find((c) => c.table === 'AgentDraft');
-    expect(draftCall).toBeDefined();
-    const limitCall = draftCall!.chain.find(([m]) => m === 'limit');
-    expect(limitCall).toBeDefined();
-    expect(limitCall![1]).toEqual([200]);
+    // The candidate filter (status='sent', outcome_signal IS NULL) lives inside
+    // outcomeCandidates now; the route forwards the cap and the updatedAt window.
+    expect(convexQueryMock).toHaveBeenCalledTimes(1);
+    const { path, args } = queryCall(0);
+    expect(path).toContain('agent.drafts.outcomeCandidates');
+    expect(args.limit).toBe(200);
 
-    // Sanity-check the rest of the candidate filter. status='sent', outcome_signal IS NULL,
-    // updatedAt window via gte/lte.
-    const eqCalls = draftCall!.chain.filter(([m]) => m === 'eq');
-    expect(eqCalls.some(([, args]) => args[0] === 'status' && args[1] === 'sent')).toBe(true);
-    const isCalls = draftCall!.chain.filter(([m]) => m === 'is');
-    expect(isCalls.some(([, args]) => args[0] === 'outcome_signal' && args[1] === null)).toBe(true);
-    const gteCalls = draftCall!.chain.filter(([m]) => m === 'gte');
-    const lteCalls = draftCall!.chain.filter(([m]) => m === 'lte');
-    expect(gteCalls.length).toBe(1);
-    expect(lteCalls.length).toBe(1);
-    expect(gteCalls[0][1][0]).toBe('updatedAt');
-    expect(lteCalls[0][1][0]).toBe('updatedAt');
+    // Window: lowerBound = now - 8d, upperBound = now - 1d (both ISO strings,
+    // lower strictly before upper).
+    const lower = new Date(args.lowerBound as string).getTime();
+    const upper = new Date(args.upperBound as string).getTime();
+    expect(lower).toBeLessThan(upper);
+    const DAY = 24 * 60 * 60 * 1000;
+    // upper ≈ now - 1 day, lower ≈ now - 8 days (within a few seconds of `before`).
+    expect(Math.abs(upper - (before - DAY))).toBeLessThan(5000);
+    expect(Math.abs(lower - (before - 8 * DAY))).toBeLessThan(5000);
   });
 
   it('mixed batch: one advanced + one none + one terminal → counts add up', async () => {

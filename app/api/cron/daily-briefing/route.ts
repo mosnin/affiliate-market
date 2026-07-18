@@ -4,10 +4,10 @@
  * Hourly tick (UTC). For each Space whose SpaceSetting matches the
  * current local hour in its timezone, generates today's Brief and
  * UPSERTs it. The `forDate` key is the SPACE'S local date — what the
- * realtor sees on their phone, not the server's UTC date.
+ * seller sees on their phone, not the server's UTC date.
  *
- * Why hourly: per-realtor 7am local. A 7am UTC daily cron would deliver
- * to Pacific realtors at midnight. Each tick now scans every space and
+ * Why hourly: per-seller 7am local. A 7am UTC daily cron would deliver
+ * to Pacific sellers at midnight. Each tick now scans every space and
  * generates only for those whose briefHour matches the current local
  * hour. Spaces with briefEnabled=false are skipped.
  *
@@ -21,7 +21,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { composeBrief } from '@/lib/briefing/compose';
 import { shouldGenerateFor } from '@/lib/briefing/timing';
 import { deliverBrief, loadDeliveryContext, getAppOrigin } from '@/lib/briefing/delivery';
@@ -53,22 +53,16 @@ async function generateOne(spaceId: string, forDate: string): Promise<'ok' | 'fa
       throw err;
     }
     const { brief, cardMeta } = await composeBrief(spaceId);
-    const { data: row, error } = await supabase
-      .from('Brief')
-      .upsert(
-        {
-          spaceId,
-          forDate,
-          status: 'pending',
-          payload: brief,
-          cardMeta,
-        },
-        { onConflict: 'spaceId,forDate' },
-      )
-      .select('id')
-      .single();
-    if (error) {
-      console.error(`[cron/daily-briefing] upsert failed for ${spaceId}:`, error.message);
+    let row: { id: string };
+    try {
+      row = await convex().mutation(api.portal.briefs.upsert, {
+        spaceId,
+        forDate,
+        payload: brief,
+        cardMeta,
+      });
+    } catch (upsertErr) {
+      console.error(`[cron/daily-briefing] upsert failed for ${spaceId}:`, upsertErr);
       return 'failed';
     }
 
@@ -79,9 +73,9 @@ async function generateOne(spaceId: string, forDate: string): Promise<'ok' | 'fa
     // the brief surface itself is canon, delivery is best-effort.
     try {
       const space = await loadDeliveryContext(spaceId);
-      if (space && row) {
+      if (space) {
         await deliverBrief({
-          briefId: row.id as string,
+          briefId: row.id,
           brief,
           forDate,
           space,
@@ -119,14 +113,13 @@ async function handler(req: NextRequest) {
 
   // Read every space's brief settings in one query. SpaceSetting is the
   // truth source — spaces without a settings row get the defaults.
-  const { data: settings, error } = await supabase
-    .from('SpaceSetting')
-    .select('spaceId, timezone, briefEnabled, briefHour')
-    .eq('briefEnabled', true)
-    .limit(MAX_PER_TICK);
-
-  if (error) {
-    console.error('[cron/daily-briefing] settings lookup failed:', error.message);
+  let settings: CandidateRow[];
+  try {
+    settings = (await convex().query(api.workspace.settings.listBriefEnabled, {
+      limit: MAX_PER_TICK,
+    })) as CandidateRow[];
+  } catch (error) {
+    console.error('[cron/daily-briefing] settings lookup failed:', error);
     return NextResponse.json({ error: 'Settings lookup failed' }, { status: 500 });
   }
 
@@ -139,10 +132,10 @@ async function handler(req: NextRequest) {
   }
 
   // Filter to the spaces whose local briefHour matches the current UTC
-  // tick. forDate is computed in the space's timezone so the realtor's
+  // tick. forDate is computed in the space's timezone so the seller's
   // brief is keyed on their local date.
   const due: { spaceId: string; forDate: string }[] = [];
-  for (const row of settings as CandidateRow[]) {
+  for (const row of settings) {
     const timezone = row.timezone ?? DEFAULT_TIMEZONE;
     const briefHour = row.briefHour ?? DEFAULT_BRIEF_HOUR;
     const forDate = shouldGenerateFor(at, timezone, briefHour);

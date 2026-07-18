@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser, getSpaceFromSlug } from '@/lib/space';
 
@@ -7,7 +7,7 @@ import { getSpaceForUser, getSpaceFromSlug } from '@/lib/space';
  * GET /api/cards/contact/[id]?slug=<workspace-slug>
  *
  * Lightweight card payload for the inline expandable contact card in the
- * Chippi chat. Returns only what the card renders — no dead weight.
+ * Cola chat. Returns only what the card renders — no dead weight.
  *
  * Auth: Clerk session. Space resolved via slug query param (from URL) or
  * via the authenticated user's own space when slug is absent.
@@ -29,29 +29,23 @@ export async function GET(
 
   if (!space) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { data: contact, error: contactError } = await supabase
-    .from('Contact')
-    .select(
-      'id, name, email, phone, tags, leadType, leadScore, scoreLabel, budget, followUpAt, notes, updatedAt, createdAt',
-    )
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  if (contactError) {
+  let contact;
+  try {
+    contact = await convex().query(api.contacts.contacts.getById, { id, spaceId: space.id });
+  } catch (contactError) {
     console.error('[cards/contact/GET] query error:', contactError);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Fetch the last 3 activity records for this contact
-  const { data: activityRows } = await supabase
-    .from('ContactActivity')
-    .select('id, type, content, createdAt')
-    .eq('contactId', id)
-    .eq('spaceId', space.id)
-    .order('createdAt', { ascending: false })
-    .limit(5);
+  // Fetch the last 5 activity records for this contact (newest-first).
+  const activityRows = await convex()
+    .query(api.contacts.activity.listForContact, {
+      contactId: id,
+      spaceId: space.id,
+      limit: 5,
+    })
+    .catch(() => []);
 
   // notes in Contact is a single string; surface as a single note item when present
   const notes =

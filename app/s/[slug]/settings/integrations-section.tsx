@@ -67,13 +67,13 @@ function CredentialRow({
 }
 
 /**
- * McpSection — MCP endpoint + API keys. The developer-side of "Chippi can be
+ * McpSection — MCP endpoint + API keys. The developer-side of "Cola can be
  * driven from external clients (Claude Desktop, Cursor, Windsurf)." Lives in
  * the Developer tab. Message templates and OAuth Connected Apps are separate
  * surfaces and have their own components below / elsewhere.
  */
 export function McpSection({ slug }: McpSectionProps) {
-  const MCP_ENDPOINT = 'https://my.usechippi.com/api/mcp';
+  const MCP_ENDPOINT = 'https://my.usecola.com/api/mcp';
 
   // ── MCP state ──────────────────────────────────────────────────────────
   const [mcpKeys, setMcpKeys] = useState<McpKey[]>([]);
@@ -371,8 +371,8 @@ export function McpSection({ slug }: McpSectionProps) {
 /**
  * TemplatesSection — canned SMS / email / note bodies. Lives in the
  * Connections tab next to Connected Apps because templates and integrations
- * are both "what Chippi sends through" — they share a mental model with the
- * realtor.
+ * are both "what Cola sends through" — they share a mental model with the
+ * seller.
  */
 export function TemplatesSection() {
   const [templates, setTemplates] = useState<MessageTemplate[] | null>(null);

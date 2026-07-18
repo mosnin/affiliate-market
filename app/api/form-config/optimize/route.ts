@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import {
   analyzeFormPerformance,
   generateOptimizationSuggestions,
@@ -70,11 +70,9 @@ export async function POST(req: NextRequest) {
 
   try {
     // Fetch current form config
-    const { data: settings } = await supabase
-      .from('SpaceSetting')
-      .select('formConfig')
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const settings = await convex().query(api.workspace.settings.getBySpace, {
+      spaceId: space.id,
+    });
 
     const formConfig = settings?.formConfig as IntakeFormConfig | null;
     if (!formConfig?.sections?.length) {

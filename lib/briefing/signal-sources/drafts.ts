@@ -5,8 +5,8 @@
  *
  * Why this is in Phase B and not Phase A: AgentDraft is the OUTPUT of
  * the agent's autonomous work. Surfacing drafts in the brief gives the
- * realtor "what Chippi did overnight, ready for your approve" — the
- * single highest-value card type for a working realtor whose agent
+ * seller "what Cola did overnight, ready for your approve" — the
+ * single highest-value card type for a working seller whose agent
  * actually ran.
  *
  * Why this is its own source (not folded into pipeline/leads): drafts
@@ -21,11 +21,11 @@
  *   - Standard draft, any tier:                0.83
  *
  * The brief shows the top drafts as REPLY cards; the rest stay in the
- * FocusCard queue on /chippi/today. The two surfaces complement: the
+ * FocusCard queue on /cola/today. The two surfaces complement: the
  * brief is the morning curated view, the focus card is the working queue.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { HOT_LEAD_THRESHOLD } from '@/lib/constants';
 import type { Signal, SignalGatherer, SignalKind } from '../types';
 
@@ -54,11 +54,11 @@ function kindForChannel(channel: DraftRow['channel']): SignalKind {
 function evidenceFor(channel: DraftRow['channel']): string {
   switch (channel) {
     case 'sms':
-      return 'Chippi drafted a text. Approve or edit.';
+      return 'Cola drafted a text. Approve or edit.';
     case 'email':
-      return 'Chippi drafted an email. Approve or edit.';
+      return 'Cola drafted an email. Approve or edit.';
     case 'note':
-      return 'Chippi flagged a note for your review.';
+      return 'Cola flagged a note for your review.';
   }
 }
 
@@ -66,29 +66,58 @@ export const draftsSource: SignalGatherer = {
   // 'drafts' tag is origin-agnostic — these rows are produced by the
   // autonomous agent regardless of what triggered the run (Gmail webhook,
   // routine cron, calendar handler, manual quick-draft). The brief surface
-  // shows the realtor "Chippi did this overnight, ready for your approve."
+  // shows the seller "Cola did this overnight, ready for your approve."
   // Provenance per draft lives on AgentDraft.triggerSource for the rare
   // case the surface wants to attribute (Phase C breadcrumbs).
   source: 'drafts',
   async gather(spaceId: string): Promise<Signal[]> {
-    const { data, error } = await supabase
-      .from('AgentDraft')
-      .select(
-        'id, contactId, channel, subject, priority, Contact:contactId(id, name, leadScore)',
-      )
-      .eq('spaceId', spaceId)
-      .eq('status', 'pending')
-      .order('priority', { ascending: false })
-      .order('createdAt', { ascending: false })
-      .limit(10);
+    // Pending drafts live in Convex; the Contact join (id/name/leadScore) is
+    // still a Supabase table, so this source is hybrid: read the drafts from
+    // Convex, then stitch the contact rows in to reproduce the old shape.
+    let rawDrafts: Array<{
+      id: string;
+      contactId: string | null;
+      channel: 'sms' | 'email' | 'note';
+      subject: string | null;
+      priority: number;
+    }>;
+    try {
+      rawDrafts = (await convex().query(api.agent.drafts.listBySpaceStatus, {
+        spaceId,
+        status: 'pending',
+        limit: 10,
+      })) as typeof rawDrafts;
+    } catch {
+      return [];
+    }
 
-    if (error || !data) return [];
+    const contactIds = Array.from(
+      new Set(rawDrafts.map((d) => d.contactId).filter((id): id is string => Boolean(id))),
+    );
+    const contactById = new Map<string, { id: string; name: string; leadScore: number | null }>();
+    if (contactIds.length > 0) {
+      const contacts = await convex().query(api.contacts.contacts.getManyByIds, {
+        ids: contactIds,
+      });
+      for (const c of (contacts ?? []) as Array<{ id: string; name: string; leadScore: number | null }>) {
+        contactById.set(c.id, c);
+      }
+    }
+
+    const data: DraftRow[] = rawDrafts.map((d) => ({
+      id: d.id,
+      contactId: d.contactId,
+      channel: d.channel,
+      subject: d.subject,
+      priority: d.priority,
+      Contact: d.contactId ? contactById.get(d.contactId) ?? null : null,
+    }));
 
     const signals: Signal[] = [];
 
-    for (const draft of data as unknown as DraftRow[]) {
+    for (const draft of data) {
       // Drafts without a contact link don't surface on the brief — they're
-      // working state for the agent, not actionable for the realtor's
+      // working state for the agent, not actionable for the seller's
       // morning. They still appear in the FocusCard queue if relevant.
       if (!draft.Contact) continue;
 
@@ -116,7 +145,7 @@ export const draftsSource: SignalGatherer = {
         evidence: evidenceFor(draft.channel),
         // Open the contact page where the draft surfaces in context. The
         // brief intentionally doesn't carry the draft body inline — that's
-        // the FocusCard's job, where the realtor has the editing UI ready.
+        // the FocusCard's job, where the seller has the editing UI ready.
         draftedAction: {
           kind: 'open',
           href: `/contacts/${draft.Contact.id}?draftId=${draft.id}`,

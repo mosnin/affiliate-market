@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
   ROUTINE_CADENCES,
@@ -21,9 +21,6 @@ import {
 } from '@/lib/routines';
 
 export const runtime = 'nodejs';
-
-const SELECT =
-  'id, instruction, cadence, hour, dayOfMonth, daysOfWeek, enabled, lastRunAt, lastRunStatus, nextRunAt, createdAt';
 
 const MAX_ROUTINES = 20;
 const MAX_INSTRUCTION = 600;
@@ -61,18 +58,15 @@ export async function GET() {
   const space = await getSpaceForUser(authResult.userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data, error } = await supabase
-    .from('Routine')
-    .select(SELECT)
-    .eq('spaceId', space.id)
-    .order('createdAt', { ascending: true });
-
-  if (error) {
+  let routines;
+  try {
+    routines = await convex().query(api.agent.routines.listBySpace, { spaceId: space.id });
+  } catch (error) {
     logger.error('[routines] list failed', { spaceId: space.id }, error);
     return NextResponse.json({ error: 'Load failed' }, { status: 500 });
   }
 
-  return NextResponse.json({ routines: data ?? [] });
+  return NextResponse.json({ routines });
 }
 
 export async function POST(req: NextRequest) {
@@ -88,7 +82,7 @@ export async function POST(req: NextRequest) {
     typeof body.instruction === 'string' ? body.instruction.trim() : '';
   if (instruction.length < MIN_INSTRUCTION) {
     return NextResponse.json(
-      { error: 'Write a full sentence — what should Chippi do?' },
+      { error: 'Write a full sentence — what should Cola do?' },
       { status: 400 },
     );
   }
@@ -111,31 +105,32 @@ export async function POST(req: NextRequest) {
   }
 
   // Cap routines per space — a wall of standing instructions is its own mess.
-  const { count } = await supabase
-    .from('Routine')
-    .select('id', { count: 'exact', head: true })
-    .eq('spaceId', space.id);
-  if ((count ?? 0) >= MAX_ROUTINES) {
+  let count: number;
+  try {
+    count = await convex().query(api.agent.routines.countBySpace, { spaceId: space.id });
+  } catch (error) {
+    logger.error('[routines] count failed', { spaceId: space.id }, error);
+    return NextResponse.json({ error: 'Create failed' }, { status: 500 });
+  }
+  if (count >= MAX_ROUTINES) {
     return NextResponse.json(
       { error: `You've reached the limit of ${MAX_ROUTINES} routines.` },
       { status: 400 },
     );
   }
 
-  const { data, error } = await supabase
-    .from('Routine')
-    .insert({
+  // nextRunAt is computed inside the mutation (the PG trigger's port).
+  let data;
+  try {
+    data = await convex().mutation(api.agent.routines.create, {
       spaceId: space.id,
       instruction: instruction.slice(0, MAX_INSTRUCTION),
       cadence,
       hour,
       dayOfMonth,
       daysOfWeek,
-    })
-    .select(SELECT)
-    .single();
-
-  if (error) {
+    });
+  } catch (error) {
     logger.error('[routines] create failed', { spaceId: space.id }, error);
     return NextResponse.json({ error: 'Create failed' }, { status: 500 });
   }

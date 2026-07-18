@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getClientUser } from '@/lib/client-auth';
 import { clientOwnsContact } from '@/lib/client-portal-data';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -24,7 +24,7 @@ const ALLOWED_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
-/** Magic-number check — same defense as the realtor upload route. */
+/** Magic-number check — same defense as the seller upload route. */
 function contentMatchesType(header: Uint8Array): boolean {
   const isPdf = header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46;
   const isJpeg = header[0] === 0xff && header[1] === 0xd8;
@@ -52,24 +52,20 @@ export async function GET(req: NextRequest) {
   }
 
   if (docId) {
-    const { data: doc } = await supabase
-      .from('ClientDocument')
-      .select('fileKey')
-      .eq('id', docId)
-      .eq('contactId', contactId)
-      .maybeSingle();
-    if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    const url = await getSignedDownloadUrl((doc as { fileKey: string }).fileKey);
+    const fileKey = await convex().query(api.portal.clientDocuments.fileKeyForDownload, {
+      id: docId,
+      contactId,
+    });
+    if (!fileKey) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const url = await getSignedDownloadUrl(fileKey);
     return NextResponse.json({ url });
   }
 
-  const { data } = await supabase
-    .from('ClientDocument')
-    .select('id, fileName, contentType, sizeBytes, uploadedBy, createdAt')
-    .eq('contactId', contactId)
-    .order('createdAt', { ascending: false });
+  const documents = await convex().query(api.portal.clientDocuments.listForContact, {
+    contactId,
+  });
 
-  return NextResponse.json({ documents: data ?? [] });
+  return NextResponse.json({ documents });
 }
 
 /**
@@ -108,16 +104,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'File content does not match declared type' }, { status: 400 });
   }
 
-  const { data: contact } = await supabase
-    .from('Contact')
-    .select('spaceId')
-    .eq('id', contactId)
-    .maybeSingle();
+  const contact = await convex().query(api.contacts.contacts.getById, { id: contactId });
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const spaceId = (contact as { spaceId: string }).spaceId;
+  const spaceId = contact.spaceId;
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
-  // Reuse the contact-documents prefix so it lands beside realtor-uploaded docs
+  // Reuse the contact-documents prefix so it lands beside seller-uploaded docs
   // for the same contact; the DB row's uploadedBy distinguishes the source.
   const fileKey = buildKey('contactDocuments', spaceId, contactId, `${crypto.randomUUID()}-${safeName}`);
 
@@ -129,9 +121,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
   }
 
-  const { data: doc, error } = await supabase
-    .from('ClientDocument')
-    .insert({
+  let doc;
+  try {
+    doc = await convex().mutation(api.portal.clientDocuments.create, {
       contactId,
       spaceId,
       fileKey,
@@ -139,13 +131,10 @@ export async function POST(req: NextRequest) {
       contentType: file.type,
       sizeBytes: file.size,
       uploadedBy: 'client',
-    })
-    .select('id, fileName, contentType, sizeBytes, uploadedBy, createdAt')
-    .single();
-
-  if (error) {
+    });
+  } catch (error) {
     await deleteObject(fileKey).catch(() => undefined);
-    logger.error('[clients/documents] insert failed', { contactId }, error);
+    logger.error('[clients/documents] insert failed', { contactId }, error as Error);
     return NextResponse.json({ error: 'Failed to save document' }, { status: 500 });
   }
 

@@ -1,7 +1,7 @@
 /**
  * POST /api/ai/task — on-demand agent streaming endpoint.
  *
- * Every chat turn proxies to the Modal Python sandbox running Chippi via the
+ * Every chat turn proxies to the Modal Python sandbox running Cola via the
  * OpenAI Agents SDK. Modal provides the secure isolated execution environment
  * for long-running, autonomous, multi-step reasoning chains. The Next.js layer
  * handles auth, rate-limiting, persistence, and SSE translation; Modal handles
@@ -17,14 +17,14 @@
  *   7. Translate Modal SSE events → standard agent event format.
  *   8. Persist the assistant message on turn completion.
  *
- * Set CHIPPI_CHAT_RUNTIME=ts to fall back to the in-process TypeScript runtime
+ * Set COLA_CHAT_RUNTIME=ts to fall back to the in-process TypeScript runtime
  * (useful for local dev without a Modal deployment).
  */
 
 import crypto from 'crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { saveUserMessage, saveAssistantMessage } from '@/lib/ai-tools/persistence';
@@ -32,10 +32,10 @@ import { resolveToolContext } from '@/lib/ai-tools/context';
 import { isReservedConversationTitle } from '@/lib/chat/conversation-access';
 import type { ToolContext } from '@/lib/ai-tools/types';
 import {
-  chippiErrorMessage,
+  colaErrorMessage,
   computeConversationTitle,
   fallbackHeuristic,
-} from '@/lib/ai-tools/chippi-voice';
+} from '@/lib/ai-tools/cola-voice';
 import {
   emit as emitTelemetry,
   hasEmitted as hasEmittedTelemetry,
@@ -96,7 +96,7 @@ interface PostBody {
   /**
    * Explicit per-message runtime pick from the composer's Chat/Agent switch.
    *   - 'chat'  → lean single-call path: one LLM completion + read-only vector
-   *               search over the realtor's data. No tools, no agent loop, so
+   *               search over the seller's data. No tools, no agent loop, so
    *               a turn costs ~3k tokens. The structural fix for the
    *               500k-tokens-per-input blowup: most turns never touch the
    *               tool loop at all.
@@ -115,12 +115,13 @@ function autoTitleConversation(spaceId: string, conversationId: string, userMess
         ? await computeConversationTitle(userMessage)
         : fallbackHeuristic(userMessage);
       if (!title || title === 'New conversation') return;
-      const { error } = await supabase
-        .from('Conversation')
-        .update({ title, updatedAt: new Date().toISOString() })
-        .eq('id', conversationId)
-        .eq('spaceId', spaceId);
-      if (error) {
+      try {
+        await convex().mutation(api.conversations.conversations.setTitleForSpace, {
+          id: conversationId,
+          spaceId,
+          title,
+        });
+      } catch (error) {
         logger.warn('[ai/task] auto-title patch failed', { conversationId }, error);
       }
     } catch (err) {
@@ -135,17 +136,15 @@ async function resolveConversation(
   userMessage: string,
 ): Promise<string> {
   if (conversationId) {
-    const { data } = await supabase
-      .from('Conversation')
-      .select('id, spaceId, title')
-      .eq('id', conversationId)
-      .maybeSingle();
-    // Reject reserved broker/team titles. A broker_owner's personal spaceId
-    // equals their realtor space, and the pre-migration broker/team rows still
+    const data = await convex().query(api.conversations.conversations.getById, {
+      id: conversationId,
+    });
+    // Reject reserved manager/team titles. A manager_owner's personal spaceId
+    // equals their seller space, and the pre-migration manager/team rows still
     // live in this shared table — so the spaceId check alone is NOT isolation.
-    // Without this, a broker/team conversationId would be accepted on the
-    // realtor surface, its history fed to the model, and new realtor turns
-    // persisted into that broker conversation. Fall through to a fresh one.
+    // Without this, a manager/team conversationId would be accepted on the
+    // seller surface, its history fed to the model, and new seller turns
+    // persisted into that manager conversation. Fall through to a fresh one.
     if (data && data.spaceId === spaceId && !isReservedConversationTitle(data.title)) {
       if (!data.title || data.title === 'New conversation') {
         autoTitleConversation(spaceId, conversationId, userMessage);
@@ -154,31 +153,20 @@ async function resolveConversation(
     }
   }
 
-  const id = crypto.randomUUID();
-  const { error } = await supabase.from('Conversation').insert({
-    id,
-    spaceId,
-    title: 'New conversation',
-  });
-  if (error) throw error;
-  autoTitleConversation(spaceId, id, userMessage);
-  return id;
+  const created = await convex().mutation(api.conversations.conversations.create, { spaceId });
+  autoTitleConversation(spaceId, created.id, userMessage);
+  return created.id;
 }
 
 async function loadHistory(spaceId: string, conversationId: string): Promise<HistoryRow[]> {
-  const { data } = await supabase
-    .from('Message')
-    .select('role, content, createdAt')
-    .eq('spaceId', spaceId)
-    .eq('conversationId', conversationId)
-    .order('createdAt', { ascending: false })
-    .limit(HISTORY_LIMIT);
-
-  // ascending:false + limit fetches the most RECENT n; reverse to restore
-  // chronological order. The old ascending:true + limit silently fed the
-  // model the OLDEST n messages and dropped every recent turn once a
-  // conversation passed n messages.
-  const rows = ((data ?? []) as Array<{ role: string; content: string }>).reverse();
+  // Newest HISTORY_LIMIT messages for (spaceId, conversationId), returned
+  // chronological (oldest-first) by the Convex query — the same "most-recent n,
+  // then reverse" the old `order('createdAt', desc).limit(n)` + reverse did.
+  const rows = await convex().query(api.conversations.messages.loadHistory, {
+    spaceId,
+    conversationId,
+    limit: HISTORY_LIMIT,
+  });
   return rows
     .filter((r) => r.role === 'user' || r.role === 'assistant')
     .map((r) => ({
@@ -193,16 +181,7 @@ async function hydrateAttachments(
 ): Promise<AttachmentPayload[]> {
   if (!ids || ids.length === 0) return [];
   try {
-    const { data, error } = await supabase
-      .from('Attachment')
-      .select('id, filename, "mimeType", "extractedText", "storagePath", "extractionStatus"')
-      .in('id', ids)
-      .eq('spaceId', spaceId);
-    if (error) {
-      logger.warn('[ai/task] attachment hydrate failed — continuing empty', { spaceId }, error);
-      return [];
-    }
-    const rows = (data ?? []) as Array<{
+    let rows: Array<{
       id: string;
       filename: string;
       mimeType: string;
@@ -210,6 +189,15 @@ async function hydrateAttachments(
       storagePath: string | null;
       extractionStatus: string;
     }>;
+    try {
+      rows = (await convex().query(api.infra.attachments.listByIdsForSpace, {
+        ids,
+        spaceId,
+      })) as typeof rows;
+    } catch (err) {
+      logger.warn('[ai/task] attachment hydrate failed — continuing empty', { spaceId }, err);
+      return [];
+    }
     // Mint a fresh signed URL per attachment for this task. Each task is a
     // single agent turn — short-lived URLs are correct here. A signing
     // failure for one row drops that row's URL but doesn't poison the rest.
@@ -290,7 +278,7 @@ function proxyModalStream({
       const textChunks: string[] = [];
       // Ordered render list assembled as the turn streams — text + tool-call
       // blocks. Persisted verbatim so a reloaded conversation shows what
-      // Chippi actually did (tool calls, plan cards), not just a flat reply.
+      // Cola actually did (tool calls, plan cards), not just a flat reply.
       const blocks: MessageBlock[] = [];
       // Track args from the most recent create_plan tool_call_start so we can
       // emit plan_created when the matching tool_call_result arrives.
@@ -459,7 +447,7 @@ function proxyModalStream({
       } catch (err) {
         if (!abortController.signal.aborted) {
           logger.error('[ai/task] modal stream read error', { spaceId }, err);
-          push(controller, { type: 'error', message: chippiErrorMessage('internal') });
+          push(controller, { type: 'error', message: colaErrorMessage('internal') });
           sentTerminal = true;
         }
       } finally {
@@ -472,7 +460,7 @@ function proxyModalStream({
         await persistOnce();
         if (!sentTerminal && !abortController.signal.aborted) {
           logger.warn('[ai/task] modal stream ended with no terminal event', { spaceId });
-          push(controller, { type: 'error', message: chippiErrorMessage('internal') });
+          push(controller, { type: 'error', message: colaErrorMessage('internal') });
         }
         controller.close();
         reader.releaseLock();
@@ -537,11 +525,11 @@ export async function POST(req: NextRequest) {
     checkRateLimit(`chat:space:${ctx.space.id}`, 60, 600),
   ]);
   if (!userLimit.allowed) {
-    return NextResponse.json({ error: chippiErrorMessage('rate_limited') }, { status: 429 });
+    return NextResponse.json({ error: colaErrorMessage('rate_limited') }, { status: 429 });
   }
   if (!ipLimit.allowed || !spaceLimit.allowed) {
     return NextResponse.json(
-      { error: chippiErrorMessage('rate_limited') },
+      { error: colaErrorMessage('rate_limited') },
       { status: 429, headers: { 'Retry-After': '600' } },
     );
   }
@@ -554,34 +542,28 @@ export async function POST(req: NextRequest) {
   //
   // Gate on the account that actually FUNDS the space, not the Space row: Solo/
   // Pro pay from the Space, but Team / Team Plus members are funded by their
-  // Brokerage pool and their own Space status stays 'inactive' by design — so
-  // reading only the Space let a lapsed brokerage keep premium AI on every seat.
+  // Company pool and their own Space status stays 'inactive' by design — so
+  // reading only the Space let a lapsed company keep premium AI on every seat.
   try {
     const { account } = await resolveBillingAccount(ctx.space.id);
-    const { data: subRow } =
-      account.type === 'brokerage'
-        ? await supabase
-            .from('Brokerage')
-            .select('stripeSubscriptionStatus')
-            .eq('id', account.id)
-            .maybeSingle()
-        : await supabase
-            .from('Space')
-            .select('stripeSubscriptionStatus')
-            .eq('id', account.id)
-            .maybeSingle();
+    const subRow =
+      account.type === 'company'
+        ? await convex()
+            .query(api.org.companies.getById, { id: account.id })
+            .catch(() => null)
+        : await convex()
+            .query(api.workspace.spaces.getById, { id: account.id })
+            .catch(() => null);
     const subStatus = subRow?.stripeSubscriptionStatus ?? 'inactive';
     if (isSubscriptionDelinquent(subStatus)) {
-      const { data: userRow } = await supabase
-        .from('User')
-        .select('platformRole')
-        .eq('clerkId', ctx.userId)
-        .maybeSingle();
+      const userRow = await convex()
+        .query(api.org.users.getByClerkId, { clerkId: ctx.userId })
+        .catch(() => null);
       if (userRow?.platformRole !== 'admin') {
         return NextResponse.json(
           {
             error:
-              'Your subscription needs attention — update your payment method in billing to keep using Chippi. Your workspace and data stay available.',
+              'Your subscription needs attention — update your payment method in billing to keep using Cola. Your workspace and data stay available.',
           },
           { status: 402 },
         );
@@ -593,27 +575,17 @@ export async function POST(req: NextRequest) {
 
   try {
     // Budget settings + today's usage are independent reads — fetch together.
-    const [settingsResult, usageResult] = await Promise.all([
-      supabase
-        .from('AgentSettings')
-        .select('dailyTokenBudget')
-        .eq('spaceId', ctx.space.id)
-        .maybeSingle(),
+    // dailyTokenBudget folds the maybeSingle + default into the query; the
+    // default (50_000) matches the AgentSettings.dailyTokenBudget DB column
+    // default (and schemas.py / the settings + usage APIs).
+    const [dailyTokenBudget, usageResult] = await Promise.all([
+      convex().query(api.agent.settings.dailyTokenBudget, { spaceId: ctx.space.id }),
       // Sums ChatUsage rows + the autonomous Redis counter, matching the
       // Settings display. (The old version read AgentTask token columns no
       // code writes, so enforcement silently passed every time.)
       getTodayTokenUsage(ctx.space.id),
     ]);
 
-    // Default must match the AgentSettings.dailyTokenBudget DB column default
-    // (and schemas.py / the settings + usage APIs), which are all 50_000. This
-    // fallback was 500_000, so a space with no AgentSettings row was gated at
-    // 10x the budget every other surface shows and enforces.
-    const dailyTokenBudget: number =
-      ((settingsResult.data as { dailyTokenBudget?: number | null } | null)?.dailyTokenBudget as
-        | number
-        | null
-        | undefined) ?? 50_000;
     const { total: todayTokens } = usageResult;
 
     if (todayTokens >= dailyTokenBudget) {
@@ -637,7 +609,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     if (err instanceof CreditsExhaustedError) {
       return NextResponse.json(
-        { error: 'Out of credits. Buy a top-up or upgrade your plan to keep chatting with Chippi.' },
+        { error: 'Out of credits. Buy a top-up or upgrade your plan to keep chatting with Cola.' },
         { status: 402 },
       );
     }
@@ -649,14 +621,14 @@ export async function POST(req: NextRequest) {
     conversationId = await resolveConversation(ctx.space.id, body.conversationId ?? null, message);
   } catch (err) {
     logger.error('[ai/task] conversation resolve failed', { spaceSlug }, err);
-    return NextResponse.json({ error: chippiErrorMessage('internal') }, { status: 500 });
+    return NextResponse.json({ error: colaErrorMessage('internal') }, { status: 500 });
   }
 
   try {
     await saveUserMessage({ spaceId: ctx.space.id, conversationId, content: message });
   } catch (err) {
     logger.error('[ai/task] save user message failed', { spaceSlug }, err);
-    return NextResponse.json({ error: chippiErrorMessage('internal') }, { status: 500 });
+    return NextResponse.json({ error: colaErrorMessage('internal') }, { status: 500 });
   }
 
   // The turn's credit charge is applied by the model-aware ChatUsage trigger
@@ -666,10 +638,10 @@ export async function POST(req: NextRequest) {
 
   void (async () => {
     try {
-      if (await hasEmittedTelemetry(ctx.space.id, 'chippi_first_message')) return;
+      if (await hasEmittedTelemetry(ctx.space.id, 'cola_first_message')) return;
       const signupAt = await getFirstEmittedAt(ctx.space.id, 'signup_completed');
       await emitTelemetry({
-        event: 'chippi_first_message',
+        event: 'cola_first_message',
         spaceId: ctx.space.id,
         userId: ctx.userId,
         payload: {
@@ -704,7 +676,7 @@ export async function POST(req: NextRequest) {
   // first token. Modal is reached two ways and two ways only:
   //   1. the agent runtime spawns deep / swarm sub-tasks ON Modal via
   //      delegate_task (the keystone use the owner wants Modal for), and
-  //   2. CHIPPI_CHAT_RUNTIME=modal proxies the WHOLE agent turn to the sandbox
+  //   2. COLA_CHAT_RUNTIME=modal proxies the WHOLE agent turn to the sandbox
   //      (kept as a fallback / for running heavy turns entirely in Modal).
   // Router errors → 'agent' (its safe default), so a router bug can't silently
   // drop a real action.
@@ -767,8 +739,8 @@ export async function POST(req: NextRequest) {
       // shouldEscalate() ("I can't send that from here…"), re-run the SAME
       // message on the in-process TS agent (full tool surface) and pipe its
       // stream through. This was previously hardwired to `false`, so a
-      // misrouted action committed the toolless deflection — the realtor
-      // read that as "Chippi has no tools".
+      // misrouted action committed the toolless deflection — the seller
+      // read that as "Cola has no tools".
       onEscalate: async () => {
         logger.info('[ai/task] direct → agent escalation', { spaceSlug, model: turnModel });
         return streamTsChatTurn({
@@ -785,11 +757,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Agent path → Modal. Two ways in:
-  //   1. CHIPPI_CHAT_RUNTIME=modal forces ALL agent turns through the sandbox.
+  //   1. COLA_CHAT_RUNTIME=modal forces ALL agent turns through the sandbox.
   //      This is a deliberate deploy choice, so a missing MODAL_CHAT_URL is a
   //      misconfiguration we surface loudly (callModalAgent returns 503) rather
   //      than silently downgrading the whole deploy to the TS runtime.
-  //   2. The realtor picked Agent mode for THIS message. Prefer Modal, but if
+  //   2. The seller picked Agent mode for THIS message. Prefer Modal, but if
   //      MODAL_CHAT_URL is unset, degrade gracefully to the in-process TS agent
   //      (it has the full tool surface too) instead of failing the one turn.
   const forcedModal = chatRuntime() === 'modal';
@@ -808,8 +780,8 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Default: in-process TS runtime (PRIMARY) ─────────────────────────────
-  // App-wide LLM client (OpenRouter-first), the realtor's workspace model,
-  // full Chippi tool set, approval gates, rate limits, tool-call logging,
+  // App-wide LLM client (OpenRouter-first), the seller's workspace model,
+  // full Cola tool set, approval gates, rate limits, tool-call logging,
   // multimodal, and the delegate_task orchestrator. No Modal cold start —
   // first token is fast. Deep work is spawned ON Modal via delegate_task and
   // streamed back inline.
@@ -828,19 +800,14 @@ export async function POST(req: NextRequest) {
 // ── Workspace model lookup ────────────────────────────────────────────────
 
 /**
- * Resolve the chat model the realtor's workspace is configured for. The
+ * Resolve the chat model the seller's workspace is configured for. The
  * direct path needs this BEFORE the LLM call (provider detection drives
  * multimodal encoding); the agent path reads it inside Modal so it doesn't
  * need this helper. Falls back to DEFAULT_CHAT_MODEL on any lookup failure.
  */
 async function loadWorkspaceModel(spaceId: string): Promise<string> {
   try {
-    const { data } = await supabase
-      .from('AgentSettings')
-      .select('"chatModel"')
-      .eq('spaceId', spaceId)
-      .maybeSingle();
-    const m = (data as { chatModel?: string } | null)?.chatModel;
+    const m = await convex().query(api.agent.settings.chatModel, { spaceId });
     return m && typeof m === 'string' && m.trim() ? m.trim() : DEFAULT_CHAT_MODEL;
   } catch {
     return DEFAULT_CHAT_MODEL;
@@ -876,9 +843,9 @@ async function callModalAgent(input: CallModalAgentInput): Promise<Response> {
     secret: process.env.AGENT_INTERNAL_SECRET ?? '',
     space_id: ctx.space.id,
     // Composio scopes connections per "entity" (Clerk userId). Without
-    // this, Modal can't know which realtor's Gmail / Slack / etc. to
+    // this, Modal can't know which seller's Gmail / Slack / etc. to
     // load — the agent ends up with zero integration tools regardless
-    // of how many the realtor has connected. The Python side reads
+    // of how many the seller has connected. The Python side reads
     // `user_id` to look up active toolkits in IntegrationConnection
     // and load them via the Composio Python SDK.
     user_id: ctx.userId,
@@ -898,13 +865,13 @@ async function callModalAgent(input: CallModalAgentInput): Promise<Response> {
     });
   } catch (err) {
     logger.error('[ai/task] Modal fetch failed', { spaceSlug }, err);
-    return NextResponse.json({ error: chippiErrorMessage('internal') }, { status: 502 });
+    return NextResponse.json({ error: colaErrorMessage('internal') }, { status: 502 });
   }
 
   if (!modalRes.ok || !modalRes.body) {
     const status = modalRes.status;
     logger.error('[ai/task] Modal returned error', { status, spaceSlug });
-    return NextResponse.json({ error: chippiErrorMessage('internal') }, { status: 502 });
+    return NextResponse.json({ error: colaErrorMessage('internal') }, { status: 502 });
   }
 
   return proxyModalStream({

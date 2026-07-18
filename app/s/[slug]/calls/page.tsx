@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getSpaceFromSlug } from '@/lib/space';
 import { CallsView } from './calls-view';
 
-export const metadata = { title: 'Calls — Chippi' };
+export const metadata = { title: 'Calls — Cola' };
 
 export default async function CallsPage({
   params,

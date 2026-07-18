@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * `<ComposerDraftDiagram />` — Chippi drafts the reply.
+ * `<ComposerDraftDiagram />` — Cola drafts the reply.
  *
- * One beat: a Chippi-authored draft fills in inside a real-looking email
+ * One beat: a Cola-authored draft fills in inside a real-looking email
  * composer, then a Send pill appears in the draft card's action row. The
- * realtor sees the agent writing the email they were going to type anyway.
+ * seller sees the agent writing the email they were going to type anyway.
  * That's the whole pitch in one card.
  *
  * Layout is fully fluid: the draft card is the single flex-1 region, so the
@@ -33,10 +33,10 @@ import { cn } from '@/lib/utils';
 import { brandOrange } from '@/lib/colors';
 import { EASE_APPLE } from '@/lib/motion';
 import {
-  ChippiDiagramShell,
-  DiagramChippiBadge,
+  ColaDiagramShell,
+  DiagramColaBadge,
   useDiagramMotion,
-} from './chippi-diagram-shell';
+} from './cola-diagram-shell';
 
 interface ComposerDraftDiagramProps {
   aspect?: 'video' | 'square' | 'wide' | 'tall';
@@ -63,9 +63,9 @@ export function ComposerDraftDiagram({
   className,
 }: ComposerDraftDiagramProps) {
   return (
-    <ChippiDiagramShell aspect={aspect} pad={6} className={className}>
+    <ColaDiagramShell aspect={aspect} pad={6} className={className}>
       <ComposerDraftContent />
-    </ChippiDiagramShell>
+    </ColaDiagramShell>
   );
 }
 
@@ -124,7 +124,7 @@ function ComposerDraftContent() {
 
   return (
     // Root fills the shell. The composer card takes the whole box; inside it,
-    // the Chippi draft is the one flex-1 region that absorbs the available
+    // the Cola draft is the one flex-1 region that absorbs the available
     // height — so the diagram grows tall at `square` and shrinks at the short
     // `video` aspect without ever summing past the box.
     <div className="w-full h-full flex flex-col min-h-0">
@@ -138,7 +138,7 @@ function ComposerDraftContent() {
             className="text-[14px] sm:text-[15px] tracking-tight text-foreground leading-snug truncate"
             style={{ fontFamily: 'var(--font-title)' }}
           >
-            Re: 415 Lexington, tour Saturday
+            Re: 415 Lexington, demo Saturday
           </p>
           <p className="mt-1.5 text-[11px] text-muted-foreground truncate">
             To <span className="text-foreground/80">Marcus Chen</span>
@@ -148,13 +148,13 @@ function ComposerDraftContent() {
         {/* Body area — the draft card is the only thing the eye lands on and
             the only fluid region. It fills whatever height is left. */}
         <div className="flex-1 min-h-0 p-3 sm:p-4 flex">
-          {/* Chippi draft card. Left rail tinted with the agent border
-              treatment so the block reads as "this came from Chippi". */}
+          {/* Cola draft card. Left rail tinted with the agent border
+              treatment so the block reads as "this came from Cola". */}
           <div className="flex-1 min-h-0 rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col">
             {/* Card header: authorship + Draft tag. shrink-0. */}
             <div className="shrink-0 px-3.5 py-2.5 border-b border-border/60 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
-                <DiagramChippiBadge />
+                <DiagramColaBadge />
                 <span className="text-[11px] text-muted-foreground truncate">
                   Drafted just now.
                 </span>
@@ -170,7 +170,7 @@ function ComposerDraftContent() {
             <div
               className={brandOrange(
                 'AGENT_BADGE',
-                'flex-1 min-h-0 px-3.5 py-3 border-l-2 border-orange-400 dark:border-orange-500/60 flex flex-col',
+                'flex-1 min-h-0 px-3.5 py-3 border-l-2 border-primary/40 dark:border-primary/200/60 flex flex-col',
               )}
             >
               <div className="space-y-1.5">

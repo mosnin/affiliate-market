@@ -1,23 +1,17 @@
 import { redirect } from 'next/navigation';
 import { isPlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { AnnouncementClient, type Announcement } from './announcement-client';
 
-export const metadata = { title: 'Announcements — Admin — Chippi' };
+export const metadata = { title: 'Announcements — Admin — Cola' };
 
 export default async function AdminAnnouncementsPage() {
   const ok = await isPlatformAdmin();
   if (!ok) redirect('/');
 
-  const { data, error } = await supabase
-    .from('Announcement')
-    .select('*')
-    .order('createdAt', { ascending: false })
-    .limit(100);
+  const data = await convex().query(api.notifications.announcements.listAll, { limit: 100 });
 
-  if (error) throw error;
-
-  const announcements = (data ?? []) as Announcement[];
+  const announcements = data as Announcement[];
 
   return (
     <div className="space-y-8 pb-12">

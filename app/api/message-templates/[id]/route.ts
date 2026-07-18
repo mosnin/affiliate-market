@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceForUser } from '@/lib/space';
 import { requireAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
@@ -10,12 +10,10 @@ const VALID_CHANNELS: MessageChannel[] = ['sms', 'email', 'note'];
 async function resolve(userId: string, id: string) {
   const space = await getSpaceForUser(userId);
   if (!space) return null;
-  const { data } = await supabase
-    .from('MessageTemplate')
-    .select('*')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const data = await convex().query(api.support.templates.getByIdInSpace, {
+    id,
+    spaceId: space.id,
+  });
   if (!data) return null;
   return { space, template: data };
 }
@@ -36,7 +34,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const patch: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+  // updatedAt is owned by the Convex mutation; only the user-supplied fields
+  // are threaded through (undefined = leave as-is). subject is tri-state.
+  const patch: {
+    name?: string;
+    channel?: MessageChannel;
+    subject?: string | null;
+    body?: string;
+  } = {};
   if (body.name !== undefined) {
     const name = String(body.name).trim().slice(0, 120);
     if (!name) return NextResponse.json({ error: 'Name cannot be empty' }, { status: 400 });
@@ -46,7 +51,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!VALID_CHANNELS.includes(body.channel as MessageChannel)) {
       return NextResponse.json({ error: 'Invalid channel' }, { status: 400 });
     }
-    patch.channel = body.channel;
+    patch.channel = body.channel as MessageChannel;
   }
   if (body.subject !== undefined) {
     patch.subject = body.subject ? String(body.subject).trim().slice(0, 200) : null;
@@ -58,18 +63,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     patch.body = content;
   }
 
-  const { data, error } = await supabase
-    .from('MessageTemplate')
-    .update(patch)
-    .eq('id', id)
-    .eq('spaceId', ctx.space.id)
-    .select()
-    .single();
-
-  if (error) {
+  let data;
+  try {
+    data = await convex().mutation(api.support.templates.update, {
+      id,
+      spaceId: ctx.space.id,
+      ...patch,
+    });
+  } catch (error) {
     logger.error('[templates] patch failed', { templateId: id }, error);
     return NextResponse.json({ error: 'Failed to update template' }, { status: 500 });
   }
+  if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(data);
 }
 
@@ -82,13 +87,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const ctx = await resolve(userId, id);
   if (!ctx) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { error } = await supabase
-    .from('MessageTemplate')
-    .delete()
-    .eq('id', id)
-    .eq('spaceId', ctx.space.id);
-
-  if (error) {
+  try {
+    await convex().mutation(api.support.templates.deleteByIdInSpace, {
+      id,
+      spaceId: ctx.space.id,
+    });
+  } catch (error) {
     logger.error('[templates] delete failed', { templateId: id }, error);
     return NextResponse.json({ error: 'Failed to delete template' }, { status: 500 });
   }

@@ -28,8 +28,8 @@ CREATE TABLE IF NOT EXISTS "User" (
                             CHECK ("platformRole" IN ('user', 'admin'))
 );
 
--- Brokerage must exist before Space (Space.brokerageId → Brokerage)
-CREATE TABLE IF NOT EXISTS "Brokerage" (
+-- Company must exist before Space (Space.companyId → Company)
+CREATE TABLE IF NOT EXISTS "Company" (
   id           text        PRIMARY KEY DEFAULT gen_random_uuid()::text,
   name         text        NOT NULL,
   "ownerId"    text        NOT NULL REFERENCES "User"(id) ON DELETE RESTRICT,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS "Space" (
   emoji         text        NOT NULL DEFAULT '🏠',
   "createdAt"   timestamptz NOT NULL DEFAULT now(),
   "ownerId"     text        UNIQUE NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
-  "brokerageId" text        REFERENCES "Brokerage"(id) ON DELETE SET NULL
+  "companyId" text        REFERENCES "Company"(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS "SpaceSetting" (
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS "Contact" (
   notes             text,
   budget            double precision,
   preferences       text,
-  properties        text[]      NOT NULL DEFAULT '{}',
+  products        text[]      NOT NULL DEFAULT '{}',
   type              text        NOT NULL DEFAULT 'QUALIFICATION',
   tags              text[]      NOT NULL DEFAULT '{}',
   "leadScore"       double precision,
@@ -155,23 +155,23 @@ CREATE TABLE IF NOT EXISTS "Message" (
   "createdAt" timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS "BrokerageMembership" (
+CREATE TABLE IF NOT EXISTS "CompanyMembership" (
   id            text        PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  "brokerageId" text        NOT NULL REFERENCES "Brokerage"(id) ON DELETE CASCADE,
+  "companyId" text        NOT NULL REFERENCES "Company"(id) ON DELETE CASCADE,
   "userId"      text        NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
   role          text        NOT NULL
-                  CHECK (role IN ('broker_owner', 'broker_admin', 'realtor_member')),
+                  CHECK (role IN ('manager_owner', 'manager_admin', 'seller_member')),
   "invitedById" text        REFERENCES "User"(id) ON DELETE SET NULL,
   "createdAt"   timestamptz NOT NULL DEFAULT now(),
-  UNIQUE ("brokerageId", "userId")
+  UNIQUE ("companyId", "userId")
 );
 
 CREATE TABLE IF NOT EXISTS "Invitation" (
   id             text        PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  "brokerageId"  text        NOT NULL REFERENCES "Brokerage"(id) ON DELETE CASCADE,
+  "companyId"  text        NOT NULL REFERENCES "Company"(id) ON DELETE CASCADE,
   email          text        NOT NULL,
   "roleToAssign" text        NOT NULL
-                   CHECK ("roleToAssign" IN ('broker_admin', 'realtor_member')),
+                   CHECK ("roleToAssign" IN ('manager_admin', 'seller_member')),
   token          text        UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'),
   status         text        NOT NULL DEFAULT 'pending'
                    CHECK (status IN ('pending', 'accepted', 'expired', 'cancelled')),
@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS "DocumentEmbedding" (
 CREATE INDEX IF NOT EXISTS idx_user_clerk_id        ON "User"("clerkId");
 CREATE INDEX IF NOT EXISTS idx_space_owner_id        ON "Space"("ownerId");
 CREATE INDEX IF NOT EXISTS idx_space_slug            ON "Space"(slug);
-CREATE INDEX IF NOT EXISTS idx_space_brokerage       ON "Space"("brokerageId");
+CREATE INDEX IF NOT EXISTS idx_space_company       ON "Space"("companyId");
 CREATE INDEX IF NOT EXISTS idx_space_setting_sid     ON "SpaceSetting"("spaceId");
 
 CREATE INDEX IF NOT EXISTS idx_contact_space_id      ON "Contact"("spaceId");
@@ -240,14 +240,14 @@ CREATE INDEX IF NOT EXISTS deal_status_idx           ON "Deal"("spaceId", status
 CREATE INDEX IF NOT EXISTS idx_message_space_id      ON "Message"("spaceId");
 CREATE INDEX IF NOT EXISTS message_space_created_idx ON "Message"("spaceId", "createdAt" ASC);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_brokerage_owner     ON "Brokerage"("ownerId");
-CREATE INDEX       IF NOT EXISTS idx_brokerage_status     ON "Brokerage"(status);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_brokerage_join_code ON "Brokerage"("joinCode");
+CREATE UNIQUE INDEX IF NOT EXISTS idx_company_owner     ON "Company"("ownerId");
+CREATE INDEX       IF NOT EXISTS idx_company_status     ON "Company"(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_company_join_code ON "Company"("joinCode");
 
-CREATE INDEX IF NOT EXISTS idx_membership_brokerage ON "BrokerageMembership"("brokerageId");
-CREATE INDEX IF NOT EXISTS idx_membership_user      ON "BrokerageMembership"("userId");
+CREATE INDEX IF NOT EXISTS idx_membership_company ON "CompanyMembership"("companyId");
+CREATE INDEX IF NOT EXISTS idx_membership_user      ON "CompanyMembership"("userId");
 
-CREATE INDEX IF NOT EXISTS idx_invitation_brokerage ON "Invitation"("brokerageId");
+CREATE INDEX IF NOT EXISTS idx_invitation_company ON "Invitation"("companyId");
 CREATE INDEX IF NOT EXISTS idx_invitation_email     ON "Invitation"(email);
 CREATE INDEX IF NOT EXISTS idx_invitation_token     ON "Invitation"(token);
 CREATE INDEX IF NOT EXISTS idx_invitation_status    ON "Invitation"(status);
@@ -271,7 +271,7 @@ CREATE INDEX IF NOT EXISTS idx_doc_embedding_hnsw
 -- RLS blocks accidental exposure of the anon/authenticated keys.
 
 ALTER TABLE "User"                ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "Brokerage"           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Company"           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Space"               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "SpaceSetting"        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Contact"             ENABLE ROW LEVEL SECURITY;
@@ -281,7 +281,7 @@ ALTER TABLE "Deal"                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "DealContact"         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "DealActivity"        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Message"             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "BrokerageMembership" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CompanyMembership" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Invitation"          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "AuditLog"            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "DocumentEmbedding"   ENABLE ROW LEVEL SECURITY;

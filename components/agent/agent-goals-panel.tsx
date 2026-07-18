@@ -21,7 +21,7 @@ interface AgentGoal {
 
 const GOAL_TYPE_LABELS: Record<string, string> = {
   follow_up_sequence: 'Follow-up',
-  tour_booking: 'Tour booking',
+  demo_booking: 'Demo booking',
   offer_progress: 'Offer progress',
   reengagement: 'Re-engagement',
   custom: 'Custom',
@@ -29,7 +29,7 @@ const GOAL_TYPE_LABELS: Record<string, string> = {
 
 const GOAL_TYPE_OPTIONS = [
   { value: 'follow_up_sequence', label: 'Follow-up sequence' },
-  { value: 'tour_booking', label: 'Tour booking' },
+  { value: 'demo_booking', label: 'Demo booking' },
   { value: 'offer_progress', label: 'Offer progress' },
   { value: 'reengagement', label: 'Re-engagement' },
   { value: 'custom', label: 'Custom' },
@@ -55,8 +55,8 @@ function GoalRow({ goal, onAction }: { goal: AgentGoal; onAction: (id: string, s
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="font-medium text-foreground/80">{label}</span>
           {isHighPriority && (
-            <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span className="inline-flex items-center gap-1 text-muted-foreground dark:text-muted-foreground">
+              <span className="w-1.5 h-1.5 rounded-full bg-muted0" />
               High priority
             </span>
           )}
@@ -75,7 +75,7 @@ function GoalRow({ goal, onAction }: { goal: AgentGoal; onAction: (id: string, s
           disabled={actioning !== null}
           title="Mark as completed"
           aria-label="Mark goal as completed"
-          className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:text-emerald-400 dark:hover:bg-emerald-500/10 transition-colors disabled:opacity-40"
+          className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:text-positive hover:bg-positive-subtle dark:hover:text-positive dark:hover:bg-positive-subtle0/10 transition-colors disabled:opacity-40"
         >
           <CheckCircle2 size={13} />
         </button>
@@ -133,7 +133,7 @@ function NewGoalForm({ onSubmit, onCancel }: { onSubmit: (goalType: string, desc
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={2}
-          placeholder="Describe what Chippi should accomplish…"
+          placeholder="Describe what Cola should accomplish…"
           required
           className={cn(
             'w-full resize-none rounded-md border bg-background px-3 py-2.5 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring',
@@ -258,7 +258,7 @@ export function AgentGoalsPanel() {
 
       {!loading && goals.length === 0 && !showForm && (
         <div className="py-8 text-sm text-muted-foreground">
-          No active goals. Goals let you track multi-step objectives Chippi should work toward.
+          No active goals. Goals let you track multi-step objectives Cola should work toward.
         </div>
       )}
 

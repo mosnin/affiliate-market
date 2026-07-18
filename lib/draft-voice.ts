@@ -1,14 +1,14 @@
 /**
- * Voice samples — what the realtor actually wrote, post-edit.
+ * Voice samples — what the seller actually wrote, post-edit.
  *
  * The compose path used to read like a template because the model only ever
- * saw the SYSTEM_PROMPT and the subject's facts. After a realtor edits a
+ * saw the SYSTEM_PROMPT and the subject's facts. After a seller edits a
  * draft, the corrected body is the closest thing we have to ground truth on
  * how *they* sound. This helper pulls the last few of those edits so the
  * compose route can paste them in as a style reference.
  *
- * What we're NOT doing: storing a per-realtor "voice profile," running a
- * fine-tune, or building a vector index. The realtor's last 3 edited drafts
+ * What we're NOT doing: storing a per-seller "voice profile," running a
+ * fine-tune, or building a vector index. The seller's last 3 edited drafts
  * is the simplest thing that could possibly work; if it's not enough we'll
  * know from the next batch of edit_distance numbers.
  *
@@ -23,7 +23,7 @@
  *      person. Structural — enforced at the DB boundary.
  *   2. Server prompt instruction at the compose call site: the model is told
  *      explicitly not to address the new recipient by any name from the
- *      samples and not to reuse deals/properties/dates from them. That's
+ *      samples and not to reuse deals/products/dates from them. That's
  *      where the actual recipient-name protection lives.
  *
  * We do NOT try to regex-scrub names out of the body. A regex catches "Hi
@@ -32,7 +32,7 @@
  * end-to-end or it doesn't; either way the regex didn't help.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 export interface VoiceSample {
   subject: string | null;
@@ -48,13 +48,13 @@ export interface VoiceSample {
 // teach voice. Tune up if signal-to-noise is bad once we have data.
 //
 // MIN_SAMPLES = 2. One outlier sample skews the model harder than zero
-// samples does. Require two before we ship any. If the realtor has only
+// samples does. Require two before we ship any. If the seller has only
 // edited once in 60 days, they're effectively still on the default voice.
 //
 // MAX_SAMPLES = 3. Three is enough for the model to triangulate cadence; more
 // inflates prompt size with diminishing return.
 //
-// LOOKBACK_DAYS = 60. Any older than that and the realtor's voice has
+// LOOKBACK_DAYS = 60. Any older than that and the seller's voice has
 // probably moved on (or the team has). Bounded query, bounded staleness.
 //
 // SAMPLE_MAX_CHARS = 400. Email bodies that long are fine to truncate — the
@@ -70,7 +70,7 @@ const SAMPLE_MAX_CHARS = 400;
 // ── Cache (same shape as lib/ai-tools/context-enrichment.ts) ────────────────
 //
 // 5-minute TTL keyed by spaceId. The voice samples don't change often (the
-// realtor edits maybe a handful per day), and the compose route fires
+// seller edits maybe a handful per day), and the compose route fires
 // repeatedly during a single dashboard session. Cheap memoization.
 //
 // Per-space, never global — voice never bleeds across tenants.
@@ -124,29 +124,27 @@ export async function getRecentVoiceSamples(
 
   const cutoff = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000).toISOString();
 
-  // SELECT only the two columns we return — explicitly NOT contactId/dealId,
-  // not subject-of-deal title, not anything that could leak who the prior
-  // draft was for. Defense at the query layer.
-  const { data, error } = await supabase
-    .from('AgentDraft')
-    .select('subject, content')
-    .eq('spaceId', spaceId)
-    .eq('channel', 'email')
-    .eq('feedback_action', 'edited_and_approved')
-    .in('status', ['sent', 'approved'])
-    .gt('edit_distance', EDIT_DISTANCE_THRESHOLD)
-    .gte('updatedAt', cutoff)
-    .order('updatedAt', { ascending: false })
-    .limit(MAX_SAMPLES);
-
-  if (error || !data) {
+  // The query returns only the two columns we surface — explicitly NOT
+  // contactId/dealId, not subject-of-deal title, not anything that could leak
+  // who the prior draft was for. Defense at the query layer (the Convex fn's
+  // projection mirrors the old column-scoped SELECT). It applies the
+  // channel='email', feedback_action='edited_and_approved',
+  // status in (sent, approved), edit_distance > threshold, updatedAt >= cutoff
+  // filters and the (updatedAt desc, limit MAX_SAMPLES) ordering server-side.
+  let rows: Array<{ subject: string | null; content: string }>;
+  try {
+    rows = await convex().query(api.agent.drafts.voiceSamples, {
+      spaceId,
+      editDistanceThreshold: EDIT_DISTANCE_THRESHOLD,
+      cutoff,
+      limit: MAX_SAMPLES,
+    });
+  } catch {
     // Fail closed — no voice rather than a broken voice. Cache the empty
     // result so a transient DB hiccup doesn't hammer us; TTL is 5 min.
     cache.set(spaceId, { samples: [], expiresAt: Date.now() + TTL_MS });
     return [];
   }
-
-  const rows = data as Array<{ subject: string | null; content: string }>;
 
   // MIN_SAMPLES gate: 1 sample is worse than 0 (overfits to one outlier).
   if (rows.length < MIN_SAMPLES) {

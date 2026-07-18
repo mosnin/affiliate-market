@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Webhook } from 'svix';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { audit } from '@/lib/audit';
 import { getClientIp } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
@@ -79,11 +79,7 @@ export async function POST(req: NextRequest) {
   try {
     if (type === 'session.created') {
       // Look up internal user ID for context
-      const { data: userRow } = await supabase
-        .from('User')
-        .select('id')
-        .eq('clerkId', clerkUserId)
-        .maybeSingle();
+      const userRow = await convex().query(api.org.users.getByClerkId, { clerkId: clerkUserId });
 
       await audit({
         actorClerkId: clerkUserId,
@@ -104,11 +100,7 @@ export async function POST(req: NextRequest) {
         sessionId: data.id,
       });
     } else if (type === 'session.ended' || type === 'session.removed' || type === 'session.revoked') {
-      const { data: userRow } = await supabase
-        .from('User')
-        .select('id')
-        .eq('clerkId', clerkUserId)
-        .maybeSingle();
+      const userRow = await convex().query(api.org.users.getByClerkId, { clerkId: clerkUserId });
 
       await audit({
         actorClerkId: clerkUserId,

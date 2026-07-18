@@ -30,7 +30,7 @@ function formatCurrency(value: number): string {
 function insightColor(text: string): string {
   const lower = text.toLowerCase();
   if (lower.includes('closing') || lower.includes('priority')) {
-    return 'bg-amber-400';
+    return 'bg-lead-warm';
   }
   return 'bg-blue-500';
 }
@@ -157,7 +157,7 @@ export function AgentPortfolioInsights() {
                 <p
                   className={cn(
                     'text-xl font-semibold',
-                    data.deals_closing_14d > 0 ? 'text-amber-500 dark:text-amber-400' : 'text-muted-foreground',
+                    data.deals_closing_14d > 0 ? 'text-muted-foreground dark:text-muted-foreground' : 'text-muted-foreground',
                   )}
                 >
                   {data.deals_closing_14d}

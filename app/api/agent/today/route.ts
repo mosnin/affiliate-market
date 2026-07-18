@@ -3,13 +3,13 @@
  *
  * Returns the day's items for the dispatch console's "What's coming" section:
  *   - followUpsDue: contacts whose followUpAt is in the past or today
- *   - toursUpcoming: scheduled or confirmed tours from now forward
+ *   - demosUpcoming: scheduled or confirmed demos from now forward
  *
  * One endpoint, one shape — keeps the dispatch console rendering one fetch
- * per section instead of N. Realtor space only (not brokerage-routed).
+ * per section instead of N. Seller space only (not company-routed).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -24,12 +24,12 @@ export interface FollowUpDue {
   scoreLabel: string | null;
 }
 
-export interface UpcomingTour {
+export interface UpcomingDemo {
   id: string;
   guestName: string | null;
   startsAt: string;
   endsAt: string | null;
-  propertyAddress: string | null;
+  productAddress: string | null;
   status: string;
 }
 
@@ -43,28 +43,28 @@ export async function GET(_req: NextRequest) {
 
   const nowIso = new Date().toISOString();
 
-  const [followUpsRes, toursRes] = await Promise.all([
-    supabase
-      .from('Contact')
-      .select('id, name, phone, email, type, followUpAt, leadScore, scoreLabel')
-      .eq('spaceId', space.id)
-      .is('brokerageId', null)
-      .not('followUpAt', 'is', null)
-      .lte('followUpAt', nowIso)
-      .order('followUpAt', { ascending: true })
-      .limit(10),
-    supabase
-      .from('Tour')
-      .select('id, guestName, startsAt, endsAt, propertyAddress, status')
-      .eq('spaceId', space.id)
-      .gte('startsAt', nowIso)
-      .in('status', ['scheduled', 'confirmed'])
-      .order('startsAt', { ascending: true })
-      .limit(6),
+  const [followUpRows, demosUpcoming] = await Promise.all([
+    // followUpAt-due, companyId-null, ASC by followUpAt, capped 10 — the old
+    // `.is('companyId',null).not(followUpAt,is,null).lte(followUpAt,now)` query.
+    convex()
+      .query(api.contacts.contacts.followUpsForSpaces, {
+        spaceIds: [space.id],
+        lte: nowIso,
+        requireCompanyIdNull: true,
+        limit: 10,
+      })
+      .catch(() => []),
+    convex().query(api.demos.demos.listBySpace, {
+      spaceId: space.id,
+      startsAtGte: nowIso,
+      statuses: ['scheduled', 'confirmed'],
+      order: 'asc',
+      limit: 6,
+    }),
   ]);
 
   return NextResponse.json({
-    followUpsDue: (followUpsRes.data ?? []) as FollowUpDue[],
-    toursUpcoming: (toursRes.data ?? []) as UpcomingTour[],
+    followUpsDue: followUpRows as unknown as FollowUpDue[],
+    demosUpcoming: demosUpcoming as UpcomingDemo[],
   });
 }

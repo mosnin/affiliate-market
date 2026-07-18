@@ -3,7 +3,7 @@
 /**
  * BrandPanel — the interactive surface of /s/[slug]/studio/brand.
  *
- * The realtor's brand kit: palette, caption voice, social handles. Studio
+ * The seller's brand kit: palette, caption voice, social handles. Studio
  * folds the palette into image generations so output comes out on-brand;
  * the voice primes caption writing.
  */
@@ -126,7 +126,7 @@ export function BrandPanel() {
           {kit.colors.length < 8 && (
             <button
               type="button"
-              onClick={() => edit({ colors: [...kit.colors, '#ff964f'] })}
+              onClick={() => edit({ colors: [...kit.colors, '#34c77f'] })}
               aria-label="Add color"
               className="w-10 h-10 rounded-md border border-dashed border-border/70 text-muted-foreground hover:text-foreground hover:border-border flex items-center justify-center transition-colors"
             >
@@ -141,7 +141,7 @@ export function BrandPanel() {
         <div>
           <p className={SECTION_LABEL}>Voice</p>
           <p className={cn(CAPTION, 'mt-1')}>
-            How your captions should sound — Chippi writes to this.
+            How your captions should sound — Cola writes to this.
           </p>
         </div>
         <Textarea
@@ -182,7 +182,7 @@ export function BrandPanel() {
           {saving ? 'Saving…' : 'Save brand kit'}
         </Button>
         {saved && !saving && <p className={CAPTION}>Saved.</p>}
-        {error && <p className="text-[12.5px] text-rose-700 dark:text-rose-400">{error}</p>}
+        {error && <p className="text-[12.5px] text-negative dark:text-negative">{error}</p>}
       </div>
     </div>
   );

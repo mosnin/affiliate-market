@@ -1,9 +1,9 @@
 /**
  * POST /api/studio/edit — transform an uploaded image with fal.ai.
  *
- * The realtor-facing entry point: auth, subscription gate, and rate limiting
+ * The seller-facing entry point: auth, subscription gate, and rate limiting
  * live here; the upload is stored as a File and the transform runs in the
- * shared core (lib/studio/edit.ts), which the Chippi agent's internal route
+ * shared core (lib/studio/edit.ts), which the Cola agent's internal route
  * reuses.
  */
 
@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { requireAuth, requireActiveSubscription } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { uploadObject, deleteObject, buildKey } from '@/lib/storage';
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 
   // Per-space daily spend cap. Shared budget with /api/studio/generate
   // — both routes deduct from the same StudioGeneration table, so
-  // checkStudioSpendBudget reflects the realtor's total day's burn.
+  // checkStudioSpendBudget reflects the seller's total day's burn.
   const budget = await checkStudioSpendBudget(space.id);
   if (!budget.allowed) {
     return NextResponse.json(
@@ -110,20 +110,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Couldn't start the edit — usually temporary." }, { status: 500 });
   }
 
-  const { error: srcErr } = await supabase.from('File').insert({
-    id: sourceId,
-    spaceId: space.id,
-    userId,
-    storageKey: sourceKey,
-    name: sourceName,
-    mimeType: file.type,
-    category: 'image',
-    sizeBytes: sourceBuffer.length,
-    isPublic: false,
-  });
-  if (srcErr) {
+  try {
+    await convex().mutation(api.infra.files.create, {
+      id: sourceId,
+      spaceId: space.id,
+      userId,
+      storageKey: sourceKey,
+      name: sourceName,
+      mimeType: file.type,
+      category: 'image',
+      sizeBytes: sourceBuffer.length,
+      isPublic: false,
+    });
+  } catch (srcErr) {
     await deleteObject(sourceKey).catch(() => undefined);
-    logger.error('[studio.edit] source insert failed', { spaceId: space.id }, srcErr);
+    logger.error('[studio.edit] source insert failed', { spaceId: space.id }, srcErr as Error);
     return NextResponse.json({ error: "Couldn't start the edit — usually temporary." }, { status: 500 });
   }
 

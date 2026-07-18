@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';
@@ -14,7 +14,7 @@ import type { Metadata, Viewport } from 'next';
 
 /** viewport-fit=cover lets the page draw under the iOS notch / status-bar
  *  area instead of leaving a body-coloured strip above the cover photo.
- *  Same treatment /p/[slug] uses — the intake is the realtor's storefront,
+ *  Same treatment /p/[slug] uses — the intake is the seller's storefront,
  *  it should feel flush to the device. Non-iOS browsers ignore this; free
  *  fix everywhere else. */
 export const viewport: Viewport = {
@@ -47,19 +47,17 @@ export const revalidate = 0;
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const space = await getSpaceFromSlug(slug);
-  if (!space) return { title: 'Application — Chippi' };
+  if (!space) return { title: 'Quote Request — Cola' };
 
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select('businessName')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settings = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
 
   const name = settings?.businessName || space.name;
   return {
-    title: `${name} — Application`,
-    description: `Submit your application to ${name}.`,
-    openGraph: { title: `${name} — Application`, description: `Submit your application to ${name}.` },
+    title: `${name} — Quote Request`,
+    description: `Request a quote or trial from ${name}.`,
+    openGraph: { title: `${name} — Quote Request`, description: `Request a quote or trial from ${name}.` },
   };
 }
 
@@ -83,45 +81,19 @@ export default async function PublicApplyPage({
   // Use two queries: one for core fields (always exist), one for customization (may not exist yet).
   // ProfilePage is read so the intake hero can reach for the same cover photo
   // the public /p/[slug] surface already renders — single source of identity material.
-  const [{ data: coreSettings }, { data: customSettings }, { data: ownerData }, { data: profileRow }] = await Promise.all([
-    supabase
-      .from('SpaceSetting')
-      .select('intakePageTitle, intakePageIntro, businessName, logoUrl, realtorPhotoUrl, privacyPolicyHtml, isVerified')
-      .eq('spaceId', space.id)
-      .maybeSingle(),
-    supabase
-      .from('SpaceSetting')
-      .select(
-        'intakeAccentColor, intakeBorderRadius, intakeFont, intakeDarkMode, ' +
-        'intakeHeaderBgColor, intakeHeaderGradient, intakeVideoUrl, ' +
-        'intakeDisclaimerText, intakeThankYouTitle, intakeThankYouMessage, ' +
-        'intakeFooterLinks, intakeDisabledSteps, intakeCustomQuestions, ' +
-        'intakeFaviconUrl, bio, socialLinks, privacyPolicyUrl, consentCheckboxLabel, ' +
-        'intakeLicenseNumber, intakeFairHousingNotice, intakeShowEqualHousingMark, ' +
-        'formConfig, formConfigSource, rentalFormConfig, buyerFormConfig, trackingPixels'
-      )
-      .eq('spaceId', space.id)
-      .maybeSingle()
-      .then(r => r),
-    supabase
-      .from('User')
-      .select('name, avatar, clerkId')
-      .eq('id', space.ownerId)
-      .maybeSingle(),
-    supabase
-      .from('ProfilePage')
-      .select('coverPhotoUrl, profilePhotoUrl')
-      .eq('spaceId', space.id)
-      .maybeSingle(),
+  const [settingsRow, ownerData, profileRow] = await Promise.all([
+    convex().query(api.workspace.settings.getBySpace, { spaceId: space.id }),
+    convex().query(api.org.users.getById, { id: space.ownerId }),
+    convex().query(api.marketplace.profiles.getBySpace, { spaceId: space.id }),
   ]);
 
-  const settingsData = { ...((coreSettings ?? {}) as any), ...((customSettings ?? {}) as any) };
+  const settingsData = { ...((settingsRow ?? {}) as any) };
   const settings = settingsData as {
     intakePageTitle: string | null;
     intakePageIntro: string | null;
     businessName: string | null;
     logoUrl: string | null;
-    realtorPhotoUrl: string | null;
+    sellerPhotoUrl: string | null;
     intakeAccentColor: string | null;
     intakeBorderRadius: string | null;
     intakeFont: string | null;
@@ -151,21 +123,21 @@ export default async function PublicApplyPage({
     isVerified: boolean | null;
   } | null;
 
-  const pageTitle = settings?.intakePageTitle || 'Application';
-  const pageIntro = settings?.intakePageIntro || "Share your preferences and we'll follow up with next steps.";
+  const pageTitle = settings?.intakePageTitle || 'Quote Request';
+  const pageIntro = settings?.intakePageIntro || "Tell us about your needs and we'll follow up with pricing and next steps.";
   const businessName = settings?.businessName || space.name;
   const agentName = ownerData?.name || businessName;
   const isVerified = settings?.isVerified === true;
 
   // Photo resolution chain (matches /p/[slug] so identity is consistent across surfaces):
-  //   profilePhotoUrl (ProfilePage) → realtorPhotoUrl (SpaceSetting) → User.avatar → Clerk imageUrl.
+  //   profilePhotoUrl (ProfilePage) → sellerPhotoUrl (SpaceSetting) → User.avatar → Clerk imageUrl.
   // Storage values may be private object keys — sign them in parallel.
-  const [profilePagePhoto, realtorPhotoFromStorage, coverPhotoUrl] = await Promise.all([
+  const [profilePagePhoto, sellerPhotoFromStorage, coverPhotoUrl] = await Promise.all([
     resolveStoredPhoto(profileRow?.profilePhotoUrl ?? null),
-    resolveStoredPhoto(settings?.realtorPhotoUrl ?? ownerData?.avatar ?? null),
+    resolveStoredPhoto(settings?.sellerPhotoUrl ?? ownerData?.avatar ?? null),
     resolveStoredPhoto(profileRow?.coverPhotoUrl ?? null),
   ]);
-  let agentPhoto: string | null = profilePagePhoto ?? realtorPhotoFromStorage ?? null;
+  let agentPhoto: string | null = profilePagePhoto ?? sellerPhotoFromStorage ?? null;
   if (!agentPhoto && ownerData?.clerkId) {
     try {
       const clerk = await clerkClient();
@@ -173,7 +145,10 @@ export default async function PublicApplyPage({
       if (clerkUser?.imageUrl) {
         agentPhoto = clerkUser.imageUrl;
         // Backfill to DB so we don't fetch from Clerk every time
-        await supabase.from('User').update({ avatar: clerkUser.imageUrl }).eq('id', space.ownerId);
+        await convex().mutation(api.org.users.updateById, {
+          id: space.ownerId,
+          patch: { avatar: clerkUser.imageUrl },
+        });
       }
     } catch {
       // Clerk fetch failed — continue without photo
@@ -188,8 +163,8 @@ export default async function PublicApplyPage({
     return <FormUnavailable agentName={agentName} />;
   }
 
-  // Hide the Chippi mark on paid tiers — visible only on the free tier as
-  // a value-exchange brand exposure. The realtor pays for white-label when
+  // Hide the Cola mark on paid tiers — visible only on the free tier as
+  // a value-exchange brand exposure. The seller pays for white-label when
   // they're on an active paid plan (or trialing into one).
   const hidePoweredBy = status === 'active' || status === 'trialing';
 
@@ -200,22 +175,20 @@ export default async function PublicApplyPage({
   let resolvedBuyerFormConfig: IFC | null = null;
   const formConfigSource = settings?.formConfigSource ?? 'legacy';
 
-  if (formConfigSource === 'brokerage' && space.brokerageId) {
-    // Fetch form configs from brokerage template
+  if (formConfigSource === 'company' && space.companyId) {
+    // Fetch form configs from company template
     try {
-      const { data: brokerageData } = await supabase
-        .from('Brokerage')
-        .select('brokerageFormConfig, brokerageRentalFormConfig, brokerageBuyerFormConfig')
-        .eq('id', space.brokerageId)
-        .maybeSingle();
-      if (brokerageData) {
-        const legacySingle = (brokerageData.brokerageFormConfig ?? null) as IFC | null;
+      const companyData = await convex().query(api.org.companies.getById, {
+        id: space.companyId,
+      });
+      if (companyData) {
+        const legacySingle = (companyData.companyFormConfig ?? null) as IFC | null;
         const legacySingleLeadType = legacySingle?.leadType === 'buyer' ? 'buyer' : 'rental';
 
-        resolvedRentalFormConfig = (brokerageData.brokerageRentalFormConfig ?? null) as IFC | null;
-        resolvedBuyerFormConfig = (brokerageData.brokerageBuyerFormConfig ?? null) as IFC | null;
+        resolvedRentalFormConfig = (companyData.companyRentalFormConfig ?? null) as IFC | null;
+        resolvedBuyerFormConfig = (companyData.companyBuyerFormConfig ?? null) as IFC | null;
 
-        // Backwards compatibility for legacy single brokerage form config:
+        // Backwards compatibility for legacy single company form config:
         // route it to the correct lead type instead of always treating it as rental.
         if (!resolvedRentalFormConfig && !resolvedBuyerFormConfig && legacySingle) {
           if (legacySingleLeadType === 'buyer') {
@@ -228,7 +201,7 @@ export default async function PublicApplyPage({
         resolvedFormConfig = legacySingle;
       }
     } catch {
-      // Brokerage fetch failed — fall back to legacy form
+      // Company fetch failed — fall back to legacy form
     }
   } else if (formConfigSource === 'custom') {
     const legacySingle = settings?.formConfig ?? null;
@@ -252,7 +225,7 @@ export default async function PublicApplyPage({
   // formConfigSource === 'legacy' → all resolved configs stay null → legacy form
 
   const customization = {
-    accentColor: settings?.intakeAccentColor || '#ff964f',
+    accentColor: settings?.intakeAccentColor || '#34c77f',
     borderRadius: settings?.intakeBorderRadius || 'rounded',
     font: settings?.intakeFont || 'system',
     darkMode: settings?.intakeDarkMode || false,

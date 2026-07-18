@@ -1,11 +1,11 @@
 /**
- * Calls — realtor-facing click-to-call + call log.
+ * Calls — seller-facing click-to-call + call log.
  *
  *   POST { slug, contactId?, toNumber }  → { call }   place a call, log it
  *   GET  ?slug=<slug>                    → { calls }  the space's calls, newest first
  *
  * Auth: requireSpaceOwner(slug) — the workspace owner (or a managing
- * broker_owner/broker_admin).
+ * manager_owner/manager_admin).
  *
  * Placing a call dials the AGENT first (their own number, resolved from the
  * Space's phoneNumber or TELNYX_AGENT_NUMBER), then bridges to the contact when
@@ -16,15 +16,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSpaceOwner } from '@/lib/api-auth';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { placeClickToCall, toE164, getVoiceConfig } from '@/lib/voice';
 
 export const runtime = 'nodejs';
-
-const CALL_COLUMNS =
-  'id, spaceId, contactId, direction, fromNumber, toNumber, telnyxCallId, status, recordingUrl, transcript, summary, durationSec, createdAt, updatedAt';
 
 // ── GET — the space's calls, newest first ───────────────────────────────────
 
@@ -36,23 +33,36 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { space } = auth;
 
-  const { data, error } = await supabase
-    .from('CallLog')
-    .select(`${CALL_COLUMNS}, Contact(name)`)
-    .eq('spaceId', space.id)
-    .order('createdAt', { ascending: false })
-    .limit(100);
-
-  if (error) {
-    logger.error('[calls] list failed', { spaceId: space.id, err: error.message });
+  let rows;
+  try {
+    rows = await convex().query(api.support.calls.listBySpace, { spaceId: space.id });
+  } catch (err) {
+    logger.error('[calls] list failed', {
+      spaceId: space.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'Could not load your calls.' }, { status: 500 });
   }
 
-  // Flatten the embedded contact name onto each row for the client.
-  const calls = (data ?? []).map((c: any) => ({
+  // The old query embedded Contact(name) to flatten contactName onto each row.
+  // Resolve the names keyed by the contactIds these rows carry, then merge.
+  const contactIds = Array.from(
+    new Set(rows.map((c) => c.contactId).filter((id): id is string => !!id)),
+  );
+  const nameById = new Map<string, string | null>();
+  if (contactIds.length > 0) {
+    const contacts = await convex().query(api.contacts.contacts.getManyByIds, {
+      ids: contactIds,
+      spaceId: space.id,
+    });
+    for (const ct of contacts) {
+      nameById.set(ct.id, ct.name ?? null);
+    }
+  }
+
+  const calls = rows.map((c) => ({
     ...c,
-    contactName: c.Contact?.name ?? null,
-    Contact: undefined,
+    contactName: c.contactId ? nameById.get(c.contactId) ?? null : null,
   }));
 
   return NextResponse.json({ calls });
@@ -89,12 +99,10 @@ export async function POST(req: NextRequest) {
   // If a contactId is given, it must belong to this space — never trust the body.
   let contactId: string | null = null;
   if (payload.contactId) {
-    const { data: contact } = await supabase
-      .from('Contact')
-      .select('id')
-      .eq('id', payload.contactId)
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const contact = await convex().query(api.contacts.contacts.getById, {
+      id: payload.contactId,
+      spaceId: space.id,
+    });
     if (!contact) {
       return NextResponse.json({ error: 'Contact not found.' }, { status: 404 });
     }
@@ -106,23 +114,20 @@ export async function POST(req: NextRequest) {
   // Space row — getSpaceFromSlug never selects it, so the old `space.phoneNumber`
   // cast was always undefined and every call silently fell through to the env
   // fallback. TELNYX_AGENT_NUMBER stays as a deploy-wide fallback.
-  const { data: settingRow } = await supabase
-    .from('SpaceSetting')
-    .select('phoneNumber')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settingRow = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
   const agentNumber = toE164(
-    (settingRow as { phoneNumber?: string | null } | null)?.phoneNumber ??
-      process.env.TELNYX_AGENT_NUMBER,
+    settingRow?.phoneNumber ?? process.env.TELNYX_AGENT_NUMBER,
   );
   const fromNumber = process.env.TELNYX_FROM_NUMBER ?? '';
 
   // Insert the row first so the webhook has a target, and so the call shows up
   // in the log immediately even if dialing fails.
   const now = new Date().toISOString();
-  const { data: row, error: insertErr } = await supabase
-    .from('CallLog')
-    .insert({
+  let row;
+  try {
+    row = await convex().mutation(api.support.calls.create, {
       spaceId: space.id,
       contactId,
       direction: 'outbound',
@@ -131,21 +136,18 @@ export async function POST(req: NextRequest) {
       status: 'initiated',
       createdAt: now,
       updatedAt: now,
-    })
-    .select(CALL_COLUMNS)
-    .single();
-
-  if (insertErr || !row) {
-    logger.error('[calls] insert failed', { spaceId: space.id, err: insertErr?.message });
+    });
+  } catch (insertErr) {
+    logger.error('[calls] insert failed', {
+      spaceId: space.id,
+      err: insertErr instanceof Error ? insertErr.message : String(insertErr),
+    });
     return NextResponse.json({ error: 'Could not start the call. Try again.' }, { status: 500 });
   }
 
   // Gate: no voice config or no agent number → mark failed, return cleanly.
   if (!getVoiceConfig() || !agentNumber) {
-    await supabase
-      .from('CallLog')
-      .update({ status: 'failed', updatedAt: new Date().toISOString() })
-      .eq('id', row.id);
+    await convex().mutation(api.support.calls.updateById, { id: row.id, status: 'failed' });
     return NextResponse.json(
       {
         call: { ...row, status: 'failed' },
@@ -166,10 +168,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (!result.ok) {
-    await supabase
-      .from('CallLog')
-      .update({ status: 'failed', updatedAt: new Date().toISOString() })
-      .eq('id', row.id);
+    await convex().mutation(api.support.calls.updateById, { id: row.id, status: 'failed' });
     return NextResponse.json(
       { call: { ...row, status: 'failed' }, configured: result.reason !== 'not_configured' },
       { status: 200 },
@@ -177,12 +176,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Stamp the Telnyx leg id so webhooks correlate back to this row.
-  const { data: updated } = await supabase
-    .from('CallLog')
-    .update({ telnyxCallId: result.telnyxCallId, updatedAt: new Date().toISOString() })
-    .eq('id', row.id)
-    .select(CALL_COLUMNS)
-    .single();
+  const updated = await convex().mutation(api.support.calls.updateById, {
+    id: row.id,
+    telnyxCallId: result.telnyxCallId,
+  });
 
   return NextResponse.json({ call: updated ?? { ...row, telnyxCallId: result.telnyxCallId }, configured: true });
 }

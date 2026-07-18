@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logAdminAction } from '@/lib/admin';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -73,14 +73,16 @@ export async function PATCH(req: Request, { params }: Params) {
   const v = validatePartial(body);
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
 
-  const { data, error } = await supabase
-    .from('Announcement')
-    .update({ ...v.data, updatedAt: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .maybeSingle();
-
-  if (error || !data) {
+  let data;
+  try {
+    data = await convex().mutation(api.notifications.announcements.update, {
+      id,
+      patch: v.data,
+    });
+  } catch {
+    return NextResponse.json({ error: 'Announcement not found' }, { status: 404 });
+  }
+  if (!data) {
     return NextResponse.json({ error: 'Announcement not found' }, { status: 404 });
   }
 
@@ -108,8 +110,9 @@ export async function DELETE(_req: Request, { params }: Params) {
   const { id } = await params;
   if (!id || !UUID_RE.test(id)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
 
-  const { error } = await supabase.from('Announcement').delete().eq('id', id);
-  if (error) {
+  try {
+    await convex().mutation(api.notifications.announcements.remove, { id });
+  } catch (error) {
     console.error('[admin/announcements] delete failed', error);
     return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
   }

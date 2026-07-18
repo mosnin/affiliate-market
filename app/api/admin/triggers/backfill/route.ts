@@ -5,14 +5,14 @@
  * existing active IntegrationConnection that doesn't already have them.
  *
  * Why this exists: the OAuth callback registers triggers at connect-
- * time, but realtors who connected BEFORE the triggers feature shipped
+ * time, but sellers who connected BEFORE the triggers feature shipped
  * have active connections with zero IntegrationTrigger rows. Without
- * this, their Chippi never notices anything until they reconnect.
+ * this, their Cola never notices anything until they reconnect.
  *
  * Auth: Bearer ${CRON_SECRET}. Same gate as our scheduled cron routes —
  * the secret is server-only, so this is operator-callable, not user-
- * facing. (If we ever want to expose it to brokers as a manual "rewire
- * my Chippi" button, that's a separate route with Clerk auth.)
+ * facing. (If we ever want to expose it to managers as a manual "rewire
+ * my Cola" button, that's a separate route with Clerk auth.)
  *
  * Idempotent by design: skips connections that already have any
  * IntegrationTrigger row. A second invocation does nothing useful. If
@@ -25,7 +25,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import {
   CURATED_TRIGGERS,
   listTriggersForConnection,
@@ -73,18 +73,21 @@ export async function POST(req: NextRequest) {
 
   const force = new URL(req.url).searchParams.get('force') === '1';
 
-  // Only ACTIVE connections — expired/revoked rows mean the realtor
+  // Only ACTIVE connections — expired/revoked rows mean the seller
   // can't be helped until they reconnect, so registering triggers for
   // them would just stack failed rows.
-  const { data: rows, error } = await supabase
-    .from('IntegrationConnection')
-    .select('*')
-    .eq('status', 'active');
-  if (error) {
-    return NextResponse.json({ error: 'DB query failed', detail: error.message }, { status: 500 });
+  let connections: IntegrationConnectionRow[];
+  try {
+    connections = (await convex().query(
+      api.integrations.connections.listAllActive,
+      {},
+    )) as IntegrationConnectionRow[];
+  } catch (err) {
+    return NextResponse.json(
+      { error: 'DB query failed', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
   }
-
-  const connections = (rows ?? []) as IntegrationConnectionRow[];
   const startedAt = Date.now();
   let scanned = 0;
   let registered = 0;

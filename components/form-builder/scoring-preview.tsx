@@ -263,9 +263,9 @@ function QuestionInput({
 type DetailKind = 'positive' | 'warning' | 'critical' | 'neutral';
 
 const DOT_TONE: Record<DetailKind, string> = {
-  positive: 'bg-emerald-500/70',
-  warning: 'bg-amber-500/70',
-  critical: 'bg-rose-500/70',
+  positive: 'bg-positive-subtle0/70',
+  warning: 'bg-muted0/70',
+  critical: 'bg-negative-subtle0/70',
   neutral: 'bg-muted-foreground/40',
 };
 
@@ -461,13 +461,13 @@ export function ScoringPreview({ config, slug }: ScoringPreviewProps) {
 
       {/* Error — sanctioned subtle rose tone, severity is the message */}
       {error && (
-        <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3">
-          <p className="text-sm font-medium text-rose-700 dark:text-rose-400">Could not calculate the score</p>
-          <p className="text-xs text-rose-700/80 dark:text-rose-400/80 mt-0.5">{error}</p>
+        <div className="rounded-lg border border-negative/20 bg-negative-subtle0/10 px-4 py-3">
+          <p className="text-sm font-medium text-negative dark:text-negative">Could not calculate the score</p>
+          <p className="text-xs text-negative/80 dark:text-negative/80 mt-0.5">{error}</p>
           <button
             type="button"
             onClick={handleRunScoring}
-            className="text-xs text-rose-700 dark:text-rose-400 hover:underline mt-2 transition-colors duration-150"
+            className="text-xs text-negative dark:text-negative hover:underline mt-2 transition-colors duration-150"
           >
             Try again
           </button>
@@ -557,16 +557,16 @@ export function ScoringPreview({ config, slug }: ScoringPreviewProps) {
 
       {/* Failed result — sanctioned subtle amber */}
       {scoreResult && scoreResult.scoringStatus === 'failed' && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
-          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Scoring could not be calculated</p>
-          <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-0.5 leading-relaxed">
+        <div className="rounded-lg border border-border bg-muted0/10 px-4 py-3">
+          <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">Scoring could not be calculated</p>
+          <p className="text-xs text-muted-foreground/80 dark:text-muted-foreground/80 mt-0.5 leading-relaxed">
             This usually means no scoring rules are set up yet. Go to <strong className="font-medium">What makes a good lead</strong> to set
             weights and answer scores. Then come back to test.
           </p>
           <button
             type="button"
             onClick={handleRunScoring}
-            className="text-xs text-amber-700 dark:text-amber-400 hover:underline mt-2 transition-colors duration-150"
+            className="text-xs text-muted-foreground dark:text-muted-foreground hover:underline mt-2 transition-colors duration-150"
           >
             Retry scoring
           </button>

@@ -1,9 +1,9 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { UserListClient } from './user-list-client';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 
-export const metadata = { title: 'Users — Admin — Chippi' };
+export const metadata = { title: 'Users — Admin — Cola' };
 
 export default async function AdminUsersPage({
   searchParams,
@@ -17,20 +17,38 @@ export default async function AdminUsersPage({
   const query = params.q?.trim() || '';
   const filter = params.filter || 'all';
 
-  let supaQuery = supabase
-    .from('User')
-    .select(
-      'id, name, email, onboard, createdAt, onboardingCurrentStep, platformRole, Space(slug, name, stripeSubscriptionStatus)',
-    );
+  // Server-side filters that listForAdmin pushes down; has-space/no-space + search
+  // stay JS post-filters (they were client-side over the joined rows before too).
+  const listArgs: { onboard?: boolean; platformRole?: 'banned'; limit: number } = { limit: 200 };
+  if (filter === 'onboarded') listArgs.onboard = true;
+  else if (filter === 'not-onboarded') listArgs.onboard = false;
+  else if (filter === 'suspended') listArgs.platformRole = 'banned';
 
-  if (filter === 'onboarded') supaQuery = supaQuery.eq('onboard', true);
-  else if (filter === 'not-onboarded') supaQuery = supaQuery.eq('onboard', false);
-  else if (filter === 'suspended') supaQuery = supaQuery.eq('platformRole', 'banned');
+  const userRows = (await convex().query(api.org.users.listForAdmin, listArgs)) as Array<{
+    id: string;
+    name: string | null;
+    email: string;
+    onboard: boolean;
+    createdAt: string;
+    onboardingCurrentStep: number;
+    platformRole: string;
+  }>;
 
-  const { data, error } = await supaQuery.order('createdAt', { ascending: false }).limit(200);
-  if (error) throw error;
+  // Resolve each user's owned Space (the old `Space(...)` embed is keyed on
+  // Space.ownerId) and re-attach it as `r.Space` so the existing shaping holds.
+  const ownerIds = userRows.map((u) => u.id);
+  const spaces =
+    ownerIds.length > 0
+      ? ((await convex().query(api.workspace.spaces.listByOwnerIds, {
+          ownerIds,
+        })) as Array<{ ownerId: string; slug: string; name: string; stripeSubscriptionStatus: string }>)
+      : [];
+  const spaceByOwner = new Map(spaces.map((s) => [s.ownerId, s]));
 
-  let results = (data ?? []) as any[];
+  let results = userRows.map((u) => ({
+    ...u,
+    Space: spaceByOwner.get(u.id) ?? null,
+  })) as any[];
 
   if (query) {
     const s = query.toLowerCase();
@@ -75,11 +93,7 @@ export default async function AdminUsersPage({
     };
   });
 
-  const { count, error: countError } = await supabase
-    .from('User')
-    .select('*', { count: 'exact', head: true });
-  if (countError) throw countError;
-  const totalCount = count ?? 0;
+  const { total: totalCount } = await convex().query(api.org.users.counts, {});
 
   return (
     <div className="space-y-8 pb-12">

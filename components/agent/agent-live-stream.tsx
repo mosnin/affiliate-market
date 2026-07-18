@@ -30,9 +30,9 @@ interface Props {
 const EVENT_CONFIG: Record<string, { icon: React.ElementType; className: string }> = {
   connected: { icon: Bot, className: 'text-muted-foreground' },
   info: { icon: Info, className: 'text-blue-500' },
-  action: { icon: Zap, className: 'text-emerald-500' },
-  draft: { icon: CheckCircle2, className: 'text-amber-500' },
-  complete: { icon: CheckCircle2, className: 'text-emerald-600' },
+  action: { icon: Zap, className: 'text-positive' },
+  draft: { icon: CheckCircle2, className: 'text-muted-foreground' },
+  complete: { icon: CheckCircle2, className: 'text-positive' },
   error: { icon: AlertCircle, className: 'text-destructive' },
 };
 
@@ -93,7 +93,7 @@ export function AgentLiveStream({ runId, onClose }: Props) {
       <div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/30 flex-shrink-0">
         <div className="flex items-center gap-2">
           {done ? (
-            <CheckCircle2 size={13} className="text-emerald-500" />
+            <CheckCircle2 size={13} className="text-positive" />
           ) : (
             <Loader2 size={13} className="text-primary animate-spin" />
           )}
@@ -122,9 +122,9 @@ export function AgentLiveStream({ runId, onClose }: Props) {
               <Icon size={11} className={cn('flex-shrink-0 mt-0.5', cfg.className)} />
               <span className={cn(
                 'leading-relaxed break-words min-w-0',
-                event.type === 'complete' ? 'text-emerald-600 font-semibold' : '',
+                event.type === 'complete' ? 'text-positive font-semibold' : '',
                 event.type === 'error' ? 'text-destructive' : 'text-foreground/90',
-                event.type === 'draft' ? 'text-amber-600' : '',
+                event.type === 'draft' ? 'text-muted-foreground' : '',
               )}>
                 {event.message}
               </span>

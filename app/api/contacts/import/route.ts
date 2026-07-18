@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 
-const VALID_TYPES = new Set(['QUALIFICATION', 'TOUR', 'APPLICATION']);
+const VALID_TYPES = new Set(['QUALIFICATION', 'DEMO', 'APPLICATION']);
 
 // 1 MB ceiling — 500 rows × generous per-row size is comfortably under this.
 // Cuts off pathological JSON bodies before parsing into memory.
@@ -42,7 +42,6 @@ export async function POST(req: NextRequest) {
   const { allowed } = await checkRateLimit(`import:${userId}`, 5, 3600);
   if (!allowed) return NextResponse.json({ error: 'Import rate limit exceeded. Try again later.' }, { status: 429 });
 
-  const now = new Date().toISOString();
   const inserts = rows
     .filter((r) => r.name?.trim())
     .map((r) => {
@@ -57,21 +56,23 @@ export async function POST(req: NextRequest) {
         type: r.type && VALID_TYPES.has(r.type) ? r.type : 'QUALIFICATION',
         notes: r.notes?.trim().slice(0, 5000) || null,
         tags: [],
-        properties: [],
-        scoringStatus: 'unscored',
-        createdAt: now,
-        updatedAt: now,
+        products: [],
+        // scoringStatus omitted → createMany applies the schema default 'pending'
+        // (the old code wrote 'unscored', which violates the scoringStatus CHECK
+        // — pending|scored|failed — and failed every import on Postgres).
       };
     });
 
   if (inserts.length === 0)
     return NextResponse.json({ error: 'No valid rows (name is required)' }, { status: 400 });
 
-  const { error } = await supabase.from('Contact').insert(inserts);
-  if (error) {
-    console.error('[import] insert error:', error);
+  try {
+    const { inserted } = await convex().mutation(api.contacts.contacts.createMany, {
+      rows: inserts,
+    });
+    return NextResponse.json({ created: inserted });
+  } catch (err) {
+    console.error('[import] insert error:', err);
     return NextResponse.json({ error: 'Failed to import contacts' }, { status: 500 });
   }
-
-  return NextResponse.json({ created: inserts.length });
 }

@@ -1,12 +1,12 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { Card, CardContent } from '@/components/ui/card';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 
 const statusStyle = (status: string) => {
   switch (status) {
-    case 'pending':  return 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15';
-    case 'accepted': return 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15';
+    case 'pending':  return 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15';
+    case 'accepted': return 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15';
     default:         return 'text-muted-foreground bg-muted';
   }
 };
@@ -14,13 +14,52 @@ const statusStyle = (status: string) => {
 export default async function AdminInvitationsPage() {
   const isAdmin = await isPlatformAdmin();
   if (!isAdmin) redirect('/');
-  const { data: invitations, error } = await supabase
-    .from('Invitation')
-    .select('id, email, roleToAssign, status, expiresAt, createdAt, brokerageId, Brokerage(name)')
-    .order('createdAt', { ascending: false })
-    .limit(200);
 
-  if (error) {
+  let invs: Array<{
+    id: string;
+    email: string;
+    roleToAssign: string;
+    status: string;
+    expiresAt: string;
+    createdAt: string;
+    companyId: string | null;
+    Company: { name: string } | null;
+  }>;
+  try {
+    // Invitations newest-first (cap 200), then resolve the embedded Company(name)
+    // lib-side — the Convex fn returns Invitation rows only.
+    const invitations = (await convex().query(api.org.invitations.listAll, {
+      limit: 200,
+    })) as Array<{
+      id: string;
+      email: string;
+      roleToAssign: string;
+      status: string;
+      expiresAt: string;
+      createdAt: string;
+      companyId: string;
+    }>;
+
+    const companyIds = Array.from(new Set(invitations.map((i) => i.companyId).filter(Boolean)));
+    const companies =
+      companyIds.length > 0
+        ? ((await convex().query(api.org.companies.listByIds, {
+            ids: companyIds,
+          })) as Array<{ id: string; name: string }>)
+        : [];
+    const nameById = new Map(companies.map((c) => [c.id, c.name]));
+
+    invs = invitations.map((i) => ({
+      id: i.id,
+      email: i.email,
+      roleToAssign: i.roleToAssign,
+      status: i.status,
+      expiresAt: i.expiresAt,
+      createdAt: i.createdAt,
+      companyId: i.companyId,
+      Company: nameById.has(i.companyId) ? { name: nameById.get(i.companyId)! } : null,
+    }));
+  } catch {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <p className="text-sm text-muted-foreground">Couldn&apos;t load invitations.</p>
@@ -28,18 +67,7 @@ export default async function AdminInvitationsPage() {
     );
   }
 
-  const invs = (invitations ?? []) as unknown as Array<{
-    id: string;
-    email: string;
-    roleToAssign: string;
-    status: string;
-    expiresAt: string;
-    createdAt: string;
-    brokerageId: string | null;
-    Brokerage: { name: string } | null;
-  }>;
-
-  const roleLabel = (r: string) => r === 'broker_admin' ? 'Admin' : 'Realtor';
+  const roleLabel = (r: string) => r === 'manager_admin' ? 'Admin' : 'Seller';
 
   return (
     <div className="space-y-8 pb-12 max-w-5xl mx-auto">
@@ -52,7 +80,7 @@ export default async function AdminInvitationsPage() {
           Invitations
         </h1>
         <p className="text-sm text-muted-foreground">
-          {invs.length} invitation{invs.length !== 1 ? 's' : ''} across all brokerages.
+          {invs.length} invitation{invs.length !== 1 ? 's' : ''} across all companies.
         </p>
       </header>
 
@@ -73,7 +101,7 @@ export default async function AdminInvitationsPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-semibold truncate">{inv.email}</p>
                     <p className="text-xs text-muted-foreground">
-                      {inv.Brokerage?.name ?? '—'} · {roleLabel(inv.roleToAssign)} · Sent {sentAt}
+                      {inv.Company?.name ?? '—'} · {roleLabel(inv.roleToAssign)} · Sent {sentAt}
                       {inv.status === 'pending' && ` · Expires ${expiresAt}`}
                     </p>
                   </div>

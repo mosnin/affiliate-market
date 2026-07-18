@@ -10,8 +10,8 @@
 
 export type PlanId = 'free' | 'solo' | 'pro' | 'team' | 'team_plus';
 
-/** Where a plan's credit balance lives: solo/pro on the Space, team on the Brokerage. */
-export type AccountType = 'space' | 'brokerage';
+/** Where a plan's credit balance lives: solo/pro on the Space, team on the Company. */
+export type AccountType = 'space' | 'company';
 
 export interface PlanDef {
   id: PlanId;
@@ -48,7 +48,10 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   solo: {
     id: 'solo',
-    label: 'Solo',
+    // "Starter" — single-seller plan with AI-powered pipeline and up to
+    // 1 affiliate link. Affiliate engine limited; upgrade to Growth for
+    // full affiliate management.
+    label: 'Starter',
     priceMonthly: 97,
     includedUsers: 1,
     monthlyCredits: 1500,
@@ -58,7 +61,9 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   pro: {
     id: 'pro',
-    label: 'Pro Performer',
+    // "Growth" — full affiliate engine: unlimited referral links, auto
+    // commission tracking, FirstPromoter integration, and payout workflows.
+    label: 'Growth',
     priceMonthly: 197,
     includedUsers: 1,
     monthlyCredits: 4000,
@@ -68,22 +73,25 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   team: {
     id: 'team',
-    label: 'Team',
+    // "Scale" — multi-seller company workspace with up to 5 included seats.
+    // Shared affiliate pool, marketplace listing, and company analytics.
+    label: 'Scale',
     priceMonthly: 497,
     includedUsers: 5,
     monthlyCredits: 12000,
-    account: 'brokerage',
+    account: 'company',
     stripePriceMonthly: env('STRIPE_PRICE_TEAM'),
     stripePriceAnnual: env('STRIPE_PRICE_TEAM_ANNUAL'),
     addUser: { priceMonthly: 79, credits: 1500 },
   },
   team_plus: {
     id: 'team_plus',
-    label: 'Team Plus',
+    // "Scale Plus" — up to 10 sellers, priority support, advanced analytics.
+    label: 'Scale Plus',
     priceMonthly: 897,
     includedUsers: 10,
     monthlyCredits: 25000,
-    account: 'brokerage',
+    account: 'company',
     stripePriceMonthly: env('STRIPE_PRICE_TEAM_PLUS'),
     stripePriceAnnual: env('STRIPE_PRICE_TEAM_PLUS_ANNUAL'),
     addUser: { priceMonthly: 69, credits: 2000 },
@@ -114,11 +122,11 @@ export const WORKFLOW_CREDIT_COST = {
   pipeline_audit: 50,
   followup_sequence: 40,
   lead_qualification: 25,
-  tour_booking: 15,
+  demo_booking: 15,
   daily_briefing: 10,
   call_prep: 3,
   lead_score: 1,
-  // One Chippi chat/agent turn (the in-app assistant). Flat 1 credit — a turn's
+  // One Cola chat/agent turn (the in-app assistant). Flat 1 credit — a turn's
   // blended token COGS sits at or below a lead-score's, so it clears the spec's
   // "COGS ≤ 40% of credit retail" bar, and 1/turn leaves Solo ~1,500 turns/mo
   // (~50/day) — generous for normal use while still hard-capping runaway

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceForUser } from '@/lib/space';
 import { requireAuth } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Two POST shapes share this route:
   //   - multipart/form-data → new upload (the original path)
   //   - application/json    → attach existing File rows by id, no re-upload
-  // The attach path lets the realtor pull from the Files library on the
+  // The attach path lets the seller pull from the Files library on the
   // documents tab without copying bytes. The DealDocument row's storagePath
   // points at the existing File's storageKey; on delete we skip the storage
   // unlink because the File row still owns those bytes.
@@ -219,34 +220,40 @@ async function handleAttachFromFiles(
   // Verify every file belongs to this space — defence-in-depth on top of
   // RLS. One round trip; the IN() result also gives us name/mime/size for
   // the DealDocument row without re-querying per id.
-  const { data: ownedFiles, error: filesError } = await supabase
-    .from('File')
-    .select('id, name, mimeType, sizeBytes, storageKey')
-    .in('id', fileIds)
-    .eq('spaceId', spaceId);
-
-  if (filesError) {
-    logger.error('[deals/docs] file lookup failed', { dealId, spaceId }, filesError);
+  let ownedFiles: Array<{
+    id: string;
+    name: string;
+    mimeType: string;
+    sizeBytes: number;
+    storageKey: string;
+  }>;
+  try {
+    ownedFiles = (await convex().query(api.infra.files.listByIdsForSpace, {
+      ids: fileIds,
+      spaceId,
+    })) as typeof ownedFiles;
+  } catch (filesError) {
+    logger.error('[deals/docs] file lookup failed', { dealId, spaceId }, filesError as Error);
     return NextResponse.json({ error: 'Failed to look up files' }, { status: 500 });
   }
 
-  const ownedSet = new Map((ownedFiles ?? []).map((f) => [f.id as string, f]));
+  const ownedSet = new Map(ownedFiles.map((f) => [f.id, f]));
   const missing = fileIds.filter((id) => !ownedSet.has(id));
   if (missing.length === fileIds.length) {
     return NextResponse.json({ error: 'No accessible files' }, { status: 404 });
   }
 
   const now = new Date().toISOString();
-  const rows = (ownedFiles ?? []).map((f) => ({
+  const rows = ownedFiles.map((f) => ({
     id: crypto.randomUUID(),
     dealId,
     spaceId,
     kind,
-    label: ((f.name as string | null) ?? 'file').slice(0, 200),
+    label: (f.name ?? 'file').slice(0, 200),
     // Point at the existing object. DELETE on this DealDocument will skip
     // the storage unlink because the path doesn't start with deal-documents/.
-    storagePath: f.storageKey as string,
-    contentType: (f.mimeType as string | null) ?? null,
+    storagePath: f.storageKey,
+    contentType: f.mimeType ?? null,
     sizeBytes: Number(f.sizeBytes ?? 0),
     uploadedById: userId,
     createdAt: now,

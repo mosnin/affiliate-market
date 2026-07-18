@@ -2,7 +2,7 @@
  * Brief delivery — opt-in email + SMS fan-out.
  *
  * Called inline from the cron right after a Brief row is upserted (so
- * the per-realtor 7am local IS the delivery moment). Per channel:
+ * the per-seller 7am local IS the delivery moment). Per channel:
  *
  *   1. Check the opt-in (briefEmail / briefSms + master toggle).
  *   2. Atomic UPDATE-WHERE-NULL on Brief.{email,sms}SentAt to claim
@@ -19,7 +19,7 @@
  * extends to channels.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { sendSMS } from '@/lib/sms';
 import { briefEmailHtml, briefEmailSubject } from './email-template';
@@ -79,17 +79,14 @@ async function deliverEmail(ctx: DeliverContext, isEmpty: boolean): Promise<Deli
     return 'skipped-opt-out';
   }
 
-  // Atomic claim. Whichever concurrent tick gets RETURNING wins.
+  // Atomic claim. Whichever concurrent tick wins the CAS sends.
   const nowIso = new Date().toISOString();
-  const { data: claimed, error: claimErr } = await supabase
-    .from('Brief')
-    .update({ emailSentAt: nowIso })
-    .eq('id', ctx.briefId)
-    .is('emailSentAt', null)
-    .select('id')
-    .maybeSingle();
+  const claimed = await convex().mutation(api.portal.briefs.claimEmail, {
+    id: ctx.briefId,
+    sentAt: nowIso,
+  });
 
-  if (claimErr || !claimed) return 'skipped-already-sent';
+  if (!claimed) return 'skipped-already-sent';
 
   try {
     const { Resend } = await import('resend');
@@ -109,7 +106,7 @@ async function deliverEmail(ctx: DeliverContext, isEmpty: boolean): Promise<Deli
     });
 
     const result = await resend.emails.send({
-      from: `Chippi <brief@${getBriefDomain()}>`,
+      from: `Cola <brief@${getBriefDomain()}>`,
       to: ctx.space.ownerEmail,
       subject,
       html,
@@ -126,10 +123,10 @@ async function deliverEmail(ctx: DeliverContext, isEmpty: boolean): Promise<Deli
     }
 
     const messageId = result.data?.id ?? null;
-    await supabase
-      .from('Brief')
-      .update({ emailMessageId: messageId, briefDeliveryErrorCode: null })
-      .eq('id', ctx.briefId);
+    await convex().mutation(api.portal.briefs.recordEmailSent, {
+      id: ctx.briefId,
+      messageId,
+    });
 
     logger.info('[brief-delivery] email sent', { briefId: ctx.briefId, messageId });
     return 'sent';
@@ -142,21 +139,17 @@ async function deliverEmail(ctx: DeliverContext, isEmpty: boolean): Promise<Deli
 async function handleEmailFailure(briefId: string, code: 'transient' | 'permanent'): Promise<DeliveryResult['email']> {
   if (code === 'transient') {
     // Release the lock so the next tick retries within today.
-    await supabase
-      .from('Brief')
-      .update({ emailSentAt: null })
-      .eq('id', briefId)
-      .is('emailMessageId', null);
+    await convex().mutation(api.portal.briefs.releaseEmail, { id: briefId });
     return 'failed-transient';
   }
   // Permanent — keep the lock, write the error code, surface in tomorrow's
   // brief. Auto-disable after 3 consecutive permanent failures (counted
   // by a separate per-space scan in the cron — not done here to keep this
   // function pure-per-brief).
-  await supabase
-    .from('Brief')
-    .update({ briefDeliveryErrorCode: `email_${code}` })
-    .eq('id', briefId);
+  await convex().mutation(api.portal.briefs.recordDeliveryError, {
+    id: briefId,
+    errorCode: `email_${code}`,
+  });
   return 'failed-permanent';
 }
 
@@ -174,7 +167,7 @@ function classifyResendError(error: { name?: string; message?: string } | null |
 function getBriefDomain(): string {
   // Sender subdomain — keeps brief reputation isolated from
   // notifications@. Env-driven so staging can use a different domain.
-  return process.env.BRIEF_EMAIL_DOMAIN ?? 'alerts.usechippi.com';
+  return process.env.BRIEF_EMAIL_DOMAIN ?? 'alerts.usecola.com';
 }
 
 // ── SMS ─────────────────────────────────────────────────────────────────────
@@ -185,27 +178,22 @@ async function deliverSms(ctx: DeliverContext, isEmpty: boolean): Promise<Delive
   if (!ctx.space.phoneNumber) return 'skipped-no-phone';
 
   const nowIso = new Date().toISOString();
-  const { data: claimed, error: claimErr } = await supabase
-    .from('Brief')
-    .update({ smsSentAt: nowIso })
-    .eq('id', ctx.briefId)
-    .is('smsSentAt', null)
-    .select('id')
-    .maybeSingle();
+  const claimed = await convex().mutation(api.portal.briefs.claimSms, {
+    id: ctx.briefId,
+    sentAt: nowIso,
+  });
 
-  if (claimErr || !claimed) return 'skipped-already-sent';
+  if (!claimed) return 'skipped-already-sent';
 
   try {
-    // Check if this is the realtor's FIRST-EVER brief SMS. If so, send
+    // Check if this is the seller's FIRST-EVER brief SMS. If so, send
     // the one-time opt-in disclosure first as its own message.
-    const { count: priorSends } = await supabase
-      .from('Brief')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', ctx.space.spaceId)
-      .not('smsSentAt', 'is', null)
-      .neq('id', ctx.briefId);
+    const priorSends = await convex().query(api.portal.briefs.countPriorSmsSends, {
+      spaceId: ctx.space.spaceId,
+      excludeBriefId: ctx.briefId,
+    });
 
-    if ((priorSends ?? 0) === 0) {
+    if (priorSends === 0) {
       await sendSMS({ to: ctx.space.phoneNumber, body: BRIEF_SMS_FIRST_DISCLOSURE });
     }
 
@@ -220,28 +208,17 @@ async function deliverSms(ctx: DeliverContext, isEmpty: boolean): Promise<Delive
     if (!sent) {
       // sendSMS already classifies/logs internally — treat as transient
       // and release the lock so we retry within today.
-      await supabase
-        .from('Brief')
-        .update({ smsSentAt: null })
-        .eq('id', ctx.briefId)
-        .is('smsMessageId', null);
+      await convex().mutation(api.portal.briefs.releaseSms, { id: ctx.briefId });
       return 'failed-transient';
     }
 
-    await supabase
-      .from('Brief')
-      .update({ briefDeliveryErrorCode: null })
-      .eq('id', ctx.briefId);
+    await convex().mutation(api.portal.briefs.recordSmsSent, { id: ctx.briefId });
 
     logger.info('[brief-delivery] sms sent', { briefId: ctx.briefId });
     return 'sent';
   } catch (err) {
     logger.error('[brief-delivery] sms send threw', { briefId: ctx.briefId }, err as Error);
-    await supabase
-      .from('Brief')
-      .update({ smsSentAt: null })
-      .eq('id', ctx.briefId)
-      .is('smsMessageId', null);
+    await convex().mutation(api.portal.briefs.releaseSms, { id: ctx.briefId });
     return 'failed-transient';
   }
 }
@@ -249,29 +226,15 @@ async function deliverSms(ctx: DeliverContext, isEmpty: boolean): Promise<Delive
 // ── Context loader — pulled out so the cron and the /test endpoint share it ─
 
 export async function loadDeliveryContext(spaceId: string): Promise<DeliverySpaceContext | null> {
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select(
-      'briefEmail, briefSms, notifications, smsNotifications, phoneNumber, businessName, unsubscribeToken',
-    )
-    .eq('spaceId', spaceId)
-    .maybeSingle();
+  const settings = await convex().query(api.workspace.settings.getBySpace, { spaceId });
 
   if (!settings) return null;
 
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id, slug, ownerId')
-    .eq('id', spaceId)
-    .maybeSingle();
+  const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
 
   if (!space) return null;
 
-  const { data: owner } = await supabase
-    .from('User')
-    .select('email')
-    .eq('id', space.ownerId)
-    .maybeSingle();
+  const owner = await convex().query(api.org.users.getById, { id: space.ownerId });
 
   return {
     spaceId,
@@ -291,6 +254,6 @@ export function getAppOrigin(): string {
   return (
     process.env.NEXT_PUBLIC_APP_ORIGIN ??
     process.env.NEXT_PUBLIC_VERCEL_URL ??
-    'https://my.usechippi.com'
+    'https://my.usecola.com'
   ).replace(/\/$/, '');
 }

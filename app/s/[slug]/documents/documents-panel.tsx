@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * DocumentsPanel — list + editor for the realtor's own documents.
+ * DocumentsPanel — list + editor for the seller's own documents.
  *
- * A document is a file the realtor authored in-app. Two modes, swapped in
+ * A document is a file the seller authored in-app. Two modes, swapped in
  * place (no routing): a divide-y list of documents, and an editor for
- * one. Chippi can read and attach these, but the realtor is always the
+ * one. Cola can read and attach these, but the seller is always the
  * author — nothing here is machine-written.
  *
  * The editor is TipTap (ProseMirror-based, ~80kb gzip) — code-split via
@@ -81,8 +81,8 @@ export function DocumentsPanel() {
   const [mode, setMode] = useState<'list' | 'edit'>('list');
   const [draft, setDraft] = useState<Draft | null>(null);
   // Edit/Preview toggle inside the document editor — preview by default
-  // for existing docs (the realtor opens to read), edit by default for
-  // new ones (the realtor opens to write).
+  // for existing docs (the seller opens to read), edit by default for
+  // new ones (the seller opens to write).
   const [editorMode, setEditorMode] = useState<EditorMode>('edit');
   const [saving, setSaving] = useState(false);
   const [opening, setOpening] = useState(false);
@@ -183,7 +183,7 @@ export function DocumentsPanel() {
 
   // Sanitize the HTML content before rendering inside Preview. TipTap's
   // own serializer is well-formed but the content field can in theory be
-  // seeded from external sources (paste, API import, future Chippi
+  // seeded from external sources (paste, API import, future Cola
   // export) — sanitize defensively.
   const sanitizedHtml = useMemo(
     () => (draft ? DOMPurify.sanitize(draft.content ?? '') : ''),
@@ -213,7 +213,7 @@ export function DocumentsPanel() {
               <button
                 type="button"
                 onClick={() => remove(draft.id as string, draft.title)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 px-3 h-9 text-[13px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-full border border-negative/20 px-3 h-9 text-[13px] font-medium text-negative dark:text-negative hover:bg-negative-subtle0/10 transition-colors"
               >
                 <Trash2 size={13} />
                 Delete
@@ -252,7 +252,7 @@ export function DocumentsPanel() {
           />
         ) : (
           // Read mode tinted bg-muted/10 — distinct from the bg-card edit
-          // surface so the realtor can tell at a glance whether they're
+          // surface so the seller can tell at a glance whether they're
           // viewing or editing.
           <div className="rounded-xl border border-border/70 bg-muted/10 px-3.5 py-3 min-h-[60vh]">
             {/* Sanitized HTML — see sanitizedHtml memo above. */}
@@ -264,7 +264,7 @@ export function DocumentsPanel() {
         )}
 
         <p className="text-[11px] text-muted-foreground">
-          Saved to your documents. Chippi can read it and attach it to a deal — it won&apos;t change your wording.
+          Saved to your documents. Cola can read it and attach it to a deal — it won&apos;t change your wording.
         </p>
       </div>
     );
@@ -402,13 +402,13 @@ function ErrorBanner({
   onDismiss: () => void;
 }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/5 px-3 py-2 text-[12.5px] text-rose-700 dark:text-rose-400">
+    <div className="flex items-start gap-2 rounded-lg border border-negative/20 bg-negative-subtle/70 dark:bg-negative-subtle0/5 px-3 py-2 text-[12.5px] text-negative dark:text-negative">
       <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
       <span>{message}</span>
       <button
         type="button"
         onClick={onDismiss}
-        className="ml-auto text-rose-700/70 hover:text-rose-700 dark:text-rose-400/70 dark:hover:text-rose-400"
+        className="ml-auto text-negative/70 hover:text-negative dark:text-negative/70 dark:hover:text-negative"
       >
         Dismiss
       </button>
@@ -416,7 +416,7 @@ function ErrorBanner({
   );
 }
 
-/** When the realtor lands in Preview mode with empty content, show a calm
+/** When the seller lands in Preview mode with empty content, show a calm
  *  fact instead of a blank rectangle. Matches the empty-state vocabulary
  *  from the stylesheet. */
 function emptyDocPlaceholder(): string {

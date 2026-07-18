@@ -5,8 +5,8 @@
  *
  * One beat: a deal card leaves Negotiating and lands in Closed Won, the
  * column counts tick (Negotiating 1→0, Closed won 0→1), and the card gains
- * a "closed · today" confirmation as Chippi back-fills the close date.
- * "Move a card, Chippi keeps the rest in sync" in one breath — told
+ * a "closed · today" confirmation as Cola back-fills the close date.
+ * "Move a card, Cola keeps the rest in sync" in one breath — told
  * entirely on the board so it reads at every aspect with no side rail to
  * overflow.
  *
@@ -27,7 +27,7 @@
  *   - Leave: source card fades + drifts right as it exits Negotiating.
  *   - Land: card fades in atop Closed Won; counts cross-fade; the column
  *     gets a restrained highlight that decays.
- *   - Confirm: "closed · today" + Chippi badge ticks in under the value.
+ *   - Confirm: "closed · today" + Cola badge ticks in under the value.
  *   - Hold, then a calm fade-out across the diagram, then re-arm.
  *
  * Reduced-motion: card already in Closed Won, counts settled, confirmation
@@ -40,10 +40,10 @@ import { GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EASE_APPLE } from '@/lib/motion';
 import {
-  ChippiDiagramShell,
-  DiagramChippiBadge,
+  ColaDiagramShell,
+  DiagramColaBadge,
   useDiagramMotion,
-} from './chippi-diagram-shell';
+} from './cola-diagram-shell';
 
 interface KanbanDragDiagramProps {
   aspect?: 'video' | 'square' | 'wide' | 'tall';
@@ -80,7 +80,7 @@ function StaticCard({ name }: { name: string }) {
   return (
     <div className="rounded-md border border-border/70 bg-background px-2 py-1.5">
       <div className="flex items-center gap-1.5">
-        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-500" />
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-positive-subtle0" />
         <p className="text-[11px] font-medium leading-tight truncate text-foreground">
           {name}
         </p>
@@ -94,9 +94,9 @@ export function KanbanDragDiagram({
   className,
 }: KanbanDragDiagramProps) {
   return (
-    <ChippiDiagramShell aspect={aspect} pad={6} className={className}>
+    <ColaDiagramShell aspect={aspect} pad={6} className={className}>
       <KanbanDragContent />
-    </ChippiDiagramShell>
+    </ColaDiagramShell>
   );
 }
 
@@ -217,7 +217,7 @@ function KanbanDragContent() {
 /**
  * The deal that moves. Carries the value (serif Times — the focal number).
  * When it lands in Closed Won a "closed · today" line ticks in beneath the
- * value with the Chippi badge: the field-sync consequence, told on the card
+ * value with the Cola badge: the field-sync consequence, told on the card
  * itself rather than in a side rail that would overflow a short box. The
  * row animates its own height so the card grows in place without nudging
  * the column layout.
@@ -234,7 +234,7 @@ function FocalDealCard({ confirmed }: { confirmed: boolean }) {
           <div className="flex items-center gap-1.5">
             {/* Health dot — emerald on-track, same vocabulary as the real
                 DealCard. The deal is active and closing cleanly. */}
-            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-500" />
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-positive-subtle0" />
             <p className="text-[11px] font-medium leading-tight truncate text-foreground">
               M. Chen · 415 Lex
             </p>
@@ -255,7 +255,7 @@ function FocalDealCard({ confirmed }: { confirmed: boolean }) {
             transition={{ duration: 0.24, ease: EASE_APPLE }}
           >
             <div className="flex items-center gap-1.5 pt-1.5">
-              <DiagramChippiBadge />
+              <DiagramColaBadge />
               <span className="text-[10px] text-muted-foreground tabular-nums truncate">
                 closed · today
               </span>

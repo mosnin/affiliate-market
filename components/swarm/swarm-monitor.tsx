@@ -208,15 +208,15 @@ function StatusBadge({ status }: { status: string }) {
   }
   if (status === 'running') {
     return (
-      <span className={cn(base, 'bg-blue-500/10 text-blue-600 dark:text-blue-400')}>running</span>
+      <span className={cn(base, 'bg-brand-subtle0/10 text-primary dark:text-blue-400')}>running</span>
     );
   }
   if (status === 'auditing') {
-    return <span className={cn(base, 'bg-amber-500/10 text-amber-600 dark:text-amber-400')}>auditing</span>;
+    return <span className={cn(base, 'bg-muted0/10 text-muted-foreground dark:text-muted-foreground')}>auditing</span>;
   }
   if (status === 'completed') {
     return (
-      <span className={cn(base, 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400')}>
+      <span className={cn(base, 'bg-positive-subtle0/10 text-positive dark:text-positive')}>
         completed
       </span>
     );
@@ -234,7 +234,7 @@ function ConnectionDot({ connected }: { connected: boolean }) {
     <span
       className={cn(
         'flex-shrink-0 w-1.5 h-1.5 rounded-full',
-        connected ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground/30',
+        connected ? 'bg-positive-subtle0 animate-pulse' : 'bg-muted-foreground/30',
       )}
       title={connected ? 'Live stream connected' : 'Disconnected'}
     />

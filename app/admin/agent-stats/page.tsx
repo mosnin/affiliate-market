@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,22 +20,21 @@ type AgentStatsResponse = {
 async function fetchAgentStats(days: number): Promise<AgentStatsResponse> {
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
 
-  // Parallel queries — all aggregated in JS, no full-table scans beyond the window
-  const [statusRes, costRes, stepRes, spaceRes] = await Promise.all([
-    supabase.from('AgentTask').select('status').gte('createdAt', since),
-    supabase.from('AgentTask').select('estimatedCostUsd').gte('createdAt', since),
-    supabase
-      .from('ExecutionStep')
-      .select('toolName, AgentTask!inner(createdAt)')
-      .gte('AgentTask.createdAt', since),
-    supabase.from('AgentTask').select('spaceId, estimatedCostUsd').gte('createdAt', since),
+  // Parallel queries — all aggregated in JS, no full-table scans beyond the window.
+  // The three AgentTask scans (status / cost / by-space) collapse to one
+  // listSince read whose row superset (status, estimatedCostUsd, spaceId) feeds
+  // all three folds. toolNamesForTasksSince replaces the ExecutionStep⋈AgentTask
+  // inner-join — it returns the toolNames for steps on tasks created in-window.
+  const [taskRows, toolNames] = await Promise.all([
+    convex().query(api.agent.tasks.listSince, { since }),
+    convex().query(api.agent.steps.toolNamesForTasksSince, { since }),
   ]);
 
   // Status breakdown
   const tasksByStatus: Record<string, number> = {};
   let totalTasks = 0;
   let failedCount = 0;
-  for (const row of statusRes.data ?? []) {
+  for (const row of taskRows) {
     const s = row.status as string;
     tasksByStatus[s] = (tasksByStatus[s] ?? 0) + 1;
     totalTasks++;
@@ -44,15 +43,14 @@ async function fetchAgentStats(days: number): Promise<AgentStatsResponse> {
 
   // Cost
   let totalCostUsd = 0;
-  for (const row of (costRes.data ?? []) as { estimatedCostUsd: string | number | null }[]) {
+  for (const row of taskRows) {
     totalCostUsd += parseFloat(String(row.estimatedCostUsd ?? 0));
   }
   const avgCostUsd = totalTasks > 0 ? totalCostUsd / totalTasks : 0;
 
   // Top tools
   const toolCounts: Record<string, number> = {};
-  for (const row of stepRes.data ?? []) {
-    const name = (row as { toolName: string }).toolName;
+  for (const name of toolNames) {
     toolCounts[name] = (toolCounts[name] ?? 0) + 1;
   }
   const topTools = Object.entries(toolCounts)
@@ -62,10 +60,7 @@ async function fetchAgentStats(days: number): Promise<AgentStatsResponse> {
 
   // By space
   const spaceMap: Record<string, { count: number; cost: number }> = {};
-  for (const row of (spaceRes.data ?? []) as {
-    spaceId: string;
-    estimatedCostUsd: string | number | null;
-  }[]) {
+  for (const row of taskRows) {
     const entry = spaceMap[row.spaceId] ?? { count: 0, cost: 0 };
     entry.count++;
     entry.cost += parseFloat(String(row.estimatedCostUsd ?? 0));
@@ -99,10 +94,10 @@ function fmtCost(n: number): string {
 function ErrorRateBadge({ rate }: { rate: number }) {
   const color =
     rate > 5
-      ? 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15'
+      ? 'text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15'
       : rate > 1
-        ? 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15'
-        : 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15';
+        ? 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15'
+        : 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15';
 
   return (
     <span className={`inline-flex text-xs font-semibold rounded-full px-2.5 py-0.5 tabular-nums ${color}`}>
@@ -230,7 +225,7 @@ export default async function AgentStatsPage({
                 </div>
               </div>
               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-muted">
-                <Activity size={15} className="text-emerald-500" />
+                <Activity size={15} className="text-positive" />
               </div>
             </div>
           </CardContent>
@@ -248,7 +243,7 @@ export default async function AgentStatsPage({
                 <p className="text-[11px] text-muted-foreground mt-0.5">USD, all spaces</p>
               </div>
               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-muted">
-                <DollarSign size={15} className="text-amber-500" />
+                <DollarSign size={15} className="text-muted-foreground" />
               </div>
             </div>
           </CardContent>
@@ -294,11 +289,11 @@ export default async function AgentStatsPage({
                         ? Math.round((count / stats!.totalTasks) * 100)
                         : 0;
                     const color: Record<string, string> = {
-                      completed: 'bg-emerald-500',
-                      running: 'bg-blue-500',
+                      completed: 'bg-positive-subtle0',
+                      running: 'bg-brand-subtle0',
                       queued: 'bg-slate-400',
-                      paused: 'bg-amber-400',
-                      failed: 'bg-red-500',
+                      paused: 'bg-lead-warm',
+                      failed: 'bg-negative-subtle0',
                       cancelled: 'bg-muted-foreground/40',
                     };
                     return (
@@ -329,7 +324,7 @@ export default async function AgentStatsPage({
         <Card className="rounded-xl border bg-card">
           <CardContent className="p-6">
             <div className="flex items-center gap-2 mb-4">
-              <Zap size={14} className="text-amber-500" />
+              <Zap size={14} className="text-muted-foreground" />
               <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                 Top tools
               </h2>
@@ -357,7 +352,7 @@ export default async function AgentStatsPage({
                       </div>
                       <div className="h-1.5 bg-muted rounded-full overflow-hidden ml-6">
                         <div
-                          className="h-full bg-amber-400 rounded-full transition-all duration-500"
+                          className="h-full bg-lead-warm rounded-full transition-all duration-500"
                           style={{ width: `${Math.max(pct, 2)}%` }}
                         />
                       </div>
@@ -410,7 +405,7 @@ export default async function AgentStatsPage({
                       <td className="py-2.5 pr-4 text-right tabular-nums font-semibold">
                         {fmt(row.count)}
                       </td>
-                      <td className="py-2.5 text-right tabular-nums text-amber-600 dark:text-amber-400 font-semibold">
+                      <td className="py-2.5 text-right tabular-nums text-muted-foreground dark:text-muted-foreground font-semibold">
                         {fmtCost(row.cost)}
                       </td>
                     </tr>
@@ -424,7 +419,7 @@ export default async function AgentStatsPage({
                     <td className="pt-3 text-right tabular-nums font-bold">
                       {fmt(stats.tasksBySpace.reduce((a, r) => a + r.count, 0))}
                     </td>
-                    <td className="pt-3 text-right tabular-nums font-bold text-amber-600 dark:text-amber-400">
+                    <td className="pt-3 text-right tabular-nums font-bold text-muted-foreground dark:text-muted-foreground">
                       {fmtCost(stats.tasksBySpace.reduce((a, r) => a + r.cost, 0))}
                     </td>
                   </tr>

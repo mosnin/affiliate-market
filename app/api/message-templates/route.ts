@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceForUser } from '@/lib/space';
 import { requireAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
@@ -16,18 +16,15 @@ export async function GET() {
   const space = await getSpaceForUser(userId);
   if (!space) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { data, error } = await supabase
-    .from('MessageTemplate')
-    .select('*')
-    .eq('spaceId', space.id)
-    .order('updatedAt', { ascending: false });
-
-  if (error) {
+  let data;
+  try {
+    data = await convex().query(api.support.templates.listBySpace, { spaceId: space.id });
+  } catch (error) {
     logger.error('[templates] list failed', { spaceId: space.id }, error);
     return NextResponse.json({ error: 'Failed to list templates' }, { status: 500 });
   }
 
-  return NextResponse.json(data ?? []);
+  return NextResponse.json(data);
 }
 
 export async function POST(req: NextRequest) {
@@ -59,20 +56,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Body must be under 5000 characters' }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from('MessageTemplate')
-    .insert({
+  let data;
+  try {
+    data = await convex().mutation(api.support.templates.create, {
       id: crypto.randomUUID(),
       spaceId: space.id,
       name,
-      channel,
+      channel: channel as MessageChannel,
       body: content,
       subject: channel === 'email' && subject ? subject : null,
-    })
-    .select()
-    .single();
-
-  if (error) {
+    });
+  } catch (error) {
     logger.error('[templates] create failed', { spaceId: space.id }, error);
     return NextResponse.json({ error: 'Failed to create template' }, { status: 500 });
   }

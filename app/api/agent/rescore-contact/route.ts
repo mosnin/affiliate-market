@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { scoreLeadApplicationDynamic } from '@/lib/lead-scoring';
 import { assertCanSpend, chargeWorkflow, CreditsExhaustedError } from '@/lib/billing/meter';
 import type { Contact, IntakeFormConfig } from '@/lib/types';
@@ -36,17 +36,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'contactId and spaceId required' }, { status: 400 });
   }
 
-  const { data: rows, error: fetchError } = await supabase
-    .from('Contact')
-    .select('*')
-    .eq('id', contactId)
-    .eq('spaceId', spaceId);
-
-  if (fetchError || !rows?.length) {
+  let contactRow: Contact | null;
+  try {
+    contactRow = (await convex().query(api.contacts.contacts.getById, {
+      id: contactId,
+      spaceId,
+    })) as Contact | null;
+  } catch {
     return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
   }
 
-  const contact = rows[0] as Contact;
+  if (!contactRow) {
+    return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+  }
+
+  const contact = contactRow;
 
   // Skip contacts with no scoreable data
   if (!contact.applicationData && !contact.formConfigSnapshot) {
@@ -60,7 +64,7 @@ export async function POST(req: NextRequest) {
 
   // Meter the AI work — this autonomous path runs the SAME scoreLeadApplicationDynamic
   // as the metered UI rescore button, so it must charge the same 'lead_score' credit.
-  // Without this the highest-volume scoring path (Chippi auto-rescores on triggers +
+  // Without this the highest-volume scoring path (Cola auto-rescores on triggers +
   // sweeps) ran completely free. No-op unless CREDITS_ENFORCED.
   try {
     await assertCanSpend(spaceId, 'lead_score');
@@ -77,11 +81,11 @@ export async function POST(req: NextRequest) {
   // themselves are also scoped. Treat the bearer secret as proving "this
   // caller is Modal" — never as proving "this payload's spaceId is what
   // Modal was originally authorized for."
-  await supabase
-    .from('Contact')
-    .update({ scoringStatus: 'pending' })
-    .eq('id', contactId)
-    .eq('spaceId', spaceId);
+  await convex().mutation(api.contacts.contacts.update, {
+    id: contactId,
+    spaceId,
+    patch: { scoringStatus: 'pending' },
+  });
 
   const formConfig = (contact as Record<string, unknown>).formConfigSnapshot as IntakeFormConfig | null ?? null;
   const resolvedLeadType = contact.leadType || (contact as Record<string, unknown>).formLeadType as string || 'rental';
@@ -89,11 +93,9 @@ export async function POST(req: NextRequest) {
   let scoringModel: ScoringModel | null = null;
   if (formConfig) {
     const col = resolvedLeadType === 'buyer' ? 'buyerScoringModel' : 'rentalScoringModel';
-    const { data: ss } = await supabase
-      .from('SpaceSetting')
-      .select(col)
-      .eq('spaceId', spaceId)
-      .maybeSingle();
+    const ss = await convex()
+      .query(api.workspace.settings.getBySpace, { spaceId })
+      .catch(() => null);
     if (ss) scoringModel = (ss as Record<string, unknown>)[col] as ScoringModel | null;
   }
 
@@ -117,29 +119,30 @@ export async function POST(req: NextRequest) {
       leadType: resolvedLeadType as 'rental' | 'buyer',
     });
 
-    await supabase
-      .from('Contact')
-      .update({
+    await convex().mutation(api.contacts.contacts.update, {
+      id: contactId,
+      spaceId,
+      patch: {
         scoringStatus: result.scoringStatus,
         leadScore: result.leadScore,
         scoreLabel: result.scoreLabel,
         scoreSummary: result.scoreSummary,
         scoreDetails: result.scoreDetails,
-        updatedAt: new Date().toISOString(),
-      })
-      .eq('id', contactId)
-      .eq('spaceId', spaceId);
+      },
+      updatedAt: new Date().toISOString(),
+    });
 
     // Charge only after a successful score (best-effort; never blocks the result).
     await chargeWorkflow(spaceId, 'lead_score');
 
     return NextResponse.json({ success: true, score: result.leadScore, label: result.scoreLabel });
   } catch {
-    await supabase
-      .from('Contact')
-      .update({ scoringStatus: 'failed', updatedAt: new Date().toISOString() })
-      .eq('id', contactId)
-      .eq('spaceId', spaceId);
+    await convex().mutation(api.contacts.contacts.update, {
+      id: contactId,
+      spaceId,
+      patch: { scoringStatus: 'failed' },
+      updatedAt: new Date().toISOString(),
+    });
     return NextResponse.json({ error: 'Scoring failed' }, { status: 500 });
   }
 }

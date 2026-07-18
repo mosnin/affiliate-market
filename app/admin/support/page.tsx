@@ -1,25 +1,15 @@
 import { redirect } from 'next/navigation';
 import { isPlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { SupportClient, type SupportTicket } from './support-client';
 
-export const metadata = { title: 'Support — Admin — Chippi' };
+export const metadata = { title: 'Support — Admin — Cola' };
 
 export default async function AdminSupportPage() {
   const ok = await isPlatformAdmin();
   if (!ok) redirect('/');
 
-  const { data, error } = await supabase
-    .from('SupportTicket')
-    .select(
-      'id, spaceId, userId, email, name, subject, message, category, status, priority, adminNote, createdAt, updatedAt',
-    )
-    .order('createdAt', { ascending: false })
-    .limit(500);
-
-  if (error) throw error;
-
-  const tickets = (data ?? []) as SupportTicket[];
+  const tickets = (await convex().query(api.support.tickets.listAll, {})) as SupportTicket[];
 
   // Resolve space slugs/names so the admin sees which workspace a ticket came
   // from without a per-row lookup. One query, mapped client-side.
@@ -28,12 +18,10 @@ export default async function AdminSupportPage() {
   );
   const spaceMap: Record<string, { name: string; slug: string }> = {};
   if (spaceIds.length > 0) {
-    const { data: spaces } = await supabase
-      .from('Space')
-      .select('id, name, slug')
-      .in('id', spaceIds);
-    for (const s of spaces ?? []) {
-      const row = s as { id: string; name: string; slug: string };
+    const spaces = (await convex().query(api.workspace.spaces.listByIds, {
+      ids: spaceIds,
+    })) as { id: string; name: string; slug: string }[];
+    for (const row of spaces) {
       spaceMap[row.id] = { name: row.name, slug: row.slug };
     }
   }
@@ -49,7 +37,7 @@ export default async function AdminSupportPage() {
           Support
         </h1>
         <p className="text-sm text-muted-foreground">
-          Help requests from realtors. {tickets.length} total.
+          Help requests from sellers. {tickets.length} total.
         </p>
       </header>
       <SupportClient initialTickets={tickets} spaceMap={spaceMap} />

@@ -9,7 +9,7 @@
  *
  * The drawer's top edge carries the same warm wash gradient as the dashboard
  * mobile drawer. It's the one sanctioned brand-orange surface on marketing —
- * the realtor opening the nav from a phone touches the same vocabulary they'd
+ * the seller opening the nav from a phone touches the same vocabulary they'd
  * touch inside the product. Sanctioned in STYLESHEET.md §Color via the LOGO
  * context (onboarding/brand-wash surface family).
  */
@@ -87,7 +87,7 @@ export function MarketingNavMobile() {
         {/* Brand wash — same recipe as the dashboard mobile drawer. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-32 z-0 bg-gradient-to-b from-orange-50/60 via-orange-50/20 to-transparent dark:from-orange-500/[0.04] dark:via-transparent"
+          className="pointer-events-none absolute inset-x-0 top-0 h-32 z-0 bg-gradient-to-b from-brand-subtle/60 via-brand-subtle/20 to-transparent dark:from-brand/[0.04] dark:via-transparent"
         />
         <div className="relative z-10 flex flex-col h-full">
           {/* Header row: brand mark left, close right */}
@@ -96,10 +96,10 @@ export function MarketingNavMobile() {
               <Link
                 href="/"
                 onClick={close}
-                aria-label="Chippi home"
+                aria-label="Cola home"
                 className="flex items-center"
               >
-                <BrandLogo className="h-5" alt="Chippi" />
+                <BrandLogo className="h-5" alt="Cola" />
               </Link>
             </SheetTitle>
             <SheetClose asChild>
@@ -134,7 +134,7 @@ export function MarketingNavMobile() {
           {/* Bottom CTAs — full-width pair separated by a hairline */}
           <div className="border-t border-border/60 px-5 py-4 space-y-2.5">
             <Link
-              href="/login/realtor"
+              href="/login/seller"
               onClick={close}
               className={cn(
                 GHOST_PILL,
@@ -145,7 +145,7 @@ export function MarketingNavMobile() {
               Log in
             </Link>
             <Link
-              href="/login/realtor?intent=signup"
+              href="/login/seller?intent=signup"
               onClick={close}
               className={cn(PRIMARY_PILL, 'w-full justify-center h-11')}
             >

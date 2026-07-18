@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import crypto from 'crypto';
 
 /**
@@ -46,16 +46,14 @@ export async function POST(req: NextRequest) {
   // can't even start an OAuth flow — the Claude connector gets a clear
   // "invalid_client" instead of silently exchanging a code it'll never
   // be able to use at the token endpoint.
-  const { data: mcpKey } = await supabase
-    .from('McpApiKey')
-    .select('spaceId, expiresAt')
-    .eq('clientId', client_id)
-    .maybeSingle();
+  const mcpKey = await convex().query(api.infra.mcpApiKeys.spaceAndExpiryByClientId, {
+    clientId: client_id,
+  });
 
   if (!mcpKey || mcpKey.spaceId !== space.id) {
     return NextResponse.json({ error: 'Invalid client_id' }, { status: 400 });
   }
-  if (mcpKey.expiresAt && new Date(mcpKey.expiresAt as string).getTime() < Date.now()) {
+  if (mcpKey.expiresAt && new Date(mcpKey.expiresAt).getTime() < Date.now()) {
     return NextResponse.json(
       { error: 'Invalid client_id', error_description: 'key expired' },
       { status: 400 },
@@ -75,19 +73,19 @@ export async function POST(req: NextRequest) {
     : null;
 
   // Store code with PKCE challenge for verification during token exchange
-  const { error } = await supabase.from('McpAuthCode').insert({
-    code,
-    clientId: client_id,
-    spaceId: space.id,
-    codeChallenge: code_challenge,
-    codeChallengeMethod: code_challenge_method || 'S256',
-    redirectUri: redirect_uri,
-    stateNonce,
-    stateHash,
-    expiresAt,
-  });
-
-  if (error) {
+  try {
+    await convex().mutation(api.infra.mcpAuthCodes.create, {
+      code,
+      clientId: client_id,
+      spaceId: space.id,
+      codeChallenge: code_challenge,
+      codeChallengeMethod: code_challenge_method || 'S256',
+      redirectUri: redirect_uri,
+      stateNonce,
+      stateHash,
+      expiresAt,
+    });
+  } catch (error) {
     console.error('[oauth/authorize] code insert failed:', error);
     return NextResponse.json({ error: 'Failed to generate code' }, { status: 500 });
   }

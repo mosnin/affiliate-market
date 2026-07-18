@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -14,15 +14,13 @@ export async function GET(req: NextRequest) {
   const space = await getSpaceForUser(userId);
   if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
 
-  const { data, error } = await supabase
-    .from('McpApiKey')
-    .select('id, name, keyPrefix, lastUsedAt, createdAt, expiresAt')
-    .eq('spaceId', space.id)
-    .order('createdAt', { ascending: false });
-
-  if (error)
+  let keys;
+  try {
+    keys = await convex().query(api.infra.mcpApiKeys.listForSpace, { spaceId: space.id });
+  } catch {
     return NextResponse.json({ error: 'Failed to load API keys' }, { status: 500 });
-  return NextResponse.json({ keys: data ?? [] });
+  }
+  return NextResponse.json({ keys });
 }
 
 // POST /api/mcp-keys — generate a new MCP API key (returns the full key ONCE)
@@ -39,8 +37,8 @@ export async function POST(req: NextRequest) {
   if (!allowed) return NextResponse.json({ error: 'Too many key generations. Try again later.' }, { status: 429 });
 
   // Limit total keys per space to 20
-  const { count } = await supabase.from('McpApiKey').select('*', { count: 'exact', head: true }).eq('spaceId', space.id);
-  if ((count ?? 0) >= 20) return NextResponse.json({ error: 'Maximum 20 API keys per workspace' }, { status: 400 });
+  const count = await convex().query(api.infra.mcpApiKeys.countForSpace, { spaceId: space.id });
+  if (count >= 20) return NextResponse.json({ error: 'Maximum 20 API keys per workspace' }, { status: 400 });
 
   let name = 'Default';
   try {
@@ -53,25 +51,25 @@ export async function POST(req: NextRequest) {
   }
 
   // Generate API key (for direct Bearer auth)
-  const rawKey = `chippi_${crypto.randomBytes(24).toString('hex')}`;
+  const rawKey = `cola_${crypto.randomBytes(24).toString('hex')}`;
   const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
   const keyPrefix = rawKey.slice(0, 12) + '...';
 
   // Generate OAuth client credentials (for Claude MCP connector)
-  const clientId = `chippi_${crypto.randomBytes(16).toString('hex')}`;
+  const clientId = `cola_${crypto.randomBytes(16).toString('hex')}`;
   const clientSecret = `cs_${crypto.randomBytes(32).toString('hex')}`;
   const clientSecretHash = crypto.createHash('sha256').update(clientSecret).digest('hex');
 
-  // Default 365-day TTL — keys cool off after a year unless the realtor
+  // Default 365-day TTL — keys cool off after a year unless the seller
   // rotates. Long enough that a set-and-forget Claude connector keeps
   // working through a billing cycle; short enough that a stale leak goes
   // cold within a year. Legacy keys (created before this migration)
   // carry NULL expiresAt and live until manually revoked.
   const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
-  const { data, error } = await supabase
-    .from('McpApiKey')
-    .insert({
+  let data;
+  try {
+    data = await convex().mutation(api.infra.mcpApiKeys.create, {
       spaceId: space.id,
       name,
       keyHash,
@@ -79,20 +77,18 @@ export async function POST(req: NextRequest) {
       clientId,
       clientSecretHash,
       expiresAt,
-    })
-    .select('id, name, keyPrefix, createdAt, clientId, expiresAt')
-    .single();
-
-  if (error)
+    });
+  } catch {
     return NextResponse.json({ error: 'Failed to create API key' }, { status: 500 });
+  }
 
   return NextResponse.json({
     ...data,
     key: rawKey,
     clientId,
     clientSecret,
-    tokenUrl: 'https://my.usechippi.com/api/mcp/oauth/token',
-    mcpUrl: 'https://my.usechippi.com/api/mcp',
+    tokenUrl: 'https://my.usecola.com/api/mcp/oauth/token',
+    mcpUrl: 'https://my.usecola.com/api/mcp',
   }, { status: 201 });
 }
 
@@ -110,17 +106,18 @@ export async function DELETE(req: NextRequest) {
     if (!id || typeof id !== 'string') return NextResponse.json({ error: 'id required' }, { status: 400 });
 
     // Verify key belongs to this space
-    const { data: existing } = await supabase
-      .from('McpApiKey')
-      .select('id')
-      .eq('id', id)
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const existing = await convex().query(api.infra.mcpApiKeys.existsForSpace, {
+      id,
+      spaceId: space.id,
+    });
 
     if (!existing) return NextResponse.json({ error: 'API key not found' }, { status: 404 });
 
-    const { error } = await supabase.from('McpApiKey').delete().eq('id', id);
-    if (error) return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
+    try {
+      await convex().mutation(api.infra.mcpApiKeys.deleteById, { id });
+    } catch {
+      return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true });
   } catch {

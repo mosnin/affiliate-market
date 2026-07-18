@@ -214,7 +214,7 @@ export function AIProfileForm({ slug: _slug, spaceId }: AIProfileFormProps) {
     <div className="space-y-8">
       {/* ── 1. Preferred name ─────────────────────────────────────── */}
       <div className="space-y-3">
-        <p className={SECTION_LABEL}>How should Chippi address you?</p>
+        <p className={SECTION_LABEL}>How should Cola address you?</p>
         <div className="space-y-1.5">
           <Label htmlFor="displayName" className="text-[12.5px] font-medium text-foreground">
             Preferred name or nickname
@@ -328,7 +328,7 @@ export function AIProfileForm({ slug: _slug, spaceId }: AIProfileFormProps) {
             htmlFor="quirksAndPreferences"
             className="text-[12.5px] font-medium text-foreground"
           >
-            How you like to work with Chippi
+            How you like to work with Cola
           </Label>
           <Textarea
             id="quirksAndPreferences"
@@ -343,7 +343,7 @@ export function AIProfileForm({ slug: _slug, spaceId }: AIProfileFormProps) {
 
       {/* ── 6. Special instructions ───────────────────────────────── */}
       <div className="space-y-3">
-        <p className={SECTION_LABEL}>Special instructions for Chippi</p>
+        <p className={SECTION_LABEL}>Special instructions for Cola</p>
         <div className="space-y-1.5">
           <Label
             htmlFor="agentPersonalizationNote"
@@ -357,10 +357,10 @@ export function AIProfileForm({ slug: _slug, spaceId }: AIProfileFormProps) {
             value={profile.agentPersonalizationNote ?? ''}
             onChange={(e) => setField('agentPersonalizationNote', e.target.value || null)}
             onBlur={() => saveOnBlur(profile)}
-            placeholder="Any specific way you want Chippi to behave — tone, format, topics to avoid..."
+            placeholder="Any specific way you want Cola to behave — tone, format, topics to avoid..."
           />
           <p className={cn(BODY_MUTED, 'text-xs')}>
-            This is fed directly into Chippi&apos;s context.
+            This is fed directly into Cola&apos;s context.
           </p>
         </div>
       </div>

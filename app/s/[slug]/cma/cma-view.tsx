@@ -3,14 +3,14 @@
 /**
  * /s/[slug]/cma — Comparative market analysis.
  *
- * One intent: a realtor builds a CMA from a subject property and the comps
+ * One intent: a seller builds a CMA from a subject product and the comps
  * already in their CRM, then hands a seller a public link. The builder is the
  * focal element; past reports sit below with a copy-link action.
  *
  * Design (Jobs lens): paper-flat, serif h1 + status sentence, one builder card,
  * a calm preview of the auto-selected comps + the computed range, a hairline-
  * divided list of past reports. No MLS, no external lookups — comps come from
- * the realtor's own Property rows.
+ * the seller's own Product rows.
  *
  * Build pass (Musk lens): the heavy lifting (comp selection, stats) lives in
  * lib/cma.ts and runs server-side on save. The client just collects the subject,
@@ -45,7 +45,7 @@ import type { CmaPayload, CmaComp } from '@/lib/cma';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface PropertyOption {
+interface ProductOption {
   id: string;
   address: string;
   city: string | null;
@@ -88,11 +88,11 @@ function compFacts(c: CmaComp): string {
 // ── Main view ────────────────────────────────────────────────────────────────
 
 export function CmaView({ slug }: { slug: string }) {
-  const [properties, setProperties] = useState<PropertyOption[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
   const [reports, setReports] = useState<CmaReport[]>([]);
   const [loadingReports, setLoadingReports] = useState(true);
 
-  // Subject input: either a saved property id, or typed fields.
+  // Subject input: either a saved product id, or typed fields.
   const [subjectId, setSubjectId] = useState<string>('');
   const [address, setAddress] = useState('');
   const [beds, setBeds] = useState('');
@@ -124,21 +124,21 @@ export function CmaView({ slug }: { slug: string }) {
     }
   }, [slug]);
 
-  const fetchProperties = useCallback(async () => {
+  const fetchProducts = useCallback(async () => {
     try {
-      const res = await fetch(`/api/properties?slug=${encodeURIComponent(slug)}`);
+      const res = await fetch(`/api/products?slug=${encodeURIComponent(slug)}`);
       if (!res.ok) return;
-      const data = (await res.json()) as PropertyOption[];
-      setProperties(Array.isArray(data) ? data : []);
+      const data = (await res.json()) as ProductOption[];
+      setProducts(Array.isArray(data) ? data : []);
     } catch {
-      // Non-fatal: the realtor can still type a subject by hand.
+      // Non-fatal: the seller can still type a subject by hand.
     }
   }, [slug]);
 
   useEffect(() => {
     fetchReports();
-    fetchProperties();
-  }, [fetchReports, fetchProperties]);
+    fetchProducts();
+  }, [fetchReports, fetchProducts]);
 
   // ── Build (save) ─────────────────────────────────────────────────────────────
 
@@ -149,7 +149,7 @@ export function CmaView({ slug }: { slug: string }) {
 
   const handleBuild = async () => {
     if (!canBuild) {
-      toastError('Pick a subject property or enter an address.');
+      toastError('Pick a subject product or enter an address.');
       return;
     }
 
@@ -157,7 +157,7 @@ export function CmaView({ slug }: { slug: string }) {
     if (title.trim()) body.title = title.trim();
 
     if (subjectId && subjectId !== TYPE_IT) {
-      body.subjectPropertyId = subjectId;
+      body.subjectProductId = subjectId;
     } else {
       const num = (v: string) => (v.trim() === '' ? null : Number(v));
       body.subject = {
@@ -265,7 +265,7 @@ export function CmaView({ slug }: { slug: string }) {
           Price a home.
         </h1>
         <p className={cn(BODY_MUTED)}>
-          Pick a subject, and Chippi pulls comps from your CRM and computes a range.
+          Pick a subject, and Cola pulls comps from your CRM and computes a range.
         </p>
       </header>
 
@@ -273,14 +273,14 @@ export function CmaView({ slug }: { slug: string }) {
       <div className="rounded-xl border border-border/70 bg-card px-5 py-5 space-y-4">
         <div className="space-y-1.5">
           <label htmlFor="cma-subject" className="text-sm font-medium text-foreground">
-            Subject property
+            Subject product
           </label>
           <Select value={subjectId} onValueChange={setSubjectId}>
             <SelectTrigger id="cma-subject" className="w-full">
-              <SelectValue placeholder="Pick a saved property" />
+              <SelectValue placeholder="Pick a saved product" />
             </SelectTrigger>
             <SelectContent>
-              {properties.map((p) => (
+              {products.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.address}
                   {p.city ? `, ${p.city}` : ''}

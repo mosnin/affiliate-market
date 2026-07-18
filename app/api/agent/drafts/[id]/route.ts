@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import type { FunctionArgs } from 'convex/server';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { audit } from '@/lib/audit';
@@ -61,14 +62,12 @@ export async function PATCH(
   }
 
   // Verify the draft belongs to this space and is still pending
-  const { data: existing, error: fetchError } = await supabase
-    .from('AgentDraft')
-    .select('id, status, contactId, dealId, channel, subject, content, outcome')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .single();
+  const existing = await convex().query(api.agent.drafts.getByIdForSpace, {
+    id,
+    spaceId: space.id,
+  });
 
-  if (fetchError || !existing) {
+  if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
@@ -79,7 +78,7 @@ export async function PATCH(
     );
   }
 
-  // Allow the realtor to edit content before approving
+  // Allow the seller to edit content before approving
   let finalContent: string = existing.content;
   if (newStatus === 'approved' && body.content !== undefined) {
     if (typeof body.content !== 'string' || body.content.trim().length === 0) {
@@ -92,9 +91,9 @@ export async function PATCH(
 
   // ── Dismissed: simple status update ──────────────────────────────────────
   if (newStatus === 'dismissed') {
-    const dismissPatch: Record<string, unknown> = {
+    const dismissPatch: FunctionArgs<typeof api.agent.drafts.updateForSpace>['patch'] = {
       status: 'dismissed',
-      updatedAt: new Date().toISOString(),
+      touchUpdatedAt: true, // the old patch always set updatedAt
       feedback_action: 'rejected',
     };
     if (decisionMs !== null) dismissPatch.decision_ms = decisionMs;
@@ -102,15 +101,11 @@ export async function PATCH(
       dismissPatch.outcome = 'no_response';
       dismissPatch.outcomeDetectedAt = new Date().toISOString();
     }
-    const { data: updated, error: updateError } = await supabase
-      .from('AgentDraft')
-      .update(dismissPatch)
-      .eq('id', id)
-      .eq('spaceId', space.id)
-      .select()
-      .single();
-
-    if (updateError) throw updateError;
+    const updated = await convex().mutation(api.agent.drafts.updateForSpace, {
+      id,
+      spaceId: space.id,
+      patch: dismissPatch,
+    });
 
     void audit({
       actorClerkId: userId,
@@ -129,13 +124,12 @@ export async function PATCH(
   // Fetch contact info needed for delivery (email / phone)
   let contact = { name: 'Contact', email: null as string | null, phone: null as string | null };
   if (existing.contactId) {
-    const { data: contactRow } = await supabase
-      .from('Contact')
-      .select('name, email, phone')
-      .eq('id', existing.contactId)
-      .eq('spaceId', space.id)
-      .maybeSingle();
-    if (contactRow) contact = contactRow;
+    const contactRow = await convex()
+      .query(api.contacts.contacts.getById, { id: existing.contactId, spaceId: space.id })
+      .catch(() => null);
+    if (contactRow) {
+      contact = { name: contactRow.name, email: contactRow.email, phone: contactRow.phone };
+    }
   }
 
   const deliveryResult: DeliveryResult = await sendDraft(
@@ -148,9 +142,9 @@ export async function PATCH(
   // sent=true → "sent"; sent=false → "approved" (human reviewed, delivery unconfigured/failed)
   const finalStatus = deliveryResult.sent ? 'sent' : 'approved';
 
-  const patch: Record<string, unknown> = {
+  const patch: FunctionArgs<typeof api.agent.drafts.updateForSpace>['patch'] = {
     status: finalStatus,
-    updatedAt: new Date().toISOString(),
+    touchUpdatedAt: true, // the old patch always set updatedAt
   };
   if (finalContent !== existing.content) patch.content = finalContent;
 
@@ -162,7 +156,7 @@ export async function PATCH(
   //
   // Whitespace-normalized comparison: a stray trailing space or a double
   // newline collapsed to a single one is NOT an edit. Otherwise we'd record
-  // 'edited_and_approved' on rows where the realtor literally just hit Approve.
+  // 'edited_and_approved' on rows where the seller literally just hit Approve.
   const serverEditDistance = normalizedLevenshtein(existing.content, finalContent);
   const contentChanged = serverEditDistance > 0;
   patch.feedback_action = contentChanged ? 'edited_and_approved' : 'approved';
@@ -171,15 +165,11 @@ export async function PATCH(
     : 0;
   if (decisionMs !== null) patch.decision_ms = decisionMs;
 
-  const { data: updated, error: updateError } = await supabase
-    .from('AgentDraft')
-    .update(patch)
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .select()
-    .single();
-
-  if (updateError) throw updateError;
+  const updated = await convex().mutation(api.agent.drafts.updateForSpace, {
+    id,
+    spaceId: space.id,
+    patch,
+  });
 
   void audit({
     actorClerkId: userId,

@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import {
@@ -40,8 +41,8 @@ import {
 } from '@/lib/people-detail-actions';
 
 function tierBadgeClasses(label: string) {
-  if (label === 'hot') return 'text-red-700 dark:text-red-400';
-  if (label === 'warm') return 'text-amber-700 dark:text-amber-400';
+  if (label === 'hot') return 'text-negative dark:text-red-400';
+  if (label === 'warm') return 'text-muted-foreground dark:text-muted-foreground';
   return 'text-muted-foreground';
 }
 
@@ -53,9 +54,9 @@ export default async function ClientDetailPage({
   const { slug, id } = await params;
 
   // Middleware only requires login; ownership of /s/[slug] is enforced here.
-  // Skipping this lets any logged-in realtor see any other realtor's contacts.
+  // Skipping this lets any logged-in seller see any other seller's contacts.
   const { userId } = await auth();
-  if (!userId) redirect('/login/realtor');
+  if (!userId) redirect('/login/seller');
 
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
@@ -63,7 +64,7 @@ export default async function ClientDetailPage({
   const userSpace = await getSpaceForUser(userId);
   if (!userSpace || userSpace.id !== space.id) notFound();
 
-  let contact: (Contact & { dealContacts: { deal: { id: string; title: string; address: string | null; value: number | null; status: string; priority: string; stage: { name: string; color: string } } }[]; tours: { id: string; startsAt: string; endsAt: string; status: string; propertyAddress: string | null }[] }) | null = null;
+  let contact: (Contact & { dealContacts: { deal: { id: string; title: string; address: string | null; value: number | null; status: string; priority: string; stage: { name: string; color: string } } }[]; demos: { id: string; startsAt: string; endsAt: string; status: string; productAddress: string | null }[] }) | null = null;
   let lastActivity: { type: string; content: string | null; createdAt: string } | null = null;
   try {
     const { data: contactData, error: contactError } = await supabase.from('Contact').select('*').eq('id', id).single();
@@ -77,7 +78,7 @@ export default async function ClientDetailPage({
       if (c.spaceId !== space.id) notFound();
       const { data: dealRows, error: dealError } = await supabase.from('DealContact').select('Deal(id, title, address, value, status, priority, DealStage(name, color))').eq('contactId', id);
       if (dealError) throw dealError;
-      const { data: tourRows } = await supabase.from('Tour').select('id, guestName, startsAt, endsAt, status, propertyAddress').eq('contactId', id).eq('spaceId', space.id).order('startsAt', { ascending: false }).limit(10);
+      const demoRows = await convex().query(api.demos.demos.listByContact, { contactId: id, spaceId: space.id, order: 'desc', limit: 10 });
       const { data: latest } = await supabase
         .from('ContactActivity')
         .select('type, content, createdAt')
@@ -103,7 +104,7 @@ export default async function ClientDetailPage({
             },
           },
         })),
-        tours: (tourRows ?? []) as any[],
+        demos: (demoRows ?? []) as any[],
       };
     }
   } catch (err) {
@@ -131,7 +132,7 @@ export default async function ClientDetailPage({
   const hasOpenApp = !!app && (contact.applicationStatus === 'received' || contact.applicationStatus == null);
   const hasOpenDeals = contact.dealContacts.length > 0;
 
-  // E-signature — let the realtor send a document from this person's linked
+  // E-signature — let the seller send a document from this person's linked
   // deals out for signature, prefilled to the person, and watch its status.
   // Documents are deal-scoped, so we pull the docs from the contact's deals.
   const dealIds = contact.dealContacts.map((dc) => dc.deal.id);
@@ -147,20 +148,18 @@ export default async function ClientDetailPage({
     signableDocs = (docRows ?? []) as { id: string; label: string; dealId: string }[];
   }
   {
-    const { data: sigRows } = await supabase
-      .from('SignatureRequest')
-      .select('id, documentId, status, signerEmail, signerName, subject, createdAt')
-      .eq('contactId', contact.id)
-      .eq('spaceId', space.id)
-      .order('createdAt', { ascending: false });
-    contactSignatureRequests = (sigRows ?? []) as SignatureRequestLite[];
+    const sigRows = await convex().query(api.portal.signatures.listForContact, {
+      contactId: contact.id,
+      spaceId: space.id,
+    });
+    contactSignatureRequests = sigRows as SignatureRequestLite[];
   }
   const docusignConnected = await isDocusignConnected(userId);
   const latestContactRequest = contactSignatureRequests[0] ?? null;
 
   return (
     <ContactDetailFrame className="max-w-4xl mx-auto space-y-8 pb-12">
-      {/* Headline — name is the page. The next four lines tell the realtor
+      {/* Headline — name is the page. The next four lines tell the seller
           everything they need to know in three seconds: who, how warm, how
           quiet, what just happened, what to do next.
           ContactDetailFocal adds a 0.95 → 1 scale on entry so the eye lands
@@ -194,9 +193,9 @@ export default async function ClientDetailPage({
       </ContactDetailFocal>
 
       {/* Action pills — same vocabulary as the morning home's compose
-          actions. State picks them; the realtor doesn't. Tap a verb pill
-          and the inline draft surface opens beneath; the realtor reviews,
-          edits, sends without leaving the page. "Log a tour" stays a Link
+          actions. State picks them; the seller doesn't. Tap a verb pill
+          and the inline draft surface opens beneath; the seller reviews,
+          edits, sends without leaving the page. "Log a demo" stays a Link
           to the dedicated recording flow. */}
       <ContactActionPills
         slug={slug}
@@ -236,7 +235,7 @@ export default async function ClientDetailPage({
           )}
           {contact.applicationRef && contact.statusPortalToken && (
             <CopyApplicantPortalLink
-              url={`${process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usechippi.com'}/apply/${slug}/status?ref=${encodeURIComponent(contact.applicationRef)}&token=${encodeURIComponent(contact.statusPortalToken)}`}
+              url={`${process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com'}/apply/${slug}/status?ref=${encodeURIComponent(contact.applicationRef)}&token=${encodeURIComponent(contact.statusPortalToken)}`}
             />
           )}
         </section>
@@ -268,12 +267,12 @@ export default async function ClientDetailPage({
       <ClientPortalPanel contactId={contact.id} />
 
       {/* Score — open when scored, since "why is this person hot" is often
-          the realtor's next question. Closed when no score yet. */}
+          the seller's next question. Closed when no score yet. */}
       {contact.scoringStatus === 'scored' && (
         <details open className="group border-t border-border/60 pt-4">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-2 text-sm font-semibold text-foreground hover:text-foreground/80 transition-colors">
             <span className="inline-flex items-center gap-2">
-              <MessageCircle size={13} className="text-orange-500 dark:text-orange-400" />
+              <MessageCircle size={13} className="text-primary dark:text-primary" />
               Lead score
             </span>
             <span className="inline-flex items-center gap-2">
@@ -376,7 +375,7 @@ export default async function ClientDetailPage({
       )}
 
       {/* Send a document to sign — pull a document from this person's deals,
-          send it to them on the realtor's connected DocuSign, watch status.
+          send it to them on the seller's connected DocuSign, watch status.
           Renders only when the person is on a deal with documents (nothing to
           send otherwise). Open when there's an in-flight request to track. */}
       {signableDocs.length > 0 && (
@@ -439,7 +438,7 @@ export default async function ClientDetailPage({
       )}
 
       {/* Application — open when received/null (needs review), closed once
-          processed. The realtor's eye goes where the work is. */}
+          processed. The seller's eye goes where the work is. */}
       {app && (
         <details {...(hasOpenApp ? { open: true } : {})} className="group border-t border-border/60 pt-4">
           <summary className="cursor-pointer list-none flex items-center justify-between text-sm font-semibold text-foreground hover:text-foreground/80 transition-colors">
@@ -475,10 +474,10 @@ export default async function ClientDetailPage({
               />
             ) : (
               <div className="divide-y divide-border/40">
-                {(app.propertyAddress || app.unitType || app.targetMoveInDate || app.monthlyRent != null || app.leaseTermPreference || app.numberOfOccupants != null) && (
-                  <CollapsibleSection title="Property" defaultOpen>
+                {(app.productAddress || app.unitType || app.targetMoveInDate || app.monthlyRent != null || app.leaseTermPreference || app.numberOfOccupants != null) && (
+                  <CollapsibleSection title="Product" defaultOpen>
                     <DetailGrid>
-                      {app.propertyAddress && <Detail label="Address" value={app.propertyAddress} />}
+                      {app.productAddress && <Detail label="Address" value={app.productAddress} />}
                       {app.unitType && <Detail label="Unit type" value={app.unitType} />}
                       {app.targetMoveInDate && <Detail label="Move-in date" value={app.targetMoveInDate} />}
                       {app.monthlyRent != null && <Detail label="Monthly rent" value={typeof app.monthlyRent === 'number' ? formatCurrency(app.monthlyRent) : String(app.monthlyRent)} />}
@@ -493,7 +492,7 @@ export default async function ClientDetailPage({
         </details>
       )}
 
-      {/* Pipeline — closed by default; not where the realtor's eye goes. */}
+      {/* Pipeline — closed by default; not where the seller's eye goes. */}
       <details className="group border-t border-border/60 pt-4">
         <summary className="cursor-pointer list-none flex items-center justify-between text-sm font-semibold text-foreground hover:text-foreground/80 transition-colors">
           <span>Pipeline stage</span>
@@ -511,7 +510,7 @@ export default async function ClientDetailPage({
       </details>
 
       {/* Follow-up + lifecycle — at the bottom because they're edits-on-this-
-          record, not the realtor's daily task. */}
+          record, not the seller's daily task. */}
       <details className="group border-t border-border/60 pt-4">
         <summary className="cursor-pointer list-none flex items-center justify-between text-sm font-semibold text-foreground hover:text-foreground/80 transition-colors">
           <span>Follow-up &amp; lifecycle</span>
@@ -536,7 +535,7 @@ export default async function ClientDetailPage({
             contactId={contact.id}
             scoreLabel={contact.scoreLabel}
             contactType={contact.type}
-            hasTours={contact.tours.length > 0}
+            hasDemos={contact.demos.length > 0}
             hasDeals={hasOpenDeals}
             hasFollowUp={!!contact.followUpAt}
           />
@@ -584,7 +583,7 @@ function derivePersonState(
       ? contact.scoreLabel
       : null;
   // `archive_person` sets snoozedUntil to the far future (year 9999). Anything
-  // past today reads as "archived for action-pill purposes" — the realtor
+  // past today reads as "archived for action-pill purposes" — the seller
   // hasn't unsnoozed yet, so the page should stay actionless.
   const snoozeT = contact.snoozedUntil ? new Date(contact.snoozedUntil).getTime() : null;
   const isArchived = snoozeT !== null && !Number.isNaN(snoozeT) && snoozeT > Date.now();
@@ -628,7 +627,7 @@ function buildStatusLine(
 /**
  * Most-recent-activity sentence. One line, prefix the date only when it's
  * not today/yesterday. Uses ContactActivity (the manual-log table) — the
- * thing the realtor already cared enough to write down.
+ * thing the seller already cared enough to write down.
  */
 function buildLastActivityLine(latest: { type: string; content: string | null; createdAt: string }): string {
   const verb = verbForActivity(latest.type);

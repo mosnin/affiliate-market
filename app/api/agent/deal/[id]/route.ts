@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -37,29 +38,28 @@ export async function GET(
   if (dealError) throw dealError;
   if (!deal) return NextResponse.json({ error: 'Deal not found' }, { status: 404 });
 
-  const [memoriesResult, activityResult] = await Promise.all([
-    supabase
-      .from('AgentMemory')
-      .select('id, memoryType, content, importance, createdAt')
-      .eq('spaceId', space.id)
-      .eq('entityType', 'deal')
-      .eq('entityId', dealId)
-      .order('importance', { ascending: false })
-      .order('createdAt', { ascending: false })
-      .limit(20),
+  const [memories, activity] = await Promise.all([
+    convex().query(api.swarmvector.agentMemory.listForEntity, {
+      spaceId: space.id,
+      entityType: 'deal',
+      entityId: dealId,
+      limit: 20,
+    }),
 
-    supabase
-      .from('AgentActivityLog')
-      .select('id, agentType, action, outcome, summary, dealId, createdAt')
-      .eq('spaceId', space.id)
-      .eq('dealId', dealId)
-      .order('createdAt', { ascending: false })
-      .limit(15),
+    // The old SELECT named non-existent columns (`action`, `summary`, `dealId`);
+    // the table's real columns are actionType, reasoning, relatedDealId. The
+    // Convex fn returns those real columns (id, agentType, actionType, outcome,
+    // reasoning, relatedDealId, createdAt) — same 15-row, createdAt-desc scope.
+    convex().query(api.agent.activity.contextForDeal, {
+      spaceId: space.id,
+      dealId,
+      limit: 15,
+    }),
   ]);
 
   return NextResponse.json({
     dealId,
-    memories: memoriesResult.data ?? [],
-    activity: activityResult.data ?? [],
+    memories: memories ?? [],
+    activity,
   });
 }

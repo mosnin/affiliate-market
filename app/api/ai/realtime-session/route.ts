@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getSpaceForUser, getSpaceFromSlug } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 export const runtime = 'nodejs';
 
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
   }
 
   // Build workspace context for the voice session
-  const [{ data: contacts }, { data: deals }, { data: notes }, { data: tours }, calResult] = await Promise.all([
+  const [{ data: contacts }, { data: deals }, { data: notes }, { data: demos }, calResult] = await Promise.all([
     supabase
       .from('Contact')
       .select('id, name, type, leadType, email, phone, budget, leadScore, scoreLabel, notes, tags, followUpAt')
@@ -55,24 +56,28 @@ export async function POST(req: Request) {
       .eq('spaceId', space.id)
       .order('updatedAt', { ascending: false })
       .limit(10),
-    supabase
-      .from('Tour')
-      .select('guestName, propertyAddress, startsAt, status')
-      .eq('spaceId', space.id)
-      .in('status', ['scheduled', 'confirmed'])
-      .gte('startsAt', new Date().toISOString())
-      .order('startsAt', { ascending: true })
-      .limit(15),
     (async () => {
       try {
-        const res = await supabase
-          .from('CalendarEvent')
-          .select('title, date, time, description')
-          .eq('spaceId', space.id)
-          .gte('date', new Date().toISOString().slice(0, 10))
-          .order('date', { ascending: true })
-          .limit(10);
-        return res;
+        const data = await convex().query(api.demos.demos.listBySpace, {
+          spaceId: space.id,
+          statuses: ['scheduled', 'confirmed'],
+          startsAtGte: new Date().toISOString(),
+          order: 'asc',
+          limit: 15,
+        });
+        return { data };
+      } catch {
+        return { data: [] as any[] };
+      }
+    })(),
+    (async () => {
+      try {
+        const data = await convex().query(api.calendar.events.listUpcoming, {
+          spaceId: space.id,
+          fromDate: new Date().toISOString().slice(0, 10),
+          limit: 10,
+        });
+        return { data };
       } catch {
         return { data: [] as any[] };
       }
@@ -91,8 +96,8 @@ export async function POST(req: Request) {
     `- "${n.title}": ${(n.content ?? '').slice(0, 150)}${(n.content ?? '').length > 150 ? '...' : ''}`
   ).join('\n');
 
-  const tourCtx = (tours ?? []).map((t: any) =>
-    `- ${t.guestName} | ${t.propertyAddress ?? 'No address'} | ${new Date(t.startsAt).toLocaleDateString()} | ${t.status}`
+  const demoCtx = (demos ?? []).map((t: any) =>
+    `- ${t.guestName} | ${t.productAddress ?? 'No address'} | ${new Date(t.startsAt).toLocaleDateString()} | ${t.status}`
   ).join('\n');
 
   const calCtx = ((calResult?.data ?? []) as any[]).map((e: any) =>
@@ -104,10 +109,10 @@ export async function POST(req: Request) {
   ).join('\n');
 
   const instructions = [
-    `You are Chippi, the realtor's agentic workspace assistant for "${space.name}".`,
+    `You are Cola, the seller's agentic workspace assistant for "${space.name}".`,
     `Today is ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}.`,
-    `You help the agent manage their rental and buyer leads, deals, tours, notes, calendar, and follow-ups through natural conversation.`,
-    `Buyer stages: Lead → Pre-Approved → Showings → Offer → Under Contract → Closing. Rental stages: Qualification → Tour → Application.`,
+    `You help the agent manage their rental and buyer leads, deals, demos, notes, calendar, and follow-ups through natural conversation.`,
+    `Buyer stages: Lead → Pre-Approved → Showings → Offer → Under Contract → Closing. Rental stages: Qualification → Demo → Application.`,
     `Be concise and conversational — you're speaking, not writing. Keep responses under 3 sentences unless asked for detail.`,
     `Only reference data from the workspace context below. Never fabricate names, numbers, or details.`,
     `When asked about "recent" data, reference contacts and deals with the most recent createdAt dates.`,
@@ -116,7 +121,7 @@ export async function POST(req: Request) {
     ``,
     dealCtx ? `Deals:\n${dealCtx}` : 'No deals yet.',
     ``,
-    tourCtx ? `Upcoming Tours:\n${tourCtx}` : '',
+    demoCtx ? `Upcoming Demos:\n${demoCtx}` : '',
     followUpCtx ? `\nFollow-ups Due:\n${followUpCtx}` : '',
     noteCtx ? `\nNotes:\n${noteCtx}` : '',
     calCtx ? `\nCalendar Events:\n${calCtx}` : '',

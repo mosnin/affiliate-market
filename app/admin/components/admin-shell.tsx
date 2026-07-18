@@ -3,7 +3,7 @@
 /**
  * AdminShell — the chrome wrapper for every admin page.
  *
- * Visual language: matches the realtor sidebar exactly — FlatNavItem
+ * Visual language: matches the seller sidebar exactly — FlatNavItem
  * pattern, 2px foreground active rail, hairline borders, SECTION_LABEL
  * token, h-9 rows. Paper-flat. No shadows on chrome.
  */
@@ -25,6 +25,9 @@ import {
   BarChart3,
   Activity,
   Bot,
+  Banknote,
+  TrendingUp,
+  ShieldCheck,
   Menu,
   Sun,
   Moon,
@@ -55,10 +58,13 @@ const navSections = [
     label: 'Management',
     items: [
       { href: '/admin', label: 'Overview', icon: LayoutDashboard, exact: true },
+      { href: '/admin/business', label: 'Business', icon: TrendingUp, exact: false },
       { href: '/admin/users', label: 'Users', icon: Users, exact: false },
-      { href: '/admin/brokerages', label: 'Brokerages', icon: Building2, exact: false },
+      { href: '/admin/companies', label: 'Companies', icon: Building2, exact: false },
       { href: '/admin/spaces', label: 'Spaces', icon: Building, exact: false },
       { href: '/admin/billing', label: 'Billing', icon: CreditCard, exact: false },
+      { href: '/admin/affiliate-finance', label: 'Affiliate finance', icon: Banknote, exact: false },
+      { href: '/admin/moderation', label: 'Moderation', icon: ShieldCheck, exact: false },
       { href: '/admin/invitations', label: 'Invitations', icon: Mail, exact: false },
     ],
   },
@@ -96,12 +102,12 @@ const navItems: NavItem[] = navSections.flatMap((s) => s.items as unknown as Nav
 const mobileNavItems: NavItem[] = [
   navSections[0].items[0] as unknown as NavItem, // Overview
   navSections[0].items[1] as unknown as NavItem, // Users
-  navSections[0].items[2] as unknown as NavItem, // Brokerages
+  navSections[0].items[2] as unknown as NavItem, // Companies
   navSections[0].items[4] as unknown as NavItem, // Billing
   navSections[2].items[2] as unknown as NavItem, // Audit log
 ];
 
-// ── NavLink — mirrors FlatNavItem from the realtor sidebar ─────────────────
+// ── NavLink — mirrors FlatNavItem from the seller sidebar ─────────────────
 
 function NavLink({
   item,
@@ -128,7 +134,7 @@ function NavLink({
       )}
     >
       {/* Active rail — 2px foreground strip on the left edge. The one place
-          a 2px border appears; same signature as the realtor sidebar. */}
+          a 2px border appears; same signature as the seller sidebar. */}
       {isActive && (
         <span
           aria-hidden
@@ -158,7 +164,7 @@ function NavSectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ── User footer chip — mirrors the realtor sidebar's UserFooter ────────────
+// ── User footer chip — mirrors the seller sidebar's UserFooter ────────────
 // Avatar + name + email pinned to the bottom of the sidebar. The Clerk
 // UserButton is the avatar and carries the account menu (manage, sign out),
 // so identity lives in the same place as the rest of the app.
@@ -238,7 +244,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       >
         {/* Brand header: logo + "admin" small-cap label */}
         <div className="px-4 pt-5 pb-3 flex items-center gap-2">
-          <BrandLogo className="h-5" alt="Chippi" />
+          <BrandLogo className="h-5" alt="Cola" />
           <div className="flex items-center gap-1.5">
             <Shield
               size={11}
@@ -253,7 +259,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <SidebarNav pathname={pathname} />
 
         {/* Footer — Back to app link, hairline, then the user identity chip
-            (pinned to the bottom, matching the realtor sidebar). */}
+            (pinned to the bottom, matching the seller sidebar). */}
         <div className="border-t border-border/50">
           <div className="px-3 py-2">
             <Link
@@ -298,7 +304,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 className="w-64 p-0 bg-sidebar border-r border-border/70"
               >
                 <SheetHeader className="px-4 pt-5 pb-3 flex flex-row items-center gap-2">
-                  <BrandLogo className="h-5" alt="Chippi" />
+                  <BrandLogo className="h-5" alt="Cola" />
                   <div className="flex items-center gap-1.5">
                     <Shield size={11} strokeWidth={1.75} className="text-muted-foreground/50" />
                     <SheetTitle asChild>
@@ -330,7 +336,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
             {/* Mobile identity (visible only below md) */}
             <div className="md:hidden flex items-center gap-1.5">
-              <BrandLogo className="h-4" alt="Chippi" />
+              <BrandLogo className="h-4" alt="Cola" />
               <Shield size={11} strokeWidth={1.75} className="text-muted-foreground/50" />
               <span className={cn(SECTION_LABEL, 'pt-px')}>admin</span>
             </div>
@@ -351,7 +357,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               )}
             </Button>
             {/* Identity lives in the sidebar footer (desktop) / drawer footer
-                (mobile), matching the realtor dashboard — not in the header. */}
+                (mobile), matching the seller dashboard — not in the header. */}
           </div>
         </header>
 

@@ -21,8 +21,8 @@ export function AcceptButton({ token }: AcceptButtonProps) {
       const data = await res.json();
       if (res.ok) {
         setDone(true);
-        // Broker admins go straight to /broker; realtors go through /setup
-        const dest = data.roleToAssign === 'broker_admin' ? '/broker' : '/setup';
+        // Manager admins go straight to /manager; sellers go through /setup
+        const dest = data.roleToAssign === 'manager_admin' ? '/manager' : '/setup';
         setTimeout(() => (window.location.href = dest), 1500);
       } else {
         setError(data.error ?? 'Something went wrong.');
@@ -36,7 +36,7 @@ export function AcceptButton({ token }: AcceptButtonProps) {
 
   if (done) {
     return (
-      <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium text-sm">
+      <div className="flex items-center gap-2 text-positive dark:text-positive font-medium text-sm">
         <CheckCircle2 size={16} />
         Joined! Redirecting…
       </div>

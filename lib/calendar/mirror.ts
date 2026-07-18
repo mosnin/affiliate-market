@@ -1,32 +1,32 @@
 /**
  * Calendar through-write helpers.
  *
- * When Chippi creates an event (tour, callback, follow-up), it does two
+ * When Cola creates an event (demo, callback, follow-up), it does two
  * things:
- *   1. Writes the event to the realtor's connected external calendar
+ *   1. Writes the event to the seller's connected external calendar
  *      via Composio (`GOOGLECALENDAR_CREATE_EVENT` etc.).
  *   2. Logs the same event to `CalendarEventMirror` as a backup row.
  *
- * The external calendar is the source of truth — Chippi reads from it
- * on-demand. The mirror row is forensics: if the realtor swaps
+ * The external calendar is the source of truth — Cola reads from it
+ * on-demand. The mirror row is forensics: if the seller swaps
  * providers later, we still know what we put there.
  *
  * Failure modes:
  *   - Composio reachable, write succeeds → both rows land, externalEventId set.
  *   - Composio unreachable / write fails → the mirror row still lands
  *     (no externalEventId), so we don't lose the intent. Caller decides
- *     whether to surface the failure to the realtor.
+ *     whether to surface the failure to the seller.
  *   - No connected calendar → callers should skip this helper entirely
  *     (use `findCalendarConnection` to check). Writing to the mirror
  *     without an external write is pointless — there's no source of
  *     truth to back up.
  *
- * Why a thin helper instead of inlining: tour booking, post-tour
+ * Why a thin helper instead of inlining: demo booking, post-demo
  * follow-up, manual block-time, and (future) follow-up-callback routines
  * all need the same through-write. One seam, one bug surface.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
   composioConfigured,
@@ -48,7 +48,7 @@ export const PROVIDER_TOOL_SLUGS = {
     create: 'GOOGLECALENDAR_CREATE_EVENT',
   },
   outlook_calendar: {
-    // Composio's Outlook slugs. We don't write to Outlook yet — tour
+    // Composio's Outlook slugs. We don't write to Outlook yet — demo
     // booking only fires when googlecalendar is connected. Surfaced here
     // for future use; the create() path checks the provider first.
     list: 'OUTLOOK_CALENDAR_LIST_EVENTS',
@@ -59,14 +59,14 @@ export const PROVIDER_TOOL_SLUGS = {
 export interface CalendarConnection {
   /** IntegrationConnection row id. */
   id: string;
-  /** Composio entityId — the realtor's Clerk userId. */
+  /** Composio entityId — the seller's Clerk userId. */
   userId: string;
   /** Provider slug. */
   toolkit: CalendarProvider;
 }
 
 /**
- * Find the realtor's active calendar connection for this space. Returns
+ * Find the seller's active calendar connection for this space. Returns
  * the first match across the calendar toolkits — Google wins over Outlook
  * if somehow both are connected (Google is the brief's primary).
  *
@@ -78,32 +78,32 @@ export async function findCalendarConnection(
 ): Promise<CalendarConnection | null> {
   if (!composioConfigured()) return null;
 
-  const { data, error } = await supabase
-    .from('IntegrationConnection')
-    .select('id, userId, toolkit')
-    .eq('spaceId', spaceId)
-    .in('toolkit', CALENDAR_TOOLKITS as readonly string[])
-    .eq('status', 'active')
-    .order('toolkit', { ascending: true }) // 'googlecalendar' < 'outlook_calendar'
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
+  let rows: Array<{ id: string; userId: string; toolkit: string }>;
+  try {
+    rows = await convex().query(api.integrations.connections.activeForSpace, {
+      spaceId,
+      toolkits: CALENDAR_TOOLKITS as readonly string[] as string[],
+    });
+  } catch (err) {
     logger.warn(
       '[calendar.mirror] findCalendarConnection failed',
-      { spaceId, err: error.message },
+      { spaceId, err: err instanceof Error ? err.message : String(err) },
     );
     return null;
   }
+  // activeForSpace returns toolkit-ASC, so [0] preserves the old
+  // `.order('toolkit', { ascending: true }).limit(1)` precedence
+  // ('googlecalendar' < 'outlook_calendar').
+  const data = rows[0];
   if (!data) return null;
 
-  // Defensive narrow — the IN filter constrains it but the column type is text.
-  const toolkit = (data as { toolkit: string }).toolkit;
+  // Defensive narrow — the toolkit filter constrains it but the column is text.
+  const toolkit = data.toolkit;
   if (toolkit !== 'googlecalendar' && toolkit !== 'outlook_calendar') return null;
 
   return {
-    id: (data as { id: string }).id,
-    userId: (data as { userId: string }).userId,
+    id: data.id,
+    userId: data.userId,
     toolkit,
   };
 }
@@ -111,7 +111,7 @@ export async function findCalendarConnection(
 export interface WriteThroughInput {
   spaceId: string;
   connection: CalendarConnection;
-  /** Display title for the event ("Tour: Sam Lee", "Callback: Jordan"). */
+  /** Display title for the event ("Demo: Sam Lee", "Callback: Jordan"). */
   title: string;
   /** Optional description / body — passed verbatim to the provider. */
   description?: string | null;
@@ -121,11 +121,11 @@ export interface WriteThroughInput {
   endsAt: string;
   /** Attendees by email — passed to the provider AND stored on the mirror row. */
   attendees?: { email: string; name?: string | null }[];
-  /** When mirroring a tour, point back to the Tour row for joins later. */
-  sourceTourId?: string | null;
-  /** Who initiated this. Realtors who use the manual UI = 'realtor'; the
+  /** When mirroring a demo, point back to the Demo row for joins later. */
+  sourceDemoId?: string | null;
+  /** Who initiated this. Sellers who use the manual UI = 'seller'; the
    *  agent's tools = 'agent' (the default). */
-  createdBy?: 'agent' | 'realtor';
+  createdBy?: 'agent' | 'seller';
 }
 
 export interface WriteThroughResult {
@@ -138,10 +138,10 @@ export interface WriteThroughResult {
 }
 
 /**
- * Write an event to the realtor's external calendar AND log it to the
+ * Write an event to the seller's external calendar AND log it to the
  * mirror table. Never throws — failures degrade to a mirror-only row
  * with `externalOk: false`, so the caller's primary action (booking a
- * tour) doesn't fail because Google was slow.
+ * demo) doesn't fail because Google was slow.
  */
 export async function writeEventThrough(
   input: WriteThroughInput,
@@ -201,25 +201,22 @@ export async function writeEventThrough(
   }
 
   // 2. Always log the mirror row, even when the external write failed.
-  //    Intent is the unit of forensics: if Chippi tried to put a tour on
+  //    Intent is the unit of forensics: if Cola tried to put a demo on
   //    the calendar at 3pm and Google was down, we still want to know.
-  const { data: mirrorRow, error: mirrorErr } = await supabase
-    .from('CalendarEventMirror')
-    .insert({
+  try {
+    const mirrorRow = await convex().mutation(api.calendar.mirrors.create, {
       spaceId: input.spaceId,
       externalProvider: input.connection.toolkit,
-      externalEventId,
+      externalEventId: externalEventId ?? undefined,
       title: input.title,
       start: input.startsAt,
       end: input.endsAt,
       attendees: input.attendees ?? [],
-      sourceTourId: input.sourceTourId ?? null,
+      sourceDemoId: input.sourceDemoId ?? undefined,
       createdBy: input.createdBy ?? 'agent',
-    })
-    .select('id')
-    .single();
-
-  if (mirrorErr || !mirrorRow) {
+    });
+    return { mirrorId: mirrorRow.id, externalEventId, externalOk };
+  } catch (mirrorErr) {
     logger.error(
       '[calendar.mirror] mirror insert failed',
       { spaceId: input.spaceId, externalEventId },
@@ -227,13 +224,7 @@ export async function writeEventThrough(
     );
     // Last-resort: surface a sentinel id so the caller's shape stays
     // consistent. The audit row is gone, but the external event (if
-    // any) still landed — the realtor's calendar is the truth.
+    // any) still landed — the seller's calendar is the truth.
     return { mirrorId: '', externalEventId, externalOk };
   }
-
-  return {
-    mirrorId: (mirrorRow as { id: string }).id,
-    externalEventId,
-    externalOk,
-  };
 }

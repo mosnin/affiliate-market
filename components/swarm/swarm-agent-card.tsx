@@ -25,7 +25,7 @@ function StatusIcon({ status }: { status: MemberStatus }) {
     case 'running':
       return <Loader2 className="size-4 animate-spin text-blue-500" />;
     case 'completed':
-      return <CheckCircle2 className="size-4 text-emerald-500" />;
+      return <CheckCircle2 className="size-4 text-positive" />;
     case 'failed':
       return <XCircle className="size-4 text-destructive" />;
   }
@@ -57,7 +57,7 @@ export function SwarmAgentCard({
   const borderClass = cn(
     'rounded-xl border bg-card p-4 flex flex-col gap-3 transition-colors duration-300',
     flashGreen
-      ? 'border-emerald-500/50'
+      ? 'border-positive/20'
       : status === 'running'
         ? 'border-blue-500/30'
         : 'border-border/60',

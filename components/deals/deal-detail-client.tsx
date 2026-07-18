@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/formatting';
 
 // One muted neutral for every activity icon. Differentiation is the icon
-// shape — not color. Brand orange is sacred (logo, Chippi cues, agent
+// shape — not color. Brand orange is sacred (logo, Cola cues, agent
 // output, lead-warm) and does not appear on generic timeline chrome.
 const ACTIVITY_META: Record<string, { label: string; icon: React.ElementType }> = {
   note: { label: 'Note', icon: FileText },
@@ -30,9 +30,9 @@ const ACTIVITY_META: Record<string, { label: string; icon: React.ElementType }> 
 
 const STATUS_CHANGE_META: Record<string, { label: string; className: string }> = {
   active: { label: 'Set to Active', className: 'bg-muted text-muted-foreground' },
-  won: { label: 'Marked as Won', className: 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15' },
-  lost: { label: 'Marked as Lost', className: 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400' },
-  on_hold: { label: 'Put On Hold', className: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400' },
+  won: { label: 'Marked as Won', className: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15' },
+  lost: { label: 'Marked as Lost', className: 'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400' },
+  on_hold: { label: 'Put On Hold', className: 'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground' },
 };
 
 /**

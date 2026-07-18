@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAdmin, logAdminAction } from '@/lib/admin';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -41,7 +41,7 @@ function escapeHtml(value: string): string {
 }
 
 function getFromAddress(): string {
-  const raw = process.env.RESEND_FROM_EMAIL ?? 'notifications@alerts.usechippi.com';
+  const raw = process.env.RESEND_FROM_EMAIL ?? 'notifications@alerts.usecola.com';
   if (raw.includes('@')) return raw;
   return `notifications@${raw}`;
 }
@@ -55,14 +55,14 @@ function renderBroadcastHtml(subject: string, body: string): string {
     <tr><td align="center">
       <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden">
         <tr><td style="background:#0f172a;padding:20px 28px">
-          <p style="margin:0;color:#ffffff;font-size:20px;font-weight:700">Chippi</p>
+          <p style="margin:0;color:#ffffff;font-size:20px;font-weight:700">Cola</p>
         </td></tr>
         <tr><td style="padding:28px;font-size:15px;color:#111827;line-height:1.6">
           <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#0f172a">${escapeHtml(subject)}</h1>
           <div>${body}</div>
         </td></tr>
         <tr><td style="padding:16px 28px;border-top:1px solid #f1f5f9">
-          <p style="margin:0;font-size:11px;color:#9ca3af">You're receiving this because you have a Chippi account.</p>
+          <p style="margin:0;font-size:11px;color:#9ca3af">You're receiving this because you have a Cola account.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -71,57 +71,43 @@ function renderBroadcastHtml(subject: string, body: string): string {
 </html>`;
 }
 
+const projectUser = (u: { id: string; email: string; name: string | null }): UserRow => ({
+  id: u.id,
+  email: u.email,
+  name: u.name ?? null,
+});
+
 async function fetchSegmentUsers(segment: Segment, limit: number): Promise<UserRow[]> {
   if (segment === 'all') {
-    const { data, error } = await supabase
-      .from('User')
-      .select('id, email, name')
-      .limit(limit);
-    if (error) throw error;
-    return (data ?? []) as UserRow[];
+    const rows = await convex().query(api.org.users.listForAdmin, { limit });
+    return rows.map(projectUser);
   }
 
   if (segment === 'onboarded' || segment === 'not_onboarded') {
-    const { data, error } = await supabase
-      .from('User')
-      .select('id, email, name')
-      .eq('onboard', segment === 'onboarded')
-      .limit(limit);
-    if (error) throw error;
-    return (data ?? []) as UserRow[];
+    const rows = await convex().query(api.org.users.listForAdmin, {
+      onboard: segment === 'onboarded',
+      limit,
+    });
+    return rows.map(projectUser);
   }
 
   if (segment in SUBSCRIPTION_SEGMENTS) {
     const status = SUBSCRIPTION_SEGMENTS[segment];
-    const { data: spaces, error: spaceErr } = await supabase
-      .from('Space')
-      .select('ownerId')
-      .eq('stripeSubscriptionStatus', status)
-      .limit(limit);
-    if (spaceErr) throw spaceErr;
-    const ownerIds = (spaces ?? []).map((s: { ownerId: string }) => s.ownerId);
+    const spaces = await convex().query(api.workspace.spaces.listBySubscriptionStatus, {
+      status,
+      limit,
+    });
+    const ownerIds = spaces.map((s) => s.ownerId);
     if (ownerIds.length === 0) return [];
-    const { data, error } = await supabase
-      .from('User')
-      .select('id, email, name')
-      .in('id', ownerIds)
-      .limit(limit);
-    if (error) throw error;
-    return (data ?? []) as UserRow[];
+    const rows = await convex().query(api.org.users.listByIds, { ids: ownerIds });
+    return rows.slice(0, limit).map(projectUser);
   }
 
   if (segment === 'no_workspace') {
-    const { data: spaces, error: spaceErr } = await supabase
-      .from('Space')
-      .select('ownerId');
-    if (spaceErr) throw spaceErr;
-    const owned = new Set((spaces ?? []).map((s: { ownerId: string }) => s.ownerId));
-    const { data, error } = await supabase
-      .from('User')
-      .select('id, email, name')
-      .limit(limit);
-    if (error) throw error;
-    return ((data ?? []) as UserRow[]).filter((u) => !owned.has(u.id));
+    const spaces = await convex().query(api.workspace.spaces.listBySubscriptionStatus, {});
+    const owned = new Set(spaces.map((s) => s.ownerId));
+    const rows = await convex().query(api.org.users.listForAdmin, { limit });
+    return rows.map(projectUser).filter((u) => !owned.has(u.id));
   }
 
   return [];
@@ -200,7 +186,7 @@ export async function POST(req: NextRequest) {
 
   const { Resend } = await import('resend');
   const resend = new Resend(process.env.RESEND_API_KEY);
-  const FROM = `Chippi <${getFromAddress()}>`;
+  const FROM = `Cola <${getFromAddress()}>`;
   const safeSubject = subject.replace(/[\r\n\t]/g, ' ').slice(0, 200);
 
   let sentCount = 0;
@@ -230,18 +216,19 @@ export async function POST(req: NextRequest) {
   }
 
   const broadcastId = crypto.randomUUID();
-  const { error: insertErr } = await supabase.from('EmailBroadcast').insert({
-    id: broadcastId,
-    subject,
-    body: emailBody,
-    segment,
-    recipientCount,
-    sentCount,
-    failedCount,
-    sentBy: admin.userId,
-    createdAt: new Date().toISOString(),
-  });
-  if (insertErr) {
+  try {
+    await convex().mutation(api.support.broadcasts.create, {
+      id: broadcastId,
+      subject,
+      body: emailBody,
+      segment,
+      recipientCount,
+      sentCount,
+      failedCount,
+      sentBy: admin.userId,
+      createdAt: new Date().toISOString(),
+    });
+  } catch (insertErr) {
     console.error('[broadcast] failed to log EmailBroadcast', insertErr);
   }
 

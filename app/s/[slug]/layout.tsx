@@ -6,19 +6,18 @@ import { Sidebar } from '@/components/dashboard/sidebar';
 import { SidebarCollapseProvider } from '@/components/dashboard/sidebar-collapse';
 import { MobileNav } from '@/components/dashboard/mobile-nav';
 import { Header } from '@/components/dashboard/header';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { ensureOnboardingBackfill } from '@/lib/onboarding';
-import { getBrokerContext } from '@/lib/permissions';
+import { getManagerContext } from '@/lib/permissions';
 import { LiveNotifications } from '@/components/dashboard/live-notifications';
 import { PlatformBanner } from '@/components/platform-banner';
 import { CommandPalette } from '@/components/command-palette/command-palette';
-import { ChippiBar } from '@/components/chippi/chippi-bar';
-import { EmbedDetector } from '@/components/chippi/embed-detector';
+import { ColaBar } from '@/components/cola/cola-bar';
+import { EmbedDetector } from '@/components/cola/embed-detector';
 import { LayoutShell } from '@/components/dashboard/layout-shell';
-import { ChippiSplash } from '@/components/dashboard/chippi-splash';
+import { ColaSplash } from '@/components/dashboard/cola-splash';
 import { pickGreeting } from '@/lib/greetings';
 import { ReferralTracker } from '@/components/affiliate/referral-tracker';
-import { FprScript } from '@/components/affiliate/fpr-script';
 
 
 export default async function DashboardLayout({
@@ -32,7 +31,7 @@ export default async function DashboardLayout({
   const { userId } = await auth();
 
   if (!userId) {
-    redirect('/login/realtor');
+    redirect('/login/seller');
   }
 
   // Gate: user must exist in our DB. On DB error, render error UI
@@ -46,18 +45,11 @@ export default async function DashboardLayout({
     space: { id: string } | null;
   } | null | undefined;
   try {
-    const { data: row, error } = await supabase
-      .from('User')
-      .select('id, onboard, platformRole, name')
-      .eq('clerkId', userId)
-      .maybeSingle();
-    if (error) throw error;
+    const row = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
     if (row) {
-      const { data: spaceRow } = await supabase
-        .from('Space')
-        .select('id')
-        .eq('ownerId', row.id)
-        .maybeSingle();
+      const spaceRow = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: row.id,
+      });
       dbUser = {
         id: row.id as string,
         name: (row.name as string | null) ?? null,
@@ -145,17 +137,9 @@ export default async function DashboardLayout({
 
   if (!dbUser.isPlatformAdmin) {
     try {
-      const { data: subData, error: subError } = await supabase
-        .from('Space')
-        .select('stripeSubscriptionStatus, stripeSubscriptionId, trialUsedAt')
-        .eq('id', space.id)
-        .maybeSingle();
-
-      if (subError) {
-        console.error('[layout] Subscription check query failed:', subError);
-        // Fail secure — redirect to subscribe rather than granting access
-        redirect(`/subscribe?slug=${slug}`);
-      }
+      const subData = await convex().query(api.workspace.spaces.getById, {
+        id: space.id,
+      });
 
       const status = subData?.stripeSubscriptionStatus ?? 'inactive';
       const hasSubscriptionHistory = !!(subData?.stripeSubscriptionId || subData?.trialUsedAt);
@@ -185,77 +169,75 @@ export default async function DashboardLayout({
   let unreadLeadCount = 0;
   let overdueFollowUpCount = 0;
   let pendingDraftCount = 0;
-  let activePropertyCount = 0;
+  let activeProductCount = 0;
   try {
-    const [leadResult, followUpResult, draftResult, propertyResult] = await Promise.all([
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .is('brokerageId', null)
-        .contains('tags', ['new-lead']),
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .is('brokerageId', null)
-        .not('followUpAt', 'is', null)
-        .lte('followUpAt', new Date().toISOString()),
-      supabase
-        .from('AgentDraft')
-        .select('id', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .eq('status', 'pending'),
-      supabase
-        .from('Property')
-        .select('id', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .in('listingStatus', ['active', 'pending']),
+    const [leadCount, followUpCount, draftResult, productCount] = await Promise.all([
+      convex().query(api.contacts.contacts.countForSpaces, {
+        spaceIds: [space.id],
+        requireCompanyIdNull: true,
+        tagsAll: ['new-lead'],
+      }),
+      convex().query(api.contacts.contacts.countForSpaces, {
+        spaceIds: [space.id],
+        requireCompanyIdNull: true,
+        followUpNotNull: true,
+        followUpLte: new Date().toISOString(),
+      }),
+      convex()
+        .query(api.agent.drafts.countBySpaceStatus, { spaceId: space.id, status: 'pending' })
+        .then((count) => ({ count })),
+      convex().query(api.marketplace.products.countForSpaceByStatus, {
+        spaceId: space.id,
+        listingStatusIn: ['active', 'pending'],
+      }),
     ]);
-    if (leadResult.error) throw leadResult.error;
-    unreadLeadCount = leadResult.count ?? 0;
-    overdueFollowUpCount = followUpResult.count ?? 0;
+    unreadLeadCount = leadCount ?? 0;
+    overdueFollowUpCount = followUpCount ?? 0;
     pendingDraftCount = draftResult.count ?? 0;
-    activePropertyCount = propertyResult.count ?? 0;
+    activeProductCount = productCount ?? 0;
   } catch {
     unreadLeadCount = 0;
     overdueFollowUpCount = 0;
     pendingDraftCount = 0;
-    activePropertyCount = 0;
+    activeProductCount = 0;
   }
 
-  // Check broker context and brokerage memberships for sidebar
-  let isBroker = false;
-  let brokerageName: string | null = null;
-  let brokerageRole: string | null = null;
-  let brokerageMemberships: { id: string; name: string; role: string }[] = [];
+  // Check manager context and company memberships for sidebar
+  let isManager = false;
+  let companyName: string | null = null;
+  let companyRole: string | null = null;
+  let companyMemberships: { id: string; name: string; role: string }[] = [];
   try {
-    const { data: memberships } = await supabase
-      .from('BrokerageMembership')
-      .select('brokerageId, role, Brokerage(id, name)')
-      .eq('userId', dbUser.id);
+    // Memberships carry companyId only; compose the Company name with a second
+    // read (cross-domain Company embed stays lib-side per the Convex contract).
+    const memberships = await convex().query(api.org.memberships.listByUser, {
+      userId: dbUser.id,
+    });
+    const companyIds = [...new Set(memberships.map((m) => m.companyId))];
+    const companies = companyIds.length
+      ? await convex().query(api.org.companies.listByIds, { ids: companyIds })
+      : [];
+    const nameById = new Map(companies.map((c) => [c.id, c.name]));
 
-    brokerageMemberships = (memberships ?? []).map((m: any) => ({
-      id: Array.isArray(m.Brokerage) ? m.Brokerage[0]?.id : m.Brokerage?.id,
-      name: Array.isArray(m.Brokerage) ? m.Brokerage[0]?.name : m.Brokerage?.name,
-      role: m.role,
-    })).filter(m => m.id && m.name);
+    companyMemberships = memberships
+      .map((m) => ({ id: m.companyId, name: nameById.get(m.companyId) ?? null, role: m.role as string }))
+      .filter((m): m is { id: string; name: string; role: string } => !!m.id && !!m.name);
 
-    if (brokerageMemberships.length > 0) {
-      isBroker = brokerageMemberships.some(m => m.role === 'broker_owner' || m.role === 'broker_admin');
-      brokerageName = brokerageMemberships[0].name;
-      brokerageRole = brokerageMemberships[0].role;
+    if (companyMemberships.length > 0) {
+      isManager = companyMemberships.some(m => m.role === 'manager_owner' || m.role === 'manager_admin');
+      companyName = companyMemberships[0].name;
+      companyRole = companyMemberships[0].role;
     }
   } catch {
-    isBroker = false;
+    isManager = false;
   }
 
   return (
     <div className="app-theme flex h-screen overflow-hidden bg-background text-foreground">
-      {/* First-paint splash — greets the realtor by name (varied each open),
+      {/* First-paint splash — greets the seller by name (varied each open),
           shows a snapshot of what's new, then dissolves into the dashboard.
           Plays every time the app/PWA is opened. */}
-      <ChippiSplash
+      <ColaSplash
         greeting={pickGreeting((dbUser.name ?? '').trim().split(/\s+/)[0] ?? '')}
         snapshot={{
           newLeads: unreadLeadCount,
@@ -263,31 +245,27 @@ export default async function DashboardLayout({
           draftsReady: pendingDraftCount,
         }}
       />
-      {/* Detects ?embed=1 from the Chippi RightPanel iframe and strips
+      {/* Detects ?embed=1 from the Cola RightPanel iframe and strips
           sidebar/header/chat-bar via CSS. Mount near the root so the
           flag is set before any layout reads it. */}
       <EmbedDetector />
       {/* Collapse state is shared between the sidebar and the header's panel
           toggle, so the provider wraps both. */}
       <SidebarCollapseProvider>
-        <Sidebar slug={slug} spaceName={space.name} unreadLeadCount={unreadLeadCount} pendingDraftCount={pendingDraftCount ?? 0} overdueFollowUpCount={overdueFollowUpCount} activePropertyCount={activePropertyCount} isBroker={isBroker} brokerageName={brokerageName} brokerageRole={brokerageRole} brokerageMemberships={brokerageMemberships} isPlatformAdmin={dbUser.isPlatformAdmin} />
+        <Sidebar slug={slug} spaceName={space.name} unreadLeadCount={unreadLeadCount} pendingDraftCount={pendingDraftCount ?? 0} overdueFollowUpCount={overdueFollowUpCount} activeProductCount={activeProductCount} isManager={isManager} companyName={companyName} companyRole={companyRole} companyMemberships={companyMemberships} isPlatformAdmin={dbUser.isPlatformAdmin} />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <PlatformBanner />
-          <Header slug={slug} spaceId={space.id} spaceName={space.name} title={space.name} isBroker={isBroker} brokerageName={brokerageName} isPlatformAdmin={dbUser.isPlatformAdmin} />
+          <Header slug={slug} spaceId={space.id} spaceName={space.name} title={space.name} isManager={isManager} companyName={companyName} isPlatformAdmin={dbUser.isPlatformAdmin} />
           <LayoutShell slug={slug} liveNotifications={<LiveNotifications spaceId={space.id} slug={slug} />}>
             {children}
           </LayoutShell>
         </div>
       </SidebarCollapseProvider>
-      <MobileNav slug={slug} isBroker={isBroker} />
-      <ChippiBar slug={slug} />
+      <MobileNav slug={slug} isManager={isManager} />
+      <ColaBar slug={slug} />
       <CommandPalette slug={slug} />
-      {/* FirstPromoter attribution. FprScript loads fpr.js here (the dashboard
-          context where ReferralTracker runs); without it, fpr('referral') would
-          have no library to call. The _fprom_tid cookie set during the visitor's
-          marketing visit persists across the same domain, so fpr.js reads it here
-          and attributes the signup. Both no-op when CID is not set. */}
-      <FprScript />
+      {/* Native referral attribution — captures ?via=/?ref= into the cola_ref
+          cookie so a seller signing up through an affiliate link converts. */}
       <ReferralTracker />
     </div>
   );

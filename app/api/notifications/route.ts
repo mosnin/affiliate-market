@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import {
   notificationForNewLeadsCount,
-  notificationForUpcomingTour,
+  notificationForUpcomingDemo,
   notificationForFollowUpDue,
   notificationForWaitlist,
-  notificationForToursNeedingFollowUp,
+  notificationForDemosNeedingFollowUp,
 } from '@/lib/notification-voice';
 
 /**
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
       .from('Contact')
       .select('*', { count: 'exact', head: true })
       .eq('spaceId', space.id)
-      .is('brokerageId', null)
+      .is('companyId', null)
       .contains('tags', ['new-lead']);
     if (newLeads && newLeads > 0) {
       const copy = notificationForNewLeadsCount(newLeads);
@@ -53,27 +54,26 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 2. Tours starting in the next 24 hours
+    // 2. Demos starting in the next 24 hours
     const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const { data: upcomingTours } = await supabase
-      .from('Tour')
-      .select('id, guestName, startsAt, propertyAddress')
-      .eq('spaceId', space.id)
-      .in('status', ['scheduled', 'confirmed'])
-      .gte('startsAt', now.toISOString())
-      .lte('startsAt', in24h.toISOString())
-      .order('startsAt', { ascending: true })
-      .limit(5);
-    for (const t of upcomingTours ?? []) {
-      const copy = notificationForUpcomingTour(
+    const upcomingDemos = await convex().query(api.demos.demos.listBySpace, {
+      spaceId: space.id,
+      statuses: ['scheduled', 'confirmed'],
+      startsAtGte: now.toISOString(),
+      startsAtLte: in24h.toISOString(),
+      order: 'asc',
+      limit: 5,
+    });
+    for (const t of upcomingDemos) {
+      const copy = notificationForUpcomingDemo(
         t.guestName,
         new Date(t.startsAt),
-        t.propertyAddress,
+        t.productAddress,
         now,
       );
       notifications.push({
-        id: `tour-${t.id}`,
-        type: 'upcoming_tour',
+        id: `demo-${t.id}`,
+        type: 'upcoming_demo',
         title: copy.title,
         description: copy.description,
         href: `/s/${slug}/calendar`,
@@ -105,11 +105,10 @@ export async function GET(req: NextRequest) {
     }
 
     // 4. Waitlist entries needing attention
-    const { count: waitlistCount } = await supabase
-      .from('TourWaitlist')
-      .select('*', { count: 'exact', head: true })
-      .eq('spaceId', space.id)
-      .eq('status', 'waiting');
+    const waitlistCount = await convex().query(api.demos.waitlist.countBySpaceStatus, {
+      spaceId: space.id,
+      status: 'waiting',
+    });
     if (waitlistCount && waitlistCount > 0) {
       const copy = notificationForWaitlist(waitlistCount);
       notifications.push({
@@ -123,29 +122,31 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 5. Completed tours needing follow-up (no deal yet)
-    const { data: completedNoFollowUp } = await supabase
-      .from('Tour')
-      .select('id, guestName, updatedAt')
-      .eq('spaceId', space.id)
-      .eq('status', 'completed')
-      .order('updatedAt', { ascending: false })
-      .limit(10);
+    // 5. Completed demos needing follow-up (no deal yet). The index orders by
+    // startsAt, not updatedAt, so sort the (space-scoped) completed set by
+    // updatedAt desc here and take the most-recently-touched 10.
+    const completedAll = await convex().query(api.demos.demos.listBySpace, {
+      spaceId: space.id,
+      statuses: ['completed'],
+    });
+    const completedNoFollowUp = [...completedAll]
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0))
+      .slice(0, 10);
 
-    if (completedNoFollowUp?.length) {
-      const tourIds = completedNoFollowUp.map((t: any) => t.id);
-      const { data: dealsFromTours } = await supabase
+    if (completedNoFollowUp.length) {
+      const demoIds = completedNoFollowUp.map((t: any) => t.id);
+      const { data: dealsFromDemos } = await supabase
         .from('Deal')
-        .select('sourceTourId')
+        .select('sourceDemoId')
         .eq('spaceId', space.id)
-        .in('sourceTourId', tourIds);
-      const dealsSet = new Set((dealsFromTours ?? []).map((d: any) => d.sourceTourId));
+        .in('sourceDemoId', demoIds);
+      const dealsSet = new Set((dealsFromDemos ?? []).map((d: any) => d.sourceDemoId));
       const needsAction = completedNoFollowUp.filter((t: any) => !dealsSet.has(t.id));
       if (needsAction.length > 0) {
-        const copy = notificationForToursNeedingFollowUp(needsAction.length);
+        const copy = notificationForDemosNeedingFollowUp(needsAction.length);
         notifications.push({
-          id: 'tours-need-action',
-          type: 'tour_needs_action',
+          id: 'demos-need-action',
+          type: 'demo_needs_action',
           title: copy.title,
           description: copy.description,
           href: `/s/${slug}/calendar`,

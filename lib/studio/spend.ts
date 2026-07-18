@@ -5,7 +5,7 @@
  * nothing summed those costs into a usable signal. Per-user rate limits
  * (60 generations/hour) bounded throughput but not spend — at the most
  * expensive model ($0.50/call, e.g. seedance-video), a runaway agent or
- * compromised realtor account could burn $30/hour, $720/day, with zero
+ * compromised seller account could burn $30/hour, $720/day, with zero
  * automated guard.
  *
  * This module owns the per-space daily cap. Both /api/studio/generate
@@ -14,12 +14,12 @@
  * spend ≥ the cap, the request is rejected before fal.ai is called.
  *
  * Cap is a single env-tunable knob (STUDIO_DAILY_SPEND_CAP_USD), default
- * $50/day per space — generous for a real working realtor, hard ceiling
+ * $50/day per space — generous for a real working seller, hard ceiling
  * on the abuse path. Set higher in env when a power user complains;
  * never silently expand it from code.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 const DEFAULT_CAP_USD = 50;
@@ -35,26 +35,17 @@ function getCapUsd(): number {
 /**
  * Sum StudioGeneration.costUsd for the given space over the last 24
  * hours. Best-effort: a DB hiccup logs a warning and returns 0 (we'd
- * rather let a generation through than block a paying realtor on a
+ * rather let a generation through than block a paying seller on a
  * transient outage). The rate limiter still bounds throughput.
  */
 export async function getStudioSpendToday(spaceId: string): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
-    .from('StudioGeneration')
-    .select('costUsd')
-    .eq('spaceId', spaceId)
-    .gte('createdAt', since);
-  if (error) {
-    logger.warn('[studio.spend] today-spend query failed — allowing', { spaceId }, error);
+  try {
+    return await convex().query(api.studio.generations.spendSince, { spaceId, since });
+  } catch (error) {
+    logger.warn('[studio.spend] today-spend query failed — allowing', { spaceId }, error as Error);
     return 0;
   }
-  let total = 0;
-  for (const row of (data ?? []) as { costUsd: number | string | null }[]) {
-    const v = typeof row.costUsd === 'string' ? Number(row.costUsd) : row.costUsd;
-    if (typeof v === 'number' && Number.isFinite(v)) total += v;
-  }
-  return total;
 }
 
 export interface SpendBudgetResult {

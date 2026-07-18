@@ -19,7 +19,7 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { sendEmailFromCRM, type SendEmailAttachment } from '@/lib/email';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
@@ -82,7 +82,7 @@ export const sendEmailTool = defineTool<typeof parameters, SendEmailResult>({
   name: 'send_email',
   riskLevel: 'high',
   description:
-    'Send an email to a person. Always prompts the user before sending. Use for follow-ups, tour confirmations, and check-ins.',
+    'Send an email to a person. Always prompts the user before sending. Use for follow-ups, demo confirmations, and check-ins.',
   parameters,
   requiresApproval: true,
   // 50 sends/hour/user caps accidental mass-blasts without throttling
@@ -102,17 +102,18 @@ export const sendEmailTool = defineTool<typeof parameters, SendEmailResult>({
     let resolvedContactId: string | null = null;
 
     if (args.contactId) {
-      const { data: contact, error } = await supabase
-        .from('Contact')
-        .select('id, email, name')
-        .eq('id', args.contactId)
-        .eq('spaceId', ctx.space.id)
-        .is('brokerageId', null)
-        .maybeSingle();
-      if (error) {
-        return { summary: `Contact lookup failed: ${error.message}`, display: 'error' };
+      let contact: { id: string; email: string | null; name: string; companyId: string | null } | null;
+      try {
+        contact = await convex().query(api.contacts.contacts.getById, {
+          id: args.contactId,
+          spaceId: ctx.space.id,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'unknown error';
+        return { summary: `Contact lookup failed: ${message}`, display: 'error' };
       }
-      if (!contact) {
+      // Preserve the `.is('companyId', null)` workspace-only filter.
+      if (!contact || contact.companyId !== null) {
         return {
           summary: `No contact with id "${args.contactId}" in this workspace.`,
           display: 'error',
@@ -129,14 +130,18 @@ export const sendEmailTool = defineTool<typeof parameters, SendEmailResult>({
     } else if (args.toEmail) {
       resolvedEmail = args.toEmail;
       // Best-effort contact lookup so the tool result carries the link.
-      const { data: maybeContact } = await supabase
-        .from('Contact')
-        .select('id')
-        .eq('spaceId', ctx.space.id)
-        .is('brokerageId', null)
-        .eq('email', args.toEmail)
-        .maybeSingle();
-      resolvedContactId = maybeContact?.id ?? null;
+      let maybeContact: { id: string; companyId: string | null } | null = null;
+      try {
+        maybeContact = await convex().query(api.contacts.contacts.findByEmailInSpace, {
+          spaceId: ctx.space.id,
+          email: args.toEmail,
+        });
+      } catch {
+        maybeContact = null;
+      }
+      // Preserve the `.is('companyId', null)` filter the best-effort lookup used.
+      resolvedContactId =
+        maybeContact && maybeContact.companyId === null ? maybeContact.id : null;
     }
 
     if (!resolvedEmail) {
@@ -151,11 +156,14 @@ export const sendEmailTool = defineTool<typeof parameters, SendEmailResult>({
     // on onboarding) → the Space's display name. We intentionally do NOT
     // include User.name here because that's the owner's personal name,
     // which they may not want on every outbound email.
-    const { data: settings } = await supabase
-      .from('SpaceSetting')
-      .select('businessName')
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
+    let settings: { businessName?: string | null } | null = null;
+    try {
+      settings = await convex().query(api.workspace.settings.getBySpace, {
+        spaceId: ctx.space.id,
+      });
+    } catch {
+      settings = null;
+    }
     const fromName =
       (settings?.businessName as string | undefined) || ctx.space.name;
 
@@ -167,21 +175,24 @@ export const sendEmailTool = defineTool<typeof parameters, SendEmailResult>({
     let resolvedAttachments: SendEmailAttachment[] | undefined;
     if (args.attachmentFileIds && args.attachmentFileIds.length > 0) {
       const ids = args.attachmentFileIds;
-      const { data: rows, error: fileErr } = await supabase
-        .from('File')
-        .select('id, name, mimeType, sizeBytes, storageKey')
-        .in('id', ids)
-        .eq('spaceId', ctx.space.id);
-      if (fileErr) {
-        return { summary: `Attachment lookup failed: ${fileErr.message}`, display: 'error' };
-      }
-      const found = (rows ?? []) as Array<{
+      let found: Array<{
         id: string;
         name: string;
         mimeType: string;
         sizeBytes: number;
         storageKey: string;
       }>;
+      try {
+        found = (await convex().query(api.infra.files.listByIdsForSpace, {
+          ids,
+          spaceId: ctx.space.id,
+        })) as typeof found;
+      } catch (err) {
+        return {
+          summary: `Attachment lookup failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+          display: 'error',
+        };
+      }
       const missing = ids.filter((id) => !found.find((r) => r.id === id));
       if (missing.length > 0) {
         return {
@@ -239,13 +250,12 @@ export const sendEmailTool = defineTool<typeof parameters, SendEmailResult>({
     }
 
     // Best-effort log of the send as a ContactActivity for the audit trail.
-    // Non-fatal — the email went out regardless. PostgREST returns
-    // { data, error } rather than throwing on DB errors, so we check the
-    // error field explicitly; the surrounding try/catch covers any
-    // transport-level exception.
+    // Non-fatal — the email went out regardless. Convex throws on failure,
+    // so the try/catch covers both the DB error and any transport-level
+    // exception.
     if (resolvedContactId) {
       try {
-        const { error: auditErr } = await supabase.from('ContactActivity').insert({
+        await convex().mutation(api.contacts.activity.create, {
           id: crypto.randomUUID(),
           spaceId: ctx.space.id,
           contactId: resolvedContactId,
@@ -253,13 +263,6 @@ export const sendEmailTool = defineTool<typeof parameters, SendEmailResult>({
           content: `AI-assisted: ${args.subject}`,
           metadata: { via: 'on_demand_agent' },
         });
-        if (auditErr) {
-          logger.warn(
-            '[tools.send_email] audit insert failed',
-            { contactId: resolvedContactId },
-            auditErr,
-          );
-        }
       } catch (err) {
         logger.warn('[tools.send_email] audit insert threw', { contactId: resolvedContactId }, err);
       }

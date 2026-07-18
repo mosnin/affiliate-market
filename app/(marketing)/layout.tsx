@@ -13,7 +13,6 @@
 import { FortitudoNav } from '@/components/marketing/fortitudo/nav';
 import { FortitudoFooter } from '@/components/marketing/fortitudo/footer';
 import { ScrollProgress } from '@/components/marketing/fortitudo/scroll-progress';
-import { FprScript } from '@/components/affiliate/fpr-script';
 
 export default function MarketingLayout({
   children,
@@ -23,7 +22,6 @@ export default function MarketingLayout({
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* FirstPromoter click tracking — sets _fprom_tid cookie from ?fpr= links */}
-      <FprScript />
       {/* fortitudo "studio ASCII" chrome: thin scroll bar, floating pill nav,
           inset charcoal footer. Every logged-out page inherits the look. */}
       <ScrollProgress />

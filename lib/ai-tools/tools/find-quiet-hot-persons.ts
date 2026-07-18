@@ -7,7 +7,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
 const parameters = z
@@ -42,18 +42,23 @@ export const findQuietHotPersonsTool = defineTool<
     const now = Date.now();
     const cutoff = new Date(now - minDays * 86_400_000).toISOString();
 
-    const { data, error } = await supabase
-      .from('Contact')
-      .select('id, name, leadScore, lastContactedAt, updatedAt')
-      .eq('spaceId', ctx.space.id)
-      .is('brokerageId', null)
-      .eq('scoreLabel', 'hot')
-      .order('leadScore', { ascending: false })
-      .limit(40)
-      .abortSignal(ctx.signal);
-
-    if (error) {
-      return { summary: `Quiet-hot lookup failed: ${error.message}`, display: 'error' };
+    let data: Array<{
+      id: string;
+      name: string;
+      leadScore: number | null;
+      lastContactedAt: string | null;
+      updatedAt: string;
+    }>;
+    try {
+      data = await convex().query(api.contacts.contacts.topByScoreForSpace, {
+        spaceId: ctx.space.id,
+        scoreLabel: 'hot',
+        requireCompanyIdNull: true,
+        limit: 40,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      return { summary: `Quiet-hot lookup failed: ${message}`, display: 'error' };
     }
 
     const rows = (data ?? []) as Array<{
@@ -74,14 +79,17 @@ export const findQuietHotPersonsTool = defineTool<
     // For contacts with no lastContactedAt we still want a "quiet for X days"
     // signal — fall back to the most-recent ContactActivity per contact.
     const ids = rows.map((r) => r.id);
-    const { data: activities } = await supabase
-      .from('ContactActivity')
-      .select('contactId, createdAt')
-      .eq('spaceId', ctx.space.id)
-      .in('contactId', ids)
-      .order('createdAt', { ascending: false });
+    let activities: Array<{ contactId: string; createdAt: string }> = [];
+    try {
+      activities = await convex().query(api.contacts.activity.listForContacts, {
+        contactIds: ids,
+        spaceId: ctx.space.id,
+      });
+    } catch {
+      activities = [];
+    }
     const lastActMap = new Map<string, string>();
-    for (const a of (activities ?? []) as Array<{ contactId: string; createdAt: string }>) {
+    for (const a of activities as Array<{ contactId: string; createdAt: string }>) {
       if (!lastActMap.has(a.contactId)) lastActMap.set(a.contactId, a.createdAt);
     }
 

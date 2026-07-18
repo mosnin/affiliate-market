@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -41,19 +41,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Space is disabled' }, { status: 403 });
   }
 
-  const { data, error } = await supabase
-    .from('CustomAgent')
-    .select('*')
-    .eq('spaceId', spaceId)
-    .eq('isActive', true)
-    .order('createdAt', { ascending: false });
-
-  if (error) {
-    console.error('[custom-agents/GET] query error:', error);
+  let agents;
+  try {
+    agents = await convex().query(api.agent.customAgents.listActiveBySpace, { spaceId });
+  } catch (err) {
+    console.error('[custom-agents/GET] query error:', err);
     return NextResponse.json({ error: 'Failed to fetch agents' }, { status: 500 });
   }
 
-  return NextResponse.json({ agents: data ?? [] });
+  return NextResponse.json({ agents });
 }
 
 // ── POST /api/custom-agents ───────────────────────────────────────────────────
@@ -126,22 +122,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Space is disabled' }, { status: 403 });
   }
 
-  const { data, error } = await supabase
-    .from('CustomAgent')
-    .insert({
+  let agent;
+  try {
+    agent = await convex().mutation(api.agent.customAgents.create, {
       spaceId,
       name: name.trim(),
-      ...(description !== undefined && { description }),
+      description: description !== undefined ? description : null,
       systemPrompt: systemPrompt.trim(),
       ...(model !== undefined && { model }),
       ...(capabilities !== undefined && { capabilities }),
-    })
-    .select();
-
-  if (error) {
-    console.error('[custom-agents/POST] insert error:', error);
+    });
+  } catch (err) {
+    console.error('[custom-agents/POST] insert error:', err);
     return NextResponse.json({ error: 'Failed to create agent' }, { status: 500 });
   }
 
-  return NextResponse.json({ agent: data[0] }, { status: 201 });
+  return NextResponse.json({ agent }, { status: 201 });
 }

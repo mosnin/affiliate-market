@@ -1,10 +1,10 @@
 /**
  * POST /api/esign/send — send a stored document out for signature on the
- * realtor's OWN connected DocuSign account (via Composio).
+ * seller's OWN connected DocuSign account (via Composio).
  *
  *   body: { slug, documentId, dealId?, contactId?, signerEmail, signerName?, subject? }
  *   → 201 { request }                  envelope sent, row recorded
- *   → 409 { code: 'not_connected' }    DocuSign isn't connected for this realtor
+ *   → 409 { code: 'not_connected' }    DocuSign isn't connected for this seller
  *
  * Auth: requireSpaceOwner(slug). The send is rate-limited — envelopes are a
  * billable, irreversible action.

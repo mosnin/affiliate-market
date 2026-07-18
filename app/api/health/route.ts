@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { NextResponse } from 'next/server';
 
 /**
@@ -22,8 +22,10 @@ export async function GET() {
 
   let dbStatus: 'ok' | 'error' = 'error';
   try {
-    const { error } = await supabase.from('User').select('id').limit(1);
-    if (!error) dbStatus = 'ok';
+    // Liveness probe: a successful query (it returns; Convex throws on failure)
+    // means the data layer is reachable. Mirrors the old `select('id').limit(1)`.
+    await convex().query(api.org.users.listRecent, { limit: 1 });
+    dbStatus = 'ok';
   } catch {
     // intentionally swallowed — status already 'error'
   }

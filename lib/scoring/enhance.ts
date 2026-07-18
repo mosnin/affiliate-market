@@ -1,5 +1,5 @@
 /**
- * AI Enhancement Layer for Chippi Lead Scoring
+ * AI Enhancement Layer for Cola Lead Scoring
  *
  * Adds qualitative analysis on top of the deterministic engine score.
  * The AI does NOT determine the score — it explains it and recommends actions.
@@ -18,7 +18,7 @@ export type AIEnhancement = {
 };
 
 const RENTAL_LEAD_STATES = [
-  'high_priority_qualified_renter',
+  'high_priority_qualified_renter',  // high-intent software buyer / quote requester
   'qualified_low_urgency',
   'incomplete_application',
   'needs_additional_info',
@@ -26,9 +26,9 @@ const RENTAL_LEAD_STATES = [
 ] as const;
 
 const BUYER_LEAD_STATES = [
-  'high_priority_qualified_buyer',
+  'high_priority_qualified_buyer',   // decision-maker, budget confirmed, short timeline
   'qualified_buyer_low_urgency',
-  'pre_approved_ready',
+  'pre_approved_ready',              // authority confirmed, trial/demo ready
   'incomplete_application',
   'needs_additional_info',
   'likely_unqualified',
@@ -85,20 +85,20 @@ export async function enhanceWithAI(
 
     const systemPrompt = isBuyer
       ? [
-          'You summarize pre-computed lead scoring results for a real estate CRM (BUYER leads).',
+          'You summarize pre-computed lead scoring results for a software sales CRM (BUYER / demo-request leads).',
           'You do NOT compute scores. The score is already determined.',
           'Your job: write a concise summary (under 200 chars), 2-4 explanation tags,',
           'a specific recommended next action, and classify the lead state.',
-          'Focus on purchase readiness: pre-approval status, budget, timeline, financing.',
-          'Be direct and actionable. Tags should be 2-3 words each (e.g., "Pre-approved", "Low budget", "ASAP timeline").',
+          'Focus on purchase readiness: decision-making authority, budget fit, timeline to start, current tooling.',
+          'Be direct and actionable. Tags should be 2-3 words each (e.g., "Decision-maker", "Low budget", "ASAP timeline").',
         ].join(' ')
       : [
-          'You summarize pre-computed lead scoring results for a real estate CRM (RENTAL leads).',
+          'You summarize pre-computed lead scoring results for a software sales CRM (quote-request / subscription leads).',
           'You do NOT compute scores. The score is already determined.',
           'Your job: write a concise summary (under 200 chars), 2-4 explanation tags,',
           'a specific recommended next action, and classify the lead state.',
-          'Focus on rental readiness: income-to-rent ratio, credit, employment, rental history, screening flags.',
-          'Be direct and actionable. Tags should be 2-3 words each (e.g., "Strong income", "Eviction risk").',
+          'Focus on subscription readiness: budget-to-cost ratio, role authority, team size, timeline urgency, switching cost.',
+          'Be direct and actionable. Tags should be 2-3 words each (e.g., "Strong budget", "Greenfield adoption", "Switching cost risk").',
         ].join(' ');
 
     const response = await openai.chat.completions.create({
@@ -152,53 +152,53 @@ export async function enhanceWithAI(
 }
 
 /**
- * Build context string with buyer-specific fields for the AI prompt.
+ * Build context string with buyer/demo-request-specific fields for the AI prompt.
  */
 function buildBuyerContext(app: ApplicationData | null): string {
   if (!app) return 'No application data available.';
   const lines: string[] = [];
-  if (app.preApprovalStatus) lines.push(`Pre-approval: ${app.preApprovalStatus}`);
-  if (app.preApprovalLender) lines.push(`Lender: ${app.preApprovalLender}`);
-  if (app.preApprovalAmount) lines.push(`Pre-approval amount: ${app.preApprovalAmount}`);
-  if (app.buyerBudget) lines.push(`Purchase budget: ${app.buyerBudget}`);
-  if (app.buyerTimeline) lines.push(`Timeline to buy: ${app.buyerTimeline}`);
-  if (app.housingSituation) lines.push(`Current housing: ${app.housingSituation}`);
-  if (app.firstTimeBuyer) lines.push(`First-time buyer: ${app.firstTimeBuyer}`);
-  if (app.propertyType) lines.push(`Property type: ${app.propertyType}`);
-  if (app.bedrooms) lines.push(`Bedrooms: ${app.bedrooms}`);
-  if (app.bathrooms) lines.push(`Bathrooms: ${app.bathrooms}`);
+  if (app.preApprovalStatus) lines.push(`Decision-making authority: ${app.preApprovalStatus}`);
+  if (app.preApprovalLender) lines.push(`Additional stakeholders: ${app.preApprovalLender}`);
+  if (app.preApprovalAmount) lines.push(`Confirmed budget: ${app.preApprovalAmount}`);
+  if (app.buyerBudget) lines.push(`Monthly budget: ${app.buyerBudget}`);
+  if (app.buyerTimeline) lines.push(`Timeline to start: ${app.buyerTimeline}`);
+  if (app.housingSituation) lines.push(`Current situation: ${app.housingSituation}`);
+  if (app.firstTimeBuyer) lines.push(`First-time buyer of this product type: ${app.firstTimeBuyer}`);
+  if (app.productType) lines.push(`Product category interested in: ${app.productType}`);
+  if (app.bedrooms) lines.push(`Team size: ${app.bedrooms}`);
+  if (app.bathrooms) lines.push(`Current integrations: ${app.bathrooms}`);
   if (app.mustHaves) {
     const items = Array.isArray(app.mustHaves) ? app.mustHaves.join(', ') : app.mustHaves;
-    lines.push(`Must-haves: ${items}`);
+    lines.push(`Must-have features: ${items}`);
   }
-  if (app.employmentStatus) lines.push(`Employment: ${app.employmentStatus}`);
-  if (app.monthlyGrossIncome) lines.push(`Monthly income: ${app.monthlyGrossIncome}`);
+  if (app.employmentStatus) lines.push(`Role / authority: ${app.employmentStatus}`);
+  if (app.monthlyGrossIncome) lines.push(`Annual software budget: ${app.monthlyGrossIncome}`);
   return lines.length > 0 ? lines.join('\n') : 'Minimal application data provided.';
 }
 
 /**
- * Build context string with rental-specific fields for the AI prompt.
+ * Build context string with quote-request / subscription-specific fields for the AI prompt.
  */
 function buildRentalContext(app: ApplicationData | null): string {
   if (!app) return 'No application data available.';
   const lines: string[] = [];
-  if (app.monthlyRent) lines.push(`Monthly budget/rent: ${app.monthlyRent}`);
-  if (app.targetMoveInDate) lines.push(`Move-in date: ${app.targetMoveInDate}`);
-  if (app.employmentStatus) lines.push(`Employment: ${app.employmentStatus}`);
-  if (app.monthlyGrossIncome) lines.push(`Monthly income: ${app.monthlyGrossIncome}`);
-  if (app.additionalIncome) lines.push(`Additional income: $${app.additionalIncome}/mo`);
-  if (app.creditScore) lines.push(`Credit score: ${app.creditScore}`);
-  if (app.currentHousingStatus) lines.push(`Current housing: ${app.currentHousingStatus}`);
-  if (app.currentLandlordName) lines.push(`Current landlord: ${app.currentLandlordName}`);
-  if (app.latePayments != null) lines.push(`Late payments: ${app.latePayments ? 'yes' : 'no'}`);
-  if (app.leaseViolations != null) lines.push(`Lease violations: ${app.leaseViolations ? 'yes' : 'no'}`);
-  if (app.priorEvictions != null) lines.push(`Prior evictions: ${app.priorEvictions ? 'yes' : 'no'}`);
-  if (app.bankruptcy != null) lines.push(`Bankruptcy: ${app.bankruptcy ? 'yes' : 'no'}`);
+  if (app.monthlyRent) lines.push(`Monthly budget: ${app.monthlyRent}`);
+  if (app.targetMoveInDate) lines.push(`Target start date: ${app.targetMoveInDate}`);
+  if (app.employmentStatus) lines.push(`Role / authority: ${app.employmentStatus}`);
+  if (app.monthlyGrossIncome) lines.push(`Annual software budget: ${app.monthlyGrossIncome}`);
+  if (app.additionalIncome) lines.push(`Additional budget headroom: $${app.additionalIncome}`);
+  if (app.creditScore) lines.push(`Engagement score signal: ${app.creditScore}`);
+  if (app.currentHousingStatus) lines.push(`Current tooling situation: ${app.currentHousingStatus}`);
+  if (app.currentLandlordName) lines.push(`Current vendor / provider: ${app.currentLandlordName}`);
+  if (app.latePayments != null) lines.push(`Payment issues on record: ${app.latePayments ? 'yes' : 'no'}`);
+  if (app.leaseViolations != null) lines.push(`Contract violations on record: ${app.leaseViolations ? 'yes' : 'no'}`);
+  if (app.priorEvictions != null) lines.push(`Replacing existing tooling: ${app.priorEvictions ? 'yes' : 'no'}`);
+  if (app.bankruptcy != null) lines.push(`Financial risk flag: ${app.bankruptcy ? 'yes' : 'no'}`);
   if (app.outstandingBalances != null) lines.push(`Outstanding balances: ${app.outstandingBalances ? 'yes' : 'no'}`);
-  if (app.hasPets != null) lines.push(`Pets: ${app.hasPets ? `yes${app.petDetails ? ` (${app.petDetails})` : ''}` : 'no'}`);
-  if (app.numberOfOccupants) lines.push(`Occupants: ${app.numberOfOccupants}`);
-  if (app.reasonForMoving) lines.push(`Reason for moving: ${app.reasonForMoving}`);
-  if (app.lengthOfResidence) lines.push(`Length at current address: ${app.lengthOfResidence}`);
+  if (app.hasPets != null) lines.push(`Has existing tooling (switching cost): ${app.hasPets ? `yes${app.petDetails ? ` (${app.petDetails})` : ''}` : 'no'}`);
+  if (app.numberOfOccupants) lines.push(`Team size (seats): ${app.numberOfOccupants}`);
+  if (app.reasonForMoving) lines.push(`Reason for switching / evaluating: ${app.reasonForMoving}`);
+  if (app.lengthOfResidence) lines.push(`Time with current solution: ${app.lengthOfResidence}`);
   return lines.length > 0 ? lines.join('\n') : 'Minimal application data provided.';
 }
 
@@ -218,7 +218,7 @@ export function deriveLeadState(result: ScoringEngineResult, leadType?: LeadType
     return 'likely_unqualified';
   }
 
-  // Rental (default)
+  // Subscription / quote-request (default)
   if (result.priorityTier === 'hot') return 'high_priority_qualified_renter';
   if (result.priorityTier === 'warm') return 'qualified_low_urgency';
   return 'likely_unqualified';

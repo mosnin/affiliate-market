@@ -95,7 +95,7 @@ describe('findPersonTool', () => {
             phone: '+14155550101',
             leadScore: 87,
             scoreLabel: 'hot',
-            type: 'TOUR',
+            type: 'DEMO',
             followUpAt: null,
             lastContactedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
             snoozedUntil: null,
@@ -147,7 +147,7 @@ describe('findPersonTool', () => {
     expect(p.phone).toBe('+14155550101');
     expect(p.leadScore).toBe(87);
     expect(p.scoreLabel).toBe('hot');
-    expect(p.type).toBe('TOUR');
+    expect(p.type).toBe('DEMO');
     expect(p.status).toBe('active');
     expect(p.days_since_last_touch).toBe(2);
     // Active deals only — the lost deal is excluded.
@@ -233,7 +233,7 @@ describe('findDealTool', () => {
         daysInStage: number | null;
         daysSinceUpdate: number | null;
         contact_name: string | null;
-        property_address: string | null;
+        product_address: string | null;
         close_date: string | null;
       };
     };
@@ -250,7 +250,7 @@ describe('findDealTool', () => {
     expect(d.daysInStage).toBeNull();
     expect(d.daysSinceUpdate).toBe(3);
     expect(d.contact_name).toBe('Jane Doe');
-    expect(d.property_address).toBe('123 Main St');
+    expect(d.product_address).toBe('123 Main St');
     expect(d.close_date).toBe('2026-06-15T00:00:00.000Z');
   });
 

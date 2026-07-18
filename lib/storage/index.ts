@@ -13,14 +13,14 @@
  *   deal-documents/{spaceId}/{dealId}/{uuid}-{filename}
  *   contact-documents/{spaceId}/{contactId}/{uuid}-{filename}
  *   files/{spaceId}/{uuid}-{filename}          — generic file uploader
- *   property-photos/{spaceId}/{propertyId}/{uuid}-{filename}
+ *   product-photos/{spaceId}/{productId}/{uuid}-{filename}
  *   onboarding/{userId}/{uuid}-{filename}
  *   studio/{spaceId}/{uuid}-{filename}          — Studio-generated media
- *   profile-cover/{spaceId}/{uuid}-{filename}   — realtor's public-page cover photo
+ *   profile-cover/{spaceId}/{uuid}-{filename}   — seller's public-page cover photo
  *
  * Public vs signed: feature attachments stay PRIVATE — we serve them via
- * `getSignedUrl()` with a short TTL. Property photos and avatars can be
- * PUBLIC (the realtor wants them on a public-facing intake form anyway);
+ * `getSignedUrl()` with a short TTL. Product photos and avatars can be
+ * PUBLIC (the seller wants them on a public-facing intake form anyway);
  * those use `getPublicUrl()`.
  */
 
@@ -35,7 +35,7 @@ import {
 import { getSignedUrl as awsGetSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getWasabiClient, getWasabiBucket } from './client';
 
-/** Default signed URL lifetime (seconds). 1 hour — enough for the realtor
+/** Default signed URL lifetime (seconds). 1 hour — enough for the seller
  *  to actually download a doc; short enough that a leaked URL is bounded. */
 export const DEFAULT_SIGNED_URL_TTL_SECONDS = 60 * 60;
 
@@ -136,7 +136,7 @@ export async function getObjectText(key: string): Promise<string> {
 /**
  * Server-side copy an object to a new key. The source bytes never round
  * trip through our infrastructure — Wasabi handles it internally. Use to
- * promote a private file to a public prefix (e.g. files/ → property-photos/)
+ * promote a private file to a public prefix (e.g. files/ → product-photos/)
  * without re-uploading.
  */
 export async function copyObject(args: {
@@ -236,11 +236,11 @@ export async function deleteObjectsBestEffort(keys: string[]): Promise<{
 
 /**
  * Reverse `getPublicUrl` — given a stored public photo URL, return the
- * object key (e.g. `property-photos/sp_x/prop_y/uuid-name.jpg`). Returns
+ * object key (e.g. `product-photos/sp_x/prop_y/uuid-name.jpg`). Returns
  * null if the URL doesn't match our bucket's public shape, which makes the
  * caller skip the delete instead of guessing.
  *
- * Used by Property DELETE: the `photos` column is a JSONB array of public
+ * Used by Product DELETE: the `photos` column is a JSONB array of public
  * URLs (legacy schema), and we need to map each one back to a key so we
  * can clean up Wasabi when the row is removed.
  */
@@ -287,7 +287,7 @@ export const STORAGE_PREFIXES = {
   dealDocuments: 'deal-documents',
   contactDocuments: 'contact-documents',
   files: 'files',
-  propertyPhotos: 'property-photos',
+  productPhotos: 'product-photos',
   onboarding: 'onboarding',
   studio: 'studio',
   profileCover: 'profile-cover',

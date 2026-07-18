@@ -3,19 +3,19 @@
  *
  * Scheduled background sweep. Every 4 hours, walk all active spaces and
  * trigger the existing Modal `run_now_webhook` so the agent can prepare
- * AgentDraft records ahead of the realtor opening the app.
+ * AgentDraft records ahead of the seller opening the app.
  *
  * IMPORTANT: This endpoint never sends email or SMS. It only triggers the
  * Modal agent path that produces AgentDraft rows with `status: 'pending'`.
- * The realtor approves drafts in the FocusCard; only that approval flow
+ * The seller approves drafts in the FocusCard; only that approval flow
  * fires outbound channels.
  *
- * Auth: Bearer ${CRON_SECRET} (matches broker-weekly-report).
+ * Auth: Bearer ${CRON_SECRET} (matches manager-weekly-report).
  * Disable: set CRON_SWEEP_DISABLED=1 to short-circuit without doing work.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { monitorCron } from '@/lib/cron-monitor';
 
 // Env vars read at request time, not module load. Otherwise tests (and
@@ -33,10 +33,10 @@ function agentInternalSecret(): string {
 const MIN_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3 hours
 
 // Skip a space when its pending-draft backlog is at or above this. The
-// realtor isn't burning down what's already there; piling on doesn't help.
+// seller isn't burning down what's already there; piling on doesn't help.
 const PENDING_DRAFT_BACKLOG_LIMIT = 10;
 
-// Cap on parallel Modal calls so a brokerage of 100 active realtors doesn't
+// Cap on parallel Modal calls so a company of 100 active sellers doesn't
 // fire 100 simultaneous webhooks.
 const MAX_CONCURRENCY = 8;
 
@@ -90,17 +90,17 @@ async function handler(req: NextRequest) {
   // past that page would NEVER get swept. Page through explicitly.
   const allSpaces: { id: string; slug: string }[] = [];
   for (let from = 0; ; from += SPACE_PAGE_SIZE) {
-    const { data, error: spaceErr } = await supabase
-      .from('Space')
-      .select('id, slug')
-      .in('stripeSubscriptionStatus', ['active', 'trialing'])
-      .order('id', { ascending: true })
-      .range(from, from + SPACE_PAGE_SIZE - 1);
-    if (spaceErr) {
+    let page: { id: string; slug: string }[];
+    try {
+      page = await convex().query(api.workspace.spaces.listBySubscriptionStatusesPaged, {
+        statuses: ['active', 'trialing'],
+        from,
+        size: SPACE_PAGE_SIZE,
+      });
+    } catch (spaceErr) {
       console.error('[cron/agent-sweep] Failed to load spaces', spaceErr);
       return NextResponse.json({ error: 'DB query failed' }, { status: 500 });
     }
-    const page = (data ?? []) as { id: string; slug: string }[];
     allSpaces.push(...page);
     if (page.length < SPACE_PAGE_SIZE) break; // last page reached
   }
@@ -111,18 +111,15 @@ async function handler(req: NextRequest) {
 
   // ── 2. Pre-compute pending-draft backlog per space (single query) ──────
   const spaceIds = allSpaces.map((s) => s.id);
-  const { data: pendingRows, error: pendingErr } = await supabase
-    .from('AgentDraft')
-    .select('spaceId')
-    .eq('status', 'pending')
-    .in('spaceId', spaceIds)
-    .limit(20000);
-  if (pendingErr) {
+  let pendingRows: { spaceId: string }[];
+  try {
+    pendingRows = await convex().query(api.agent.drafts.pendingForSpaces, { spaceIds });
+  } catch (pendingErr) {
     console.error('[cron/agent-sweep] Failed to count pending drafts', pendingErr);
     return NextResponse.json({ error: 'DB query failed' }, { status: 500 });
   }
   const pendingBySpace = new Map<string, number>();
-  for (const row of (pendingRows ?? []) as { spaceId: string }[]) {
+  for (const row of pendingRows) {
     pendingBySpace.set(row.spaceId, (pendingBySpace.get(row.spaceId) ?? 0) + 1);
   }
 

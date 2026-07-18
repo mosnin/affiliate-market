@@ -36,7 +36,7 @@ async def find_contacts(
 ) -> list[dict[str, Any]]:
     """Find contacts in this space with optional filters."""
     # contact_id: single-contact lookup returns full record (notes, preferences).
-    # name_contains: case-insensitive substring. lead_type: rental|buyer.
+    # name_contains: case-insensitive substring. lead_type: inbound|outbound|referral.
     # overdue_followup_only: only contacts with followUpAt in the past.
     # no_followup_quiet_days: QUALIFICATION contacts with no follow-up + quiet N+ days.
     # limit: 1-100.
@@ -129,17 +129,18 @@ async def get_contact_activity(
 async def create_contact(
     ctx: RunContextWrapper[AgentContext],
     name: str,
-    lead_type: str = "buyer",
+    lead_type: str = "inbound",
     email: str | None = None,
     phone: str | None = None,
     budget: float | None = None,
-    preferences: str | None = None,
+    company: str | None = None,
     notes: str | None = None,
     tags: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Create a new contact (person) in the workspace."""
-    # name required. lead_type: buyer|rental|seller (default buyer).
-    # budget: dollars (monthly for rental, purchase price for buyer).
+    """Create a new contact (person or company) in the workspace."""
+    # name required. lead_type: inbound|outbound|referral (default inbound).
+    # budget: estimated deal value in dollars.
+    # company: the prospect's company or organization.
     # tags: optional; use 'new-lead' for fresh leads.
     space_id = ctx.context.space_id
     db = await supabase()
@@ -149,10 +150,10 @@ async def create_contact(
     if not clean_name:
         return {"error": "name is required"}
 
-    valid_lead_types = {"buyer", "rental", "seller"}
-    clean_lead_type = lead_type.strip().lower() if lead_type else "buyer"
+    valid_lead_types = {"inbound", "outbound", "referral"}
+    clean_lead_type = lead_type.strip().lower() if lead_type else "inbound"
     if clean_lead_type not in valid_lead_types:
-        clean_lead_type = "buyer"
+        clean_lead_type = "inbound"
 
     clean_tags = [t.strip()[:60] for t in (tags or []) if t.strip()][:10]
 
@@ -165,7 +166,7 @@ async def create_contact(
         "name": clean_name,
         "leadType": clean_lead_type,
         "type": "QUALIFICATION",
-        "properties": [],
+        "products": [],
         "tags": clean_tags,
         "createdAt": now,
         "updatedAt": now,
@@ -176,8 +177,8 @@ async def create_contact(
         row["phone"] = phone.strip()[:40]
     if budget is not None and budget >= 0:
         row["budget"] = budget
-    if preferences:
-        row["preferences"] = preferences.strip()[:2000]
+    if company:
+        row["company"] = company.strip()[:200]
     if notes:
         row["notes"] = notes.strip()[:5000]
 
@@ -216,7 +217,7 @@ async def create_contact(
     }
 
 
-_VALID_TYPES = {"QUALIFICATION", "TOUR", "APPLICATION"}
+_VALID_TYPES = {"QUALIFICATION", "DEMO", "APPLICATION"}
 
 
 @function_tool(strict_mode=False)
@@ -233,7 +234,7 @@ async def update_contact(
     re_engaged_signal: str | None = None,
 ) -> dict[str, Any]:
     """Update a contact; pass only the fields you want to change."""
-    # add_tags: up to 5 merged with existing. new_pipeline_type: QUALIFICATION|TOUR|APPLICATION.
+    # add_tags: up to 5 merged with existing. new_pipeline_type: QUALIFICATION|DEMO|APPLICATION.
     # follow_up_date: ISO date. brief: 2-3 sentence agent summary (high-importance memory).
     # score_explanation: plain-English reason for lead score (stored as memory).
     # re_engaged_signal: short string; boosts lead score +12 and logs re-engagement.

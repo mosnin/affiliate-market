@@ -55,9 +55,9 @@ type FormState = {
 };
 
 const SEVERITY_STYLES: Record<Announcement['severity'], string> = {
-  info: 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
-  warning: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  critical: 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15',
+  info: 'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15',
+  warning: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  critical: 'text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15',
 };
 
 const SEGMENT_LABELS: Record<Announcement['targetSegment'], string> = {
@@ -293,7 +293,7 @@ export function AnnouncementClient({
                         className={cn(
                           'inline-flex items-center text-[10px] font-semibold rounded-full px-2 py-0.5 border transition-colors',
                           a.active
-                            ? 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-500/15 dark:border-emerald-500/30'
+                            ? 'text-positive bg-positive-subtle border-positive/20 dark:text-positive dark:bg-positive-subtle0/15 dark:border-positive/20'
                             : 'text-muted-foreground bg-muted border-border',
                         )}
                       >
@@ -320,7 +320,7 @@ export function AnnouncementClient({
                         </button>
                         <button
                           onClick={() => setConfirmDelete(a)}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 transition-colors"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-negative hover:text-negative transition-colors"
                         >
                           <Trash2 size={12} />
                           Delete

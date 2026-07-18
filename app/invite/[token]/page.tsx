@@ -1,6 +1,6 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { Building2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { AcceptButton } from './accept-button';
 
@@ -12,12 +12,12 @@ interface InvitationDetail {
   email: string;
   roleToAssign: string;
   expiresAt: string;
-  brokerageName: string;
+  companyName: string;
   logoUrl: string | null;
 }
 
 const roleLabel = (role: string) =>
-  role === 'broker_admin' ? 'Brokerage Admin' : 'Realtor';
+  role === 'manager_admin' ? 'Company Admin' : 'Seller';
 
 export default async function AcceptInvitationPage({ params }: Params) {
   const { token } = await params;
@@ -32,31 +32,25 @@ export default async function AcceptInvitationPage({ params }: Params) {
   const user = await currentUser();
   const currentEmail = user?.emailAddresses?.[0]?.emailAddress ?? '';
 
-  // Fetch invitation directly from DB (avoids server-to-server HTTP which can fail on Vercel)
+  // Fetch invitation directly (avoids server-to-server HTTP which can fail on Vercel).
+  // getByToken returns the Invitation row only; the Company name/logo is composed here.
   let inv: InvitationDetail | null = null;
   let fetchError = '';
   try {
-    const { data, error } = await supabase
-      .from('Invitation')
-      .select('id, status, email, roleToAssign, expiresAt, brokerageId, Brokerage(name, logoUrl)')
-      .eq('token', token)
-      .maybeSingle();
+    const data = await convex().query(api.org.invitations.getByToken, { token });
 
-    if (error) {
-      console.error('[invite] DB query failed:', error);
-      fetchError = 'Could not load invitation.';
-    } else if (!data) {
+    if (!data) {
       fetchError = 'Invitation not found or has expired.';
     } else {
-      const brokerage = data.Brokerage as unknown as { name: string; logoUrl: string | null } | null;
+      const company = await convex().query(api.org.companies.getById, { id: data.companyId });
       inv = {
         id: data.id,
         status: data.status,
         email: data.email,
         roleToAssign: data.roleToAssign,
         expiresAt: data.expiresAt,
-        brokerageName: brokerage?.name ?? '',
-        logoUrl: brokerage?.logoUrl ?? null,
+        companyName: company?.name ?? '',
+        logoUrl: company?.logoUrl ?? null,
       };
     }
   } catch (err) {
@@ -80,10 +74,10 @@ export default async function AcceptInvitationPage({ params }: Params) {
                 <Building2 size={20} className="text-background/70" />
               )}
               <p className="text-background font-semibold text-base">
-                {inv?.brokerageName ?? 'Chippi'}
+                {inv?.companyName ?? 'Cola'}
               </p>
             </div>
-            <p className="mt-1 text-background/60 text-sm">Brokerage invitation</p>
+            <p className="mt-1 text-background/60 text-sm">Company invitation</p>
           </div>
 
           <div className="px-6 py-6 space-y-4">
@@ -94,26 +88,26 @@ export default async function AcceptInvitationPage({ params }: Params) {
               </div>
             ) : isAccepted ? (
               <>
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-positive-subtle dark:bg-positive-subtle0/10 text-positive dark:text-positive">
                   <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
                   <p className="text-sm">This invitation has already been accepted.</p>
                 </div>
                 <a
-                  href="/broker"
+                  href="/manager"
                   className="block text-center text-sm font-medium text-primary hover:underline underline-offset-2"
                 >
-                  Go to broker dashboard →
+                  Go to manager dashboard →
                 </a>
               </>
             ) : isExpiredOrInvalid ? (
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400">
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-muted dark:bg-muted0/10 text-muted-foreground dark:text-muted-foreground">
                 <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
-                <p className="text-sm">This invitation is no longer valid. Ask your broker to send a new one.</p>
+                <p className="text-sm">This invitation is no longer valid. Ask your manager to send a new one.</p>
               </div>
             ) : inv ? (
               <>
                 {currentEmail && inv.email && currentEmail.toLowerCase() !== inv.email.toLowerCase() && (
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-muted dark:bg-muted0/10 text-muted-foreground dark:text-muted-foreground">
                     <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
                     <p className="text-sm">
                       You&apos;re signed in as <span className="font-semibold">{currentEmail}</span> but this invitation was sent to <span className="font-semibold">{inv.email}</span>. Please sign in with the correct account.
@@ -123,13 +117,13 @@ export default async function AcceptInvitationPage({ params }: Params) {
                 <div>
                   <p className="text-sm text-foreground leading-relaxed">
                     You&apos;ve been invited to join{' '}
-                    <span className="font-semibold">{inv.brokerageName}</span> as a{' '}
+                    <span className="font-semibold">{inv.companyName}</span> as a{' '}
                     <span className="font-semibold">{roleLabel(inv.roleToAssign)}</span>.
                   </p>
                   <p className="text-xs text-muted-foreground mt-2">
-                    {inv.roleToAssign === 'broker_admin'
-                      ? 'You\'ll get access to the brokerage dashboard to help manage the team. No subscription required.'
-                      : 'You\'ll keep your own workspace, leads, and pipeline — this just adds you to the brokerage network.'}
+                    {inv.roleToAssign === 'manager_admin'
+                      ? 'You\'ll get access to the company dashboard to help manage the team. No subscription required.'
+                      : 'You\'ll keep your own workspace, leads, and pipeline — this just adds you to the company network.'}
                   </p>
                 </div>
                 <AcceptButton token={token} />

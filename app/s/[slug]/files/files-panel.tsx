@@ -39,7 +39,7 @@ interface FileRow {
   isPublic: boolean;
   createdAt: string;
   /** Where the file came from. 'chat' rows are read-only here; manage them
-   *  by removing the attachment inside the Chippi conversation. */
+   *  by removing the attachment inside the Cola conversation. */
   source: 'file' | 'chat';
   /** Inline-renderable URL for thumbnails. Set by the GET /api/files
    *  endpoint for images + videos (signed for private files; public for
@@ -146,7 +146,7 @@ export function FilesPanel() {
         clearInterval(ticker);
         setError(e instanceof Error ? e.message : 'Upload failed');
       } finally {
-        // Hold the full bar for a beat so the realtor sees the finish
+        // Hold the full bar for a beat so the seller sees the finish
         // line, then collapse back to zero for the next upload.
         setTimeout(() => {
           setUploading(false);
@@ -210,9 +210,9 @@ export function FilesPanel() {
               className={cn(
                 'font-medium tabular-nums',
                 usedPercent >= 90
-                  ? 'text-rose-600 dark:text-rose-400'
+                  ? 'text-negative dark:text-negative'
                   : usedPercent >= 70
-                    ? 'text-amber-600 dark:text-amber-400'
+                    ? 'text-muted-foreground dark:text-muted-foreground'
                     : 'text-foreground',
               )}
             >
@@ -224,10 +224,10 @@ export function FilesPanel() {
               className={cn(
                 'h-full transition-all',
                 usedPercent >= 90
-                  ? 'bg-rose-500/80'
+                  ? 'bg-negative-subtle0/80'
                   : usedPercent >= 70
-                    ? 'bg-amber-500/80'
-                    : 'bg-emerald-500/80',
+                    ? 'bg-muted0/80'
+                    : 'bg-positive-subtle0/80',
               )}
               style={{ width: `${usedPercent}%` }}
             />
@@ -284,13 +284,13 @@ export function FilesPanel() {
 
       {/* Error banner */}
       {error && (
-        <div className="rounded-lg border border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/5 px-3 py-2 flex items-start gap-2 text-[12.5px] text-rose-700 dark:text-rose-400">
+        <div className="rounded-lg border border-negative/20 bg-negative-subtle/70 dark:bg-negative-subtle0/5 px-3 py-2 flex items-start gap-2 text-[12.5px] text-negative dark:text-negative">
           <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
           <span>{error}</span>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="ml-auto text-rose-700/70 dark:text-rose-400/70 hover:text-rose-700 dark:hover:text-rose-400"
+            className="ml-auto text-negative/70 dark:text-negative/70 hover:text-negative dark:hover:text-negative"
           >
             Dismiss
           </button>
@@ -378,7 +378,7 @@ function FileCard({
     <div
       className="group relative rounded-xl border border-border/60 bg-card overflow-hidden hover:border-border transition-colors"
     >
-      {/* The thumbnail itself is the click target so the realtor doesn't
+      {/* The thumbnail itself is the click target so the seller doesn't
        *  have to hunt for a button. The action overlay (Delete) sits on
        *  top with stopPropagation so it never opens the preview. */}
       <button
@@ -421,7 +421,7 @@ function FileCard({
             </p>
             {file.source === 'chat' && (
               <span
-                title="Uploaded inside a Chippi conversation"
+                title="Uploaded inside a Cola conversation"
                 className="text-[9px] uppercase tracking-wider font-medium px-1.5 py-px rounded-full bg-foreground/[0.06] text-foreground/55"
               >
                 Chat
@@ -438,7 +438,7 @@ function FileCard({
             if (confirm(`Delete "${file.name}"?`)) onDelete(file);
           }}
           title="Delete"
-          className="w-7 h-7 rounded-md bg-background/90 backdrop-blur-sm text-rose-600 dark:text-rose-400 hover:bg-rose-500/15 flex items-center justify-center border border-rose-500/30"
+          className="w-7 h-7 rounded-md bg-background/90 backdrop-blur-sm text-negative dark:text-negative hover:bg-negative-subtle0/15 flex items-center justify-center border border-negative/20"
         >
           <Trash2 size={12} />
         </button>

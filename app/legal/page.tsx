@@ -1,5 +1,5 @@
 /**
- * `/legal` — the legal hub. The index of the documents that govern Chippi.
+ * `/legal` — the legal hub. The index of the documents that govern Cola.
  *
  * Why this lives at `app/legal/page.tsx` and not under the (marketing) group:
  * the five real documents (terms, privacy, cookies, acceptable-use, dpa)
@@ -16,7 +16,7 @@
 
 import Link from 'next/link';
 
-export const metadata = { title: 'Legal — Chippi' };
+export const metadata = { title: 'Legal — Cola' };
 
 /** Documents that exist as real pages under `app/legal/*`. */
 const DOCUMENTS: { href: string; label: string; description: string }[] = [
@@ -28,7 +28,17 @@ const DOCUMENTS: { href: string; label: string; description: string }[] = [
   {
     href: '/legal/terms',
     label: 'Terms of service',
-    description: 'The agreement that governs your use of Chippi.',
+    description: 'The agreement that governs your use of Cola.',
+  },
+  {
+    href: '/legal/marketplace-terms',
+    label: 'Marketplace terms',
+    description: 'For sellers: listing, fees, payouts, refunds, and commission disputes.',
+  },
+  {
+    href: '/legal/creator-agreement',
+    label: 'Creator agreement',
+    description: 'For creators: how commissions are earned, paid net, and the FTC disclosure rule.',
   },
   {
     href: '/legal/cookies',
@@ -66,7 +76,7 @@ export default function LegalHubPage() {
           The fine print, in plain sight.
         </h1>
         <p className="text-sm text-muted-foreground">
-          Every document that governs Chippi, one click away.
+          Every document that governs Cola, one click away.
         </p>
       </header>
 
@@ -110,10 +120,10 @@ export default function LegalHubPage() {
             >
               <span className="text-sm text-foreground">{label}</span>
               <a
-                href="mailto:legal@chippi.app"
+                href="mailto:legal@cola.app"
                 className="shrink-0 text-sm text-muted-foreground transition-colors hover:text-foreground"
               >
-                legal@chippi.app
+                legal@cola.app
               </a>
             </li>
           ))}
@@ -121,10 +131,10 @@ export default function LegalHubPage() {
         <p className="text-sm text-muted-foreground">
           Questions about any of these — write to{' '}
           <a
-            href="mailto:legal@chippi.app"
+            href="mailto:legal@cola.app"
             className="underline underline-offset-2 transition-colors hover:text-foreground"
           >
-            legal@chippi.app
+            legal@cola.app
           </a>
           .
         </p>

@@ -8,13 +8,13 @@
  * pushManager.subscribe() — { endpoint, keys: { p256dh, auth } }. We pull only
  * those fields and store them keyed by the space.
  *
- * Auth: requireSpaceOwner(slug) — same posture as the rest of the realtor API.
+ * Auth: requireSpaceOwner(slug) — same posture as the rest of the seller API.
  * endpoint is unique, so re-subscribing the same browser upserts in place.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSpaceOwner } from '@/lib/api-auth';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -50,24 +50,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid subscription.' }, { status: 400 });
   }
 
-  const now = new Date().toISOString();
-  const { error } = await supabase
-    .from('PushSubscription')
-    .upsert(
-      {
-        spaceId: space.id,
-        userId,
-        endpoint,
-        p256dh,
-        auth: authKey,
-        userAgent: req.headers.get('user-agent')?.slice(0, 500) ?? null,
-        createdAt: now,
-      },
-      { onConflict: 'endpoint' },
-    );
-
-  if (error) {
-    logger.error('[push/subscribe] upsert failed', { spaceId: space.id, err: error.message });
+  const userAgent = req.headers.get('user-agent')?.slice(0, 500) ?? undefined;
+  try {
+    await convex().mutation(api.notifications.push.upsert, {
+      spaceId: space.id,
+      userId,
+      endpoint,
+      p256dh,
+      auth: authKey,
+      ...(userAgent !== undefined ? { userAgent } : {}),
+    });
+  } catch (err) {
+    logger.error('[push/subscribe] upsert failed', { spaceId: space.id }, err);
     return NextResponse.json({ error: 'Could not save subscription.' }, { status: 500 });
   }
 
@@ -94,14 +88,13 @@ export async function DELETE(req: NextRequest) {
   const endpoint = payload.endpoint?.trim();
   if (!endpoint) return NextResponse.json({ error: 'endpoint is required' }, { status: 400 });
 
-  const { error } = await supabase
-    .from('PushSubscription')
-    .delete()
-    .eq('spaceId', space.id)
-    .eq('endpoint', endpoint);
-
-  if (error) {
-    logger.error('[push/subscribe] delete failed', { spaceId: space.id, err: error.message });
+  try {
+    await convex().mutation(api.notifications.push.deleteByEndpoint, {
+      spaceId: space.id,
+      endpoint,
+    });
+  } catch (err) {
+    logger.error('[push/subscribe] delete failed', { spaceId: space.id }, err);
     return NextResponse.json({ error: 'Could not remove subscription.' }, { status: 500 });
   }
 

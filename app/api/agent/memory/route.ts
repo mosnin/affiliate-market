@@ -1,7 +1,7 @@
 /**
  * GET /api/agent/memory
  *
- * Lists Chippi's long-term memory rows for the caller's space, with entity
+ * Lists Cola's long-term memory rows for the caller's space, with entity
  * names resolved for display. The agent writes here via the Python memory
  * store; this endpoint is the read side for the user-facing memory surface.
  *
@@ -12,12 +12,16 @@
  *   - limit:      max rows, default 100, cap 200
  *
  * Memories with the special PRIORITY_LIST: prefix are excluded — they're
- * coordinator scratch state, not knowledge the realtor cares about.
+ * coordinator scratch state, not knowledge the seller cares about.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
+
+type EntityTypeFilter = 'contact' | 'deal' | 'space';
+type MemoryTypeFilter = 'fact' | 'preference' | 'observation' | 'reminder';
 
 export interface MemoryRow {
   id: string;
@@ -46,31 +50,32 @@ export async function GET(req: NextRequest) {
   const search = (sp.get('search') ?? '').trim();
   const limit = Math.min(parseInt(sp.get('limit') ?? '100'), 200);
 
-  let query = supabase
-    .from('AgentMemory')
-    .select('id, memoryType, content, importance, entityType, entityId, expiresAt, createdAt, updatedAt')
-    .eq('spaceId', space.id)
-    // Exclude coordinator scratch state (priority list, etc.)
-    .not('content', 'like', 'PRIORITY_LIST:%')
-    .order('importance', { ascending: false })
-    .order('createdAt', { ascending: false })
-    .limit(limit);
+  // listForSpace handles the PRIORITY_LIST exclusion, the optional
+  // entityType/memoryType filters, the free-text content match, the
+  // importance-desc / createdAt-desc sort, and the limit — exactly the query
+  // the PostgREST chain built. The validation gate stays here so we only pass
+  // recognised filter values into the typed Convex args.
+  const entityTypeFilter: EntityTypeFilter | undefined =
+    entityType && ['contact', 'deal', 'space'].includes(entityType)
+      ? (entityType as EntityTypeFilter)
+      : undefined;
+  const memoryTypeFilter: MemoryTypeFilter | undefined =
+    memoryType && ['fact', 'preference', 'observation', 'reminder'].includes(memoryType)
+      ? (memoryType as MemoryTypeFilter)
+      : undefined;
 
-  if (entityType && ['contact', 'deal', 'space'].includes(entityType)) {
-    query = query.eq('entityType', entityType);
+  let data;
+  try {
+    data = await convex().query(api.swarmvector.agentMemory.listForSpace, {
+      spaceId: space.id,
+      limit,
+      ...(entityTypeFilter ? { entityType: entityTypeFilter } : {}),
+      ...(memoryTypeFilter ? { memoryType: memoryTypeFilter } : {}),
+      ...(search ? { search } : {}),
+    });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
-  if (memoryType && ['fact', 'preference', 'observation', 'reminder'].includes(memoryType)) {
-    query = query.eq('memoryType', memoryType);
-  }
-  if (search) {
-    // Postgres ILIKE wildcards on user input — escape % and _ to prevent
-    // accidental wildcards from typed text.
-    const safe = search.replace(/[%_]/g, (m) => `\\${m}`);
-    query = query.ilike('content', `%${safe}%`);
-  }
-
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) return NextResponse.json([]);
 
   // Resolve entity names in two batched queries

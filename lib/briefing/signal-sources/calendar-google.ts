@@ -1,10 +1,10 @@
 /**
- * Google Calendar signal source — reads what the realtor scheduled
- * OUTSIDE Chippi (listing presentations, lender meetings, coffee with
- * referral sources). The internal `calendar` source covers Chippi-native
- * Tour rows; this one covers everything else.
+ * Google Calendar signal source — reads what the seller scheduled
+ * OUTSIDE Cola (listing presentations, lender meetings, coffee with
+ * referral sources). The internal `calendar` source covers Cola-native
+ * Demo rows; this one covers everything else.
  *
- * The brief's rule: only name people the realtor recognizes. We drop
+ * The brief's rule: only name people the seller recognizes. We drop
  * any event whose attendees don't cross-walk to a Contact by email.
  * No matched contact, no card — the calendar exists for the full list.
  *
@@ -20,7 +20,7 @@
  * external API.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { executeToolForEntity, composioConfigured } from '@/lib/integrations/composio';
 import type { Signal, SignalGatherer } from '../types';
 
@@ -88,8 +88,8 @@ function startOfLocalDay(d: Date): Date {
  * (case-insensitive). Returns null when no attendee matches — the brief
  * drops the signal in that case.
  *
- * `self`-flagged attendees (the realtor's own account) are skipped: the
- * realtor isn't the subject of their own brief card.
+ * `self`-flagged attendees (the seller's own account) are skipped: the
+ * seller isn't the subject of their own brief card.
  */
 export function matchAttendeeToContact(
   attendees: CalendarEventAttendee[] | null | undefined,
@@ -174,17 +174,18 @@ async function listEventsWithTimeout(
   return [];
 }
 
-/** Did the realtor's attendee-response trigger fire within the last 24h? */
+/** Did the seller's attendee-response trigger fire within the last 24h? */
 async function attendeeTriggerFiredRecently(connectionId: string): Promise<boolean> {
   const cutoff = new Date(Date.now() - 24 * MS_PER_HOUR).toISOString();
-  const { data } = await supabase
-    .from('IntegrationTrigger')
-    .select('lastFiredAt')
-    .eq('connectionId', connectionId)
-    .eq('triggerSlug', ATTENDEE_TRIGGER_SLUG)
-    .eq('status', 'active')
-    .maybeSingle();
-  const fired = (data as { lastFiredAt?: string | null } | null)?.lastFiredAt ?? null;
+  let fired: string | null;
+  try {
+    fired = await convex().query(api.integrations.triggers.lastFiredForSlug, {
+      connectionId,
+      triggerSlug: ATTENDEE_TRIGGER_SLUG,
+    });
+  } catch {
+    fired = null;
+  }
   return Boolean(fired && fired >= cutoff);
 }
 
@@ -194,33 +195,36 @@ export const calendarGoogleSource: SignalGatherer = {
     // 1. Find an active Calendar connection. No connection → return [].
     //    The toolkit is 'googlecalendar' per Composio; we accept the rare
     //    'calendar' alias defensively (older catalog rows).
-    const { data: connRows } = await supabase
-      .from('IntegrationConnection')
-      .select('id, userId, toolkit, status')
-      .eq('spaceId', spaceId)
-      .in('toolkit', ['googlecalendar', 'calendar'])
-      .eq('status', 'active')
-      .limit(1);
-    const connection = (connRows ?? [])[0] as
+    let connRows: Array<{ id: string; userId: string; toolkit: string; status: string }>;
+    try {
+      connRows = await convex().query(api.integrations.connections.activeForSpace, {
+        spaceId,
+        toolkits: ['googlecalendar', 'calendar'],
+      });
+    } catch {
+      connRows = [];
+    }
+    const connection = connRows[0] as
       | { id: string; userId: string; toolkit: string; status: string }
       | undefined;
     if (!connection) return [];
 
-    // 2. Pull events (Composio) and the realtor's contacts (Supabase) in
+    // 2. Pull events (Composio) and the seller's contacts (Supabase) in
     //    parallel — both are independent and the brief budget is tight.
     const now = new Date();
     const [events, contactRows] = await Promise.all([
       listEventsWithTimeout(connection.userId, now),
-      supabase
-        .from('Contact')
-        .select('id, name, email')
-        .eq('spaceId', spaceId)
-        .not('email', 'is', null),
+      // Seller's contacts for the space (Convex). The old `.not('email','is',
+      // null)` filter is unnecessary — the loop below skips rows without an
+      // email, so the resulting map is identical.
+      convex()
+        .query(api.contacts.contacts.filterForSpaces, { spaceIds: [spaceId] })
+        .catch(() => [] as ContactLite[]),
     ]);
     if (events.length === 0) return [];
 
     const contactsByEmail = new Map<string, ContactLite>();
-    for (const c of (contactRows.data ?? []) as ContactLite[]) {
+    for (const c of (contactRows ?? []) as ContactLite[]) {
       const email = (c.email ?? '').trim().toLowerCase();
       if (email) contactsByEmail.set(email, c);
     }
@@ -313,7 +317,7 @@ export const calendarGoogleSource: SignalGatherer = {
       }
       // 'today-later' (>4h out, same day) without a decline produces no
       // signal — by design. The within-4h window is the actionable one;
-      // anything later today the realtor will see in their calendar.
+      // anything later today the seller will see in their calendar.
     }
 
     return signals;

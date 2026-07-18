@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug } from '@/lib/space';
 import { ApplicationStatusClient } from './application-status-client';
 import { PublicPageMinimalShell } from '@/components/public-page-shell';
+import type { IntakeFormConfig } from '@/lib/types';
 
 // Disable caching so status updates show immediately
 export const dynamic = 'force-dynamic';
@@ -76,29 +77,19 @@ export default async function ApplicationStatusPage({
   if (!space) notFound();
 
   // Fetch settings early so we can use them in error pages too
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select('businessName, logoUrl')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settings = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
 
   const businessName = settings?.businessName || space.name;
 
-  // Build query — if token is provided, validate both ref AND token (portal mode)
-  let query = supabase
-    .from('Contact')
-    .select(
-      'id, name, email, applicationStatus, applicationStatusNote, applicationData, formConfigSnapshot, applicationRef, statusPortalToken, scoringStatus, createdAt',
-    )
-    .eq('applicationRef', ref)
-    .eq('spaceId', space.id);
-
-  // If token provided, enforce it must match (defense in depth)
-  if (token) {
-    query = query.eq('statusPortalToken', token);
-  }
-
-  const { data: contact } = await query.maybeSingle();
+  // Resolve the applicant by ref (+ spaceId), and — when a token is present —
+  // require it to match too (defense in depth / portal mode).
+  const contact = await convex().query(api.contacts.contacts.findByApplicationRef, {
+    applicationRef: ref,
+    spaceId: space.id,
+    ...(token ? { statusPortalToken: token } : {}),
+  });
 
   // Show a helpful, branded error page instead of generic 404
   if (!contact) {
@@ -129,48 +120,43 @@ export default async function ApplicationStatusPage({
     readAt: string | null;
     createdAt: string;
   }[] = [];
-  let tours: {
+  let demos: {
     id: string;
     startsAt: string;
     endsAt: string;
-    propertyAddress: string | null;
+    productAddress: string | null;
     notes: string | null;
     status: string;
   }[] = [];
 
   if (portalMode) {
-    const [historyResult, messageResult, tourResult] = await Promise.all([
-      supabase
-        .from('ApplicationStatusUpdate')
-        .select('id, fromStatus, toStatus, note, createdAt')
-        .eq('contactId', contact.id)
-        .order('createdAt', { ascending: true }),
-      supabase
-        .from('ApplicationMessage')
-        .select('id, senderType, content, readAt, createdAt')
-        .eq('contactId', contact.id)
-        .order('createdAt', { ascending: true }),
-      supabase
-        .from('Tour')
-        .select('id, startsAt, endsAt, propertyAddress, notes, status')
-        .eq('contactId', contact.id)
-        .in('status', ['scheduled', 'confirmed', 'completed'])
-        .order('startsAt', { ascending: true }),
+    const [historyResult, messageResult, demoResult] = await Promise.all([
+      convex().query(api.portal.applicationStatus.listForContact, {
+        contactId: contact.id,
+      }),
+      convex().query(api.portal.applicationMessages.listForContact, {
+        contactId: contact.id,
+      }),
+      convex().query(api.demos.demos.listByContact, {
+        contactId: contact.id,
+        statuses: ['scheduled', 'confirmed', 'completed'],
+        order: 'asc',
+      }),
     ]);
 
-    statusHistory = historyResult.data ?? [];
-    messages = messageResult.data ?? [];
-    tours = tourResult.data ?? [];
+    statusHistory = historyResult;
+    messages = messageResult;
+    demos = demoResult;
 
-    // Mark unread realtor messages as read
-    const unreadRealtorIds = messages
-      .filter((m) => m.senderType === 'realtor' && !m.readAt)
+    // Mark unread seller messages as read
+    const unreadSellerIds = messages
+      .filter((m) => m.senderType === 'seller' && !m.readAt)
       .map((m) => m.id);
-    if (unreadRealtorIds.length > 0) {
-      await supabase
-        .from('ApplicationMessage')
-        .update({ readAt: new Date().toISOString() })
-        .in('id', unreadRealtorIds);
+    if (unreadSellerIds.length > 0) {
+      await convex().mutation(api.portal.applicationMessages.markRead, {
+        contactId: contact.id,
+        ids: unreadSellerIds,
+      });
     }
   }
 
@@ -185,15 +171,15 @@ export default async function ApplicationStatusPage({
           status: contact.applicationStatus ?? 'received',
           statusNote: contact.applicationStatusNote,
           applicationRef: contact.applicationRef ?? ref,
-          applicationData: contact.applicationData,
-          formConfigSnapshot: contact.formConfigSnapshot,
+          applicationData: contact.applicationData as Record<string, unknown> | null,
+          formConfigSnapshot: contact.formConfigSnapshot as IntakeFormConfig | null,
           createdAt: contact.createdAt,
         }}
         businessName={businessName}
         portalMode={portalMode}
         statusHistory={statusHistory}
         messages={messages}
-        tours={tours}
+        demos={demos}
         token={portalMode ? token! : null}
         slug={slug}
       />

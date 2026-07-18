@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { sendDraftResumeEmail } from '@/lib/email';
 
@@ -43,18 +43,11 @@ export async function POST(req: NextRequest) {
 
   try {
     // Find active draft for this email + space
-    const { data: draft, error: draftError } = await supabase
-      .from('FormDraft')
-      .select('id, resumeToken')
-      .eq('spaceId', spaceId)
-      .eq('email', normalizedEmail)
-      .is('completedAt', null)
-      .gt('expiresAt', new Date().toISOString())
-      .order('createdAt', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (draftError) throw draftError;
+    const draft = await convex().query(api.portal.formDrafts.findOpenForEmail, {
+      spaceId,
+      email: normalizedEmail,
+      now: new Date().toISOString(),
+    });
 
     if (!draft) {
       // Don't reveal whether a draft exists — return success regardless
@@ -62,24 +55,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch space slug and business name
-    const { data: space } = await supabase
-      .from('Space')
-      .select('slug, name')
-      .eq('id', spaceId)
-      .maybeSingle();
+    const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
 
     if (!space) {
       return NextResponse.json({ sent: true });
     }
 
-    const { data: settings } = await supabase
-      .from('SpaceSetting')
-      .select('businessName')
-      .eq('spaceId', spaceId)
-      .maybeSingle();
+    const settings = await convex().query(api.workspace.settings.getBySpace, { spaceId });
 
     const businessName = settings?.businessName || space.name;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usechippi.com';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com';
     const resumeUrl = `${appUrl}/apply/${space.slug}?resume=${draft.resumeToken}`;
 
     await sendDraftResumeEmail({

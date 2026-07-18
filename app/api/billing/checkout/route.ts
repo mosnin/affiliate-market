@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getStripe, pickSpacePriceId } from '@/lib/stripe';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
-import { getBrokerContext } from '@/lib/permissions';
+import { getManagerContext } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { PLANS } from '@/lib/plans';
 
-type BrokeragePlan = 'team' | 'team_plus';
+type CompanyPlan = 'team' | 'team_plus';
 
 /** Map plan → Stripe price env var. */
-function getBrokeragePriceEnv(plan: BrokeragePlan): string | undefined {
+function getCompanyPriceEnv(plan: CompanyPlan): string | undefined {
   switch (plan) {
     case 'team':
       return process.env.STRIPE_PRICE_TEAM;
@@ -23,8 +23,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const scope = body?.scope;
 
-    if (scope === 'brokerage') {
-      return handleBrokerageCheckout(req, body);
+    if (scope === 'company') {
+      return handleCompanyCheckout(req, body);
     }
 
     // ── Space flow ─────────────────────────────────────────────────────────
@@ -46,14 +46,11 @@ export async function POST(req: NextRequest) {
     if (!allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
 
     // Fetch Stripe columns separately (getSpaceFromSlug doesn't include them)
-    const { data: stripeData, error: stripeQueryErr } = await supabase
-      .from('Space')
-      .select('stripeCustomerId, stripeSubscriptionId, stripeSubscriptionStatus, stripePeriodEnd, trialUsedAt, ownerId')
-      .eq('id', space.id)
-      .single();
-
-    if (stripeQueryErr) {
-      console.error('[checkout] Stripe column query failed:', stripeQueryErr.message, stripeQueryErr.code);
+    let stripeData;
+    try {
+      stripeData = await convex().query(api.workspace.spaces.getById, { id: space.id });
+    } catch (stripeQueryErr: any) {
+      console.error('[checkout] Stripe column query failed:', stripeQueryErr?.message);
       return NextResponse.json({ error: "Couldn't check subscription status — usually temporary." }, { status: 500 });
     }
 
@@ -91,16 +88,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Billing not configured. Contact support.' }, { status: 503 });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.usechippi.com';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.usecola.com';
 
     // Reuse existing Stripe customer or create one
     let customerId = stripeData?.stripeCustomerId;
     if (!customerId) {
-      const { data: user } = await supabase
-        .from('User')
-        .select('email, name')
-        .eq('id', space.ownerId)
-        .single();
+      const user = await convex().query(api.org.users.getById, { id: space.ownerId });
 
       console.log('[checkout] Creating Stripe customer for space:', space.id);
       // Idempotency key bound to the space — two concurrent checkout
@@ -121,27 +114,17 @@ export async function POST(req: NextRequest) {
       );
       customerId = customer.id;
 
-      // Conditional write: only persist if another request hasn't already set a customer ID.
-      // If this update affects 0 rows (stripeCustomerId was already set by a concurrent request),
-      // fetch the winner's customer ID and use that instead — abandoning the duplicate we just created.
-      const { data: updateResult } = await supabase
-        .from('Space')
-        .update({ stripeCustomerId: customerId })
-        .eq('id', space.id)
-        .is('stripeCustomerId', null)
-        .select('stripeCustomerId')
-        .single();
-
-      if (!updateResult) {
-        // Another concurrent request already set a customer ID — fetch and use theirs
-        const { data: winner } = await supabase
-          .from('Space')
-          .select('stripeCustomerId')
-          .eq('id', space.id)
-          .single();
-        if (winner?.stripeCustomerId) {
-          customerId = winner.stripeCustomerId;
-        }
+      // Conditional write: only persist if another request hasn't already set a
+      // customer ID. claimStripeCustomerId sets stripeCustomerId iff it's null and
+      // returns the WINNING id either way — if a concurrent request already claimed,
+      // we get theirs back and abandon the duplicate we just created. This collapses
+      // the old CAS-update + winner-fetch into one race-safe mutation.
+      const winnerCustomerId = await convex().mutation(
+        api.workspace.spaces.claimStripeCustomerId,
+        { id: space.id, stripeCustomerId: customerId },
+      );
+      if (winnerCustomerId) {
+        customerId = winnerCustomerId;
       }
     }
 
@@ -178,31 +161,31 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Brokerage-scoped checkout: creates/uses a Stripe customer + subscription
- * attached to the Brokerage row (NOT the broker_owner's personal Space).
+ * Company-scoped checkout: creates/uses a Stripe customer + subscription
+ * attached to the Company row (NOT the manager_owner's personal Space).
  */
-async function handleBrokerageCheckout(
+async function handleCompanyCheckout(
   _req: NextRequest,
   body: { plan?: string; scope?: string },
 ): Promise<NextResponse> {
-  // Auth: must be a broker (owner or admin), then enforce broker_owner only
-  const ctx = await getBrokerContext();
+  // Auth: must be a manager (owner or admin), then enforce manager_owner only
+  const ctx = await getManagerContext();
   if (!ctx) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  if (ctx.membership.role !== 'broker_owner') {
+  if (ctx.membership.role !== 'manager_owner') {
     return NextResponse.json(
-      { error: 'Only the brokerage owner can manage billing.' },
+      { error: 'Only the company owner can manage billing.' },
       { status: 403 },
     );
   }
 
   // Rate limit per authenticated DB user
-  const { allowed } = await checkRateLimit(`billing:brokerage:${ctx.dbUserId}`, 5, 60);
+  const { allowed } = await checkRateLimit(`billing:company:${ctx.dbUserId}`, 5, 60);
   if (!allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
 
   // Validate plan input
-  const plan = body?.plan as BrokeragePlan | undefined;
+  const plan = body?.plan as CompanyPlan | undefined;
   if (plan !== 'team' && plan !== 'team_plus') {
     return NextResponse.json(
       { error: 'plan must be one of: team, team_plus' },
@@ -210,48 +193,47 @@ async function handleBrokerageCheckout(
     );
   }
 
-  const priceId = getBrokeragePriceEnv(plan);
+  const priceId = getCompanyPriceEnv(plan);
   if (!priceId) {
-    console.error('[checkout:brokerage] Plan not configured:', plan);
+    console.error('[checkout:company] Plan not configured:', plan);
     return NextResponse.json({ error: 'Plan not configured' }, { status: 503 });
   }
 
-  // Load live Stripe columns for the Brokerage row (may not be on ctx.brokerage type yet)
-  const { data: brokerageStripe, error: brokerageQueryErr } = await supabase
-    .from('Brokerage')
-    .select('id, name, ownerId, stripeCustomerId, stripeSubscriptionId, stripeSubscriptionStatus')
-    .eq('id', ctx.brokerage.id)
-    .single();
-
-  if (brokerageQueryErr || !brokerageStripe) {
-    console.error(
-      '[checkout:brokerage] Brokerage query failed:',
-      brokerageQueryErr?.message,
-      brokerageQueryErr?.code,
-    );
+  // Load live Stripe columns for the Company row (may not be on ctx.company type yet)
+  let companyStripe;
+  try {
+    companyStripe = await convex().query(api.org.companies.getById, { id: ctx.company.id });
+  } catch (companyQueryErr: any) {
+    console.error('[checkout:company] Company query failed:', companyQueryErr?.message);
     return NextResponse.json(
-      { error: "Couldn't load brokerage — usually temporary." },
+      { error: "Couldn't load company — usually temporary." },
+      { status: 500 },
+    );
+  }
+  if (!companyStripe) {
+    return NextResponse.json(
+      { error: "Couldn't load company — usually temporary." },
       { status: 500 },
     );
   }
 
-  // Block if the brokerage already has an active or trialing subscription
-  const currentStatus = brokerageStripe.stripeSubscriptionStatus;
+  // Block if the company already has an active or trialing subscription
+  const currentStatus = companyStripe.stripeSubscriptionStatus;
   if (currentStatus === 'active' || currentStatus === 'trialing') {
     return NextResponse.json(
-      { error: 'Your brokerage already has an active subscription.' },
+      { error: 'Your company already has an active subscription.' },
       { status: 400 },
     );
   }
   if (
-    brokerageStripe.stripeSubscriptionId &&
+    companyStripe.stripeSubscriptionId &&
     (currentStatus === 'past_due' || currentStatus === 'unpaid')
   ) {
     return NextResponse.json(
       {
         error:
-          'Your brokerage has an existing subscription with a payment issue. Please update your payment method in billing settings.',
-        redirect: `/broker/billing`,
+          'Your company has an existing subscription with a payment issue. Please update your payment method in billing settings.',
+        redirect: `/manager/billing`,
       },
       { status: 400 },
     );
@@ -261,59 +243,44 @@ async function handleBrokerageCheckout(
   try {
     stripe = getStripe();
   } catch (err: any) {
-    console.error('[checkout:brokerage] Stripe init failed:', err.message);
+    console.error('[checkout:company] Stripe init failed:', err.message);
     return NextResponse.json({ error: 'Stripe not configured. Contact support.' }, { status: 500 });
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.usechippi.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.usecola.com';
 
   // Reuse existing Stripe customer or create one (concurrency-safe)
-  let customerId = brokerageStripe.stripeCustomerId ?? null;
+  let customerId = companyStripe.stripeCustomerId ?? null;
   if (!customerId) {
-    const { data: owner } = await supabase
-      .from('User')
-      .select('email, name')
-      .eq('id', brokerageStripe.ownerId)
-      .single();
+    const owner = await convex().query(api.org.users.getById, { id: companyStripe.ownerId });
 
-    console.log('[checkout:brokerage] Creating Stripe customer for brokerage:', ctx.brokerage.id);
-    // Idempotency key bound to the brokerage — see the space-flow note
+    console.log('[checkout:company] Creating Stripe customer for company:', ctx.company.id);
+    // Idempotency key bound to the company — see the space-flow note
     // above. Concurrent create calls return the same Stripe customer
     // instead of leaving orphans in Stripe's customer list.
     const customer = await stripe.customers.create(
       {
         email: owner?.email,
-        name: owner?.name || brokerageStripe.name || undefined,
-        metadata: { brokerageId: ctx.brokerage.id },
+        name: owner?.name || companyStripe.name || undefined,
+        metadata: { companyId: ctx.company.id },
       },
-      { idempotencyKey: `customer-create:brokerage:${ctx.brokerage.id}` },
+      { idempotencyKey: `customer-create:company:${ctx.company.id}` },
     );
     customerId = customer.id;
 
-    // Conditional write: only persist if not already set by a concurrent request.
-    const { data: updateResult } = await supabase
-      .from('Brokerage')
-      .update({ stripeCustomerId: customerId })
-      .eq('id', ctx.brokerage.id)
-      .is('stripeCustomerId', null)
-      .select('stripeCustomerId')
-      .single();
-
-    if (!updateResult) {
-      const { data: winner } = await supabase
-        .from('Brokerage')
-        .select('stripeCustomerId')
-        .eq('id', ctx.brokerage.id)
-        .single();
-      if (winner?.stripeCustomerId) {
-        customerId = winner.stripeCustomerId;
-      }
-    }
+    // Race-safe claim: writes stripeCustomerId only if null, and returns the
+    // WINNING id (ours, or a concurrent request's). One call replaces the old
+    // CAS-update + winner re-fetch.
+    const claimed = await convex().mutation(api.org.companies.claimStripeCustomerId, {
+      id: ctx.company.id,
+      stripeCustomerId: customerId,
+    });
+    if (claimed) customerId = claimed;
   }
 
   try {
     console.log(
-      '[checkout:brokerage] Creating checkout session, customer:',
+      '[checkout:company] Creating checkout session, customer:',
       customerId,
       'price:',
       priceId,
@@ -325,15 +292,15 @@ async function handleBrokerageCheckout(
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
       subscription_data: {
-        metadata: { brokerageId: ctx.brokerage.id, plan },
+        metadata: { companyId: ctx.company.id, plan },
       },
-      success_url: `${appUrl}/broker/billing?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appUrl}/broker/billing?canceled=1`,
-      metadata: { brokerageId: ctx.brokerage.id, plan },
+      success_url: `${appUrl}/manager/billing?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/manager/billing?canceled=1`,
+      metadata: { companyId: ctx.company.id, plan },
     });
 
     console.log(
-      '[checkout:brokerage] Session created:',
+      '[checkout:company] Session created:',
       session.id,
       'url:',
       session.url?.slice(0, 50),
@@ -341,7 +308,7 @@ async function handleBrokerageCheckout(
     return NextResponse.json({ url: session.url });
   } catch (err: any) {
     console.error(
-      '[checkout:brokerage] session create failed:',
+      '[checkout:company] session create failed:',
       err?.message,
       err?.stack?.slice(0, 200),
     );

@@ -1,11 +1,17 @@
 /**
  * Route-level integration tests for GET and POST /api/agent/tasks
  *
+ * The AgentTask reads moved from Supabase to Convex:
+ *   - GET  reads via convex().query(api.agent.tasks.listBySpace, …)
+ *   - POST enqueues via enqueueTask() (mocked), then re-reads the new row via
+ *     convex().query(api.agent.tasks.getById, …) to return canonical fields.
+ *
  * Mock strategy:
- *   - @/lib/api-auth  → vi.mock: controls requireAuth() return value
- *   - @/lib/space     → vi.mock: controls getSpaceForUser() return value
+ *   - @/lib/api-auth      → vi.mock: controls requireAuth() return value
+ *   - @/lib/space         → vi.mock: controls getSpaceForUser() return value
  *   - @/lib/agent/task-state-machine → vi.mock: controls enqueueTask()
- *   - @/lib/supabase  → chainable thenable mock for supabase.from()
+ *   - @/lib/convex-server → query mock steered per test (FIFO queue), `api` is
+ *                           a path proxy.
  *
  * Tests are route-handler unit tests: we import GET/POST directly and call
  * them with a constructed NextRequest, then assert on the NextResponse.
@@ -13,34 +19,27 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-// ── Supabase chainable mock ───────────────────────────────────────────────────
+// ── Convex query mock ─────────────────────────────────────────────────────────
+// Each route handler under test makes exactly one Convex query (GET:
+// listBySpace, POST: getById after enqueue), so a FIFO queue of results — each
+// either a resolved value or a thrown error — is enough to steer them.
 
-type TerminalResult = { data?: unknown; error?: unknown };
-let supabaseQueue: TerminalResult[] = [];
+type ConvexResult = { value?: unknown; error?: unknown };
+let convexQueue: ConvexResult[] = [];
 
-function makeChain(): Record<string, unknown> {
-  const terminal: TerminalResult = supabaseQueue.shift() ?? { data: [], error: null };
-
-  const chain: Record<string, unknown> = {};
-  const passthroughs = ['select', 'eq', 'in', 'order', 'limit', 'insert', 'update'];
-  for (const method of passthroughs) {
-    chain[method] = vi.fn((..._args: unknown[]) => chain);
-  }
-  chain.single = vi.fn(() => Promise.resolve(terminal));
-  chain.maybeSingle = vi.fn(() => Promise.resolve(terminal));
-  chain.then = (
-    resolve: (v: TerminalResult) => unknown,
-    reject?: (e: unknown) => unknown,
-  ) => Promise.resolve(terminal).then(resolve, reject);
-
-  return chain;
-}
-
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    from: vi.fn((_table: string) => makeChain()),
-  },
+const { convexQueryMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
 }));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: vi.fn() }),
+  };
+});
 
 // ── Auth mock ─────────────────────────────────────────────────────────────────
 
@@ -118,9 +117,22 @@ function makePostRequest(body: unknown): NextRequest {
 
 // ── Setup ────────────────────────────────────────────────────────────────────
 
+/** Push results for successive convex().query() calls (FIFO). */
+function queueConvex(...results: ConvexResult[]) {
+  convexQueue.push(...results);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  supabaseQueue = [];
+  convexQueue = [];
+  // Each query call consumes the next queued result: resolve `value`, or
+  // reject `error` (mirrors a Convex query throwing — the route's try/catch
+  // turns it into a 500).
+  convexQueryMock.mockImplementation(async () => {
+    const next = convexQueue.shift() ?? { value: [] };
+    if (next.error) throw next.error instanceof Error ? next.error : new Error(String(next.error));
+    return next.value;
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -168,18 +180,24 @@ describe('GET /api/agent/tasks', () => {
       { id: 'task-1', status: 'completed', title: 'Call Sam' },
       { id: 'task-2', status: 'queued', title: 'Email Maria' },
     ];
-    supabaseQueue.push({ data: fakeTasks, error: null });
+    queueConvex({ value: fakeTasks });
 
     const res = await GET(makeGetRequest(SPACE_ID));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.tasks).toEqual(fakeTasks);
+    // The list query must be scoped to this space — a refactor that drops the
+    // spaceId arg would leak other spaces' tasks.
+    expect(convexQueryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ spaceId: SPACE_ID }),
+    );
   });
 
   it('returns empty array when no tasks exist for the space', async () => {
     mockRequireAuth.mockResolvedValue({ userId: USER_ID });
     mockGetSpaceForUser.mockResolvedValue(fakeSpace);
-    supabaseQueue.push({ data: [], error: null });
+    queueConvex({ value: [] });
 
     const res = await GET(makeGetRequest(SPACE_ID));
     expect(res.status).toBe(200);
@@ -187,10 +205,10 @@ describe('GET /api/agent/tasks', () => {
     expect(body.tasks).toEqual([]);
   });
 
-  it('returns 500 when the DB query fails', async () => {
+  it('returns 500 when the Convex query fails', async () => {
     mockRequireAuth.mockResolvedValue({ userId: USER_ID });
     mockGetSpaceForUser.mockResolvedValue(fakeSpace);
-    supabaseQueue.push({ data: null, error: { message: 'DB exploded' } });
+    queueConvex({ error: new Error('DB exploded') });
 
     const res = await GET(makeGetRequest(SPACE_ID));
     expect(res.status).toBe(500);
@@ -254,7 +272,8 @@ describe('POST /api/agent/tasks', () => {
       goalDescription: 'Follow up with Sam Chen',
       createdAt: '2026-05-06T00:00:00.000Z',
     };
-    supabaseQueue.push({ data: newTask, error: null });
+    // The route re-reads the inserted row via getById; return it.
+    queueConvex({ value: newTask });
 
     const res = await POST(
       makePostRequest({ spaceId: SPACE_ID, goal: 'Follow up with Sam Chen' }),

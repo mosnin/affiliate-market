@@ -7,11 +7,11 @@ import { toast } from 'sonner';
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from '@/lib/chat-models';
 
 /**
- * Settings control — the realtor's "primary model" for Chippi.
+ * Settings control — the seller's "primary model" for Cola.
  *
  * Reads + writes AgentSettings.chatModel via /api/agent/settings. A
  * workspace that has never touched this sits on DEFAULT_CHAT_MODEL — the
- * picker is invisible weight for the realtor who doesn't care.
+ * picker is invisible weight for the seller who doesn't care.
  */
 export function ChatModelPicker() {
   const [model, setModel] = useState<string | null>(null);
@@ -117,7 +117,7 @@ export function ChatModelPicker() {
           </span>
         )}
         {saved && !saving && (
-          <span className="text-xs text-emerald-600 flex items-center gap-1">
+          <span className="text-xs text-positive flex items-center gap-1">
             <CheckCircle2 size={11} /> Saved
           </span>
         )}

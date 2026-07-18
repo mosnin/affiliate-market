@@ -14,6 +14,7 @@
  */
 
 import { supabase as defaultClient } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { BriefCardMeta, BriefCardTap, SignalKind, SignalSource } from './types';
 
@@ -32,23 +33,17 @@ function rangeBounds(rangeDays: number): { since: string; until: string } {
  *
  * Open rate = (seenAt IS NOT NULL) / total briefs in window.
  * Low rate (< 30%) signals one of: cron is delivering at wrong time;
- * realtors are turning off briefEnabled; the surface isn't being
- * rendered when realtors visit the workspace.
+ * sellers are turning off briefEnabled; the surface isn't being
+ * rendered when sellers visit the workspace.
  */
 export async function briefOpenRate(
   rangeDays = 7,
-  client: SupabaseClient = defaultClient,
 ): Promise<{ total: number; seen: number; rate: number }> {
   const { since, until } = rangeBounds(rangeDays);
-  const { data, error } = await client
-    .from('Brief')
-    .select('id, seenAt')
-    .gte('createdAt', since)
-    .lt('createdAt', until);
+  const data = await convex().query(api.portal.briefs.listCreatedBetween, { since, until });
 
-  if (error || !data) return { total: 0, seen: 0, rate: 0 };
   const total = data.length;
-  const seen = data.filter((r) => (r as { seenAt: string | null }).seenAt != null).length;
+  const seen = data.filter((r) => r.seenAt != null).length;
   return { total, seen, rate: total === 0 ? 0 : seen / total };
 }
 
@@ -64,7 +59,6 @@ export async function briefOpenRate(
  */
 export async function sourceTapRates(
   rangeDays = 30,
-  client: SupabaseClient = defaultClient,
 ): Promise<
   Array<{
     source: SignalSource;
@@ -75,13 +69,7 @@ export async function sourceTapRates(
   }>
 > {
   const { since, until } = rangeBounds(rangeDays);
-  const { data, error } = await client
-    .from('Brief')
-    .select('cardMeta, cardTaps')
-    .gte('createdAt', since)
-    .lt('createdAt', until);
-
-  if (error || !data) return [];
+  const data = await convex().query(api.portal.briefs.listCreatedBetween, { since, until });
 
   const buckets = new Map<string, { source: SignalSource; kind: SignalKind; shown: number; tapped: number }>();
 
@@ -116,7 +104,6 @@ export async function sourceTapRates(
  */
 export async function confidenceCalibration(
   rangeDays = 30,
-  client: SupabaseClient = defaultClient,
 ): Promise<
   Array<{
     source: SignalSource;
@@ -128,13 +115,7 @@ export async function confidenceCalibration(
   }>
 > {
   const { since, until } = rangeBounds(rangeDays);
-  const { data, error } = await client
-    .from('Brief')
-    .select('cardMeta, cardTaps')
-    .gte('createdAt', since)
-    .lt('createdAt', until);
-
-  if (error || !data) return [];
+  const data = await convex().query(api.portal.briefs.listCreatedBetween, { since, until });
 
   const buckets = new Map<
     string,

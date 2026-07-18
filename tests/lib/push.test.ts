@@ -27,8 +27,26 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { fromMock } = vi.hoisted(() => ({ fromMock: vi.fn() }));
-vi.mock('@/lib/supabase', () => ({ supabase: { from: fromMock } }));
+// PushSubscription reads/writes moved from Supabase to Convex. lib/push.ts now
+// calls convex().query(api.notifications.push.listBySpace) and
+// convex().mutation(api.notifications.push.deleteByIds); the subscribe route
+// calls convex().mutation(api.notifications.push.upsert). `api` is a path proxy
+// so any api.<domain>.<fn> access yields a harmless stub; behaviour is steered
+// by the query/mutation mocks below.
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
 
 const { requireSpaceOwnerMock } = vi.hoisted(() => ({ requireSpaceOwnerMock: vi.fn() }));
 vi.mock('@/lib/api-auth', () => ({ requireSpaceOwner: requireSpaceOwnerMock }));
@@ -59,7 +77,7 @@ describe('lib/push gating', () => {
     expect(setVapidDetailsMock).not.toHaveBeenCalled();
     expect(sendNotificationMock).not.toHaveBeenCalled();
     // It must not even query the DB when unconfigured.
-    expect(fromMock).not.toHaveBeenCalled();
+    expect(convexQueryMock).not.toHaveBeenCalled();
   });
 });
 
@@ -91,7 +109,8 @@ describe('POST /api/push/subscribe validation', () => {
       makeReq('POST', { slug: 'acme', subscription: { endpoint: 'https://x', keys: { p256dh: 'p' } } }),
     );
     expect(res.status).toBe(400);
-    expect(fromMock).not.toHaveBeenCalled();
+    // Validation fails before any DB write.
+    expect(convexMutationMock).not.toHaveBeenCalled();
   });
 
   it('passes through the auth response when not authorized', async () => {
@@ -104,8 +123,7 @@ describe('POST /api/push/subscribe validation', () => {
   });
 
   it('upserts a well-formed subscription and returns ok', async () => {
-    const upsertMock = vi.fn().mockResolvedValue({ error: null });
-    fromMock.mockReturnValue({ upsert: upsertMock });
+    convexMutationMock.mockResolvedValue(undefined);
 
     const { POST } = await import('@/app/api/push/subscribe/route');
     const res = await POST(
@@ -117,9 +135,14 @@ describe('POST /api/push/subscribe validation', () => {
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ ok: true });
-    expect(fromMock).toHaveBeenCalledWith('PushSubscription');
-    const [row, opts] = upsertMock.mock.calls[0];
-    expect(row).toMatchObject({ spaceId: 'space-1', endpoint: 'https://push/x', p256dh: 'pkey', auth: 'akey' });
-    expect(opts).toEqual({ onConflict: 'endpoint' });
+    // The upsert mutation is called with the well-formed subscription fields.
+    expect(convexMutationMock).toHaveBeenCalledTimes(1);
+    const [, mutArgs] = convexMutationMock.mock.calls[0];
+    expect(mutArgs).toMatchObject({
+      spaceId: 'space-1',
+      endpoint: 'https://push/x',
+      p256dh: 'pkey',
+      auth: 'akey',
+    });
   });
 });

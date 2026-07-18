@@ -15,12 +15,12 @@ export async function generateMetadata({
 }
 
 /**
- * /s/[slug]/calendar — thin mirror of the realtor's connected external
+ * /s/[slug]/calendar — thin mirror of the seller's connected external
  * calendar.
  *
- * Chippi doesn't own a calendar anymore. The realtor lives in Google
+ * Cola doesn't own a calendar anymore. The seller lives in Google
  * Calendar (or Outlook); this surface reads from there on demand and
- * renders it inline. Events Chippi creates (tour bookings, callbacks)
+ * renders it inline. Events Cola creates (demo bookings, callbacks)
  * write THROUGH to the same calendar so the source of truth stays
  * single.
  *

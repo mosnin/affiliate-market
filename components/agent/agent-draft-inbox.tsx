@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/formatting';
 import { StaggerList, StaggerItem } from '@/components/motion/stagger-list';
-import { ApprovalCelebration, type ApprovalKind } from '@/components/chippi/approval-celebration';
+import { ApprovalCelebration, type ApprovalKind } from '@/components/cola/approval-celebration';
 
 interface DeliveryResult {
   sent: boolean;
@@ -39,7 +39,7 @@ interface DraftContact {
 }
 
 /** Structured provenance for drafts kicked off by an inbound event
- *  (Composio trigger fired, etc.) rather than the realtor's own chat
+ *  (Composio trigger fired, etc.) rather than the seller's own chat
  *  turn. Null on chat/routine/sweep drafts — the breadcrumb just
  *  doesn't render. Persisted on AgentDraft.triggerSource by the
  *  Python drafts tool when ctx.context.trigger_source is populated. */
@@ -67,7 +67,7 @@ interface AgentDraft {
   Contact: DraftContact | null;
 }
 
-/** Slug → realtor-readable phrase. Keep these short — they render
+/** Slug → seller-readable phrase. Keep these short — they render
  *  as a single-line breadcrumb under each draft. */
 const TRIGGER_PHRASE: Record<string, string> = {
   GMAIL_NEW_GMAIL_MESSAGE: 'a new Gmail message arrived',
@@ -114,10 +114,10 @@ const CHANNEL_META = {
 } as const;
 
 // Phase D — autonomy default flip. When the agent is highly confident in a
-// draft, default it to auto-send after a short countdown unless the realtor
+// draft, default it to auto-send after a short countdown unless the seller
 // cancels. Gated by the env flag so we can land the code, dogfood internally,
 // and flip on per-deploy without another release. 80% mirrors the existing
-// confidence "green dot" threshold in the row meta line. 30s gives a realtor
+// confidence "green dot" threshold in the row meta line. 30s gives a seller
 // scanning their inbox time to react without making "auto" feel meaningless.
 const AUTO_SEND_FLAG = process.env.NEXT_PUBLIC_AGENT_AUTO_SEND === 'true';
 const AUTO_SEND_CONFIDENCE_THRESHOLD = 80;
@@ -157,9 +157,9 @@ function DraftRow({
 
   const meta = CHANNEL_META[draft.channel];
   const Icon = meta.icon;
-  // A draft carrying a property packet — recognised by the secure
-  // /packet/<token> path the agent's send_property_packet tool produces.
-  // Subtle pill in the meta row so the realtor knows what they're approving
+  // A draft carrying a product packet — recognised by the secure
+  // /packet/<token> path the agent's send_product_packet tool produces.
+  // Subtle pill in the meta row so the seller knows what they're approving
   // before reading the body.
   const hasPacket = /\/packet\/[a-zA-Z0-9_-]+/i.test(draft.content);
   const isEdited = editedContent.trim() !== draft.content;
@@ -195,7 +195,7 @@ function DraftRow({
     // Sent successfully → celebrate in place. The parent left the row mounted
     // for us; once the celebration dwell ends we tell it to remove the row.
     // Failed delivery / not-configured paths fall through to the existing
-    // banner so the realtor sees the actionable nudge instead of a win line.
+    // banner so the seller sees the actionable nudge instead of a win line.
     if (result?.sent) {
       const kind: ApprovalKind =
         draft.channel === 'note' ? 'note' : draft.channel === 'email' ? 'email' : 'sms';
@@ -226,7 +226,7 @@ function DraftRow({
 
   // Phase D countdown — counts down once per row when eligible. Tick every
   // 250ms so the displayed seconds feel responsive without thrashing renders.
-  // We start from the moment the row meets all conditions; if the realtor
+  // We start from the moment the row meets all conditions; if the seller
   // edits or actions the row mid-flight, the effect re-evaluates and bails.
   useEffect(() => {
     if (!autoSendEligible) {
@@ -258,7 +258,7 @@ function DraftRow({
   }, [autoSendEligible]);
 
   // When the row is celebrating, the body collapses to one calm sentence —
-  // contact name still anchors the moment so the realtor knows whose row
+  // contact name still anchors the moment so the seller knows whose row
   // they just resolved as the others stagger up to fill the space.
   if (celebrationKind) {
     return (
@@ -310,7 +310,7 @@ function DraftRow({
 
         {hasPacket && (
           <span
-            className="inline-flex items-center gap-1 text-[11px] text-orange-600 dark:text-orange-400"
+            className="inline-flex items-center gap-1 text-[11px] text-primary dark:text-primary"
             title="Packet attached"
           >
             <Paperclip size={11} className="opacity-80" />
@@ -335,10 +335,10 @@ function DraftRow({
               className={cn(
                 'inline-flex items-center gap-1 text-[11px]',
                 draft.confidence >= 80
-                  ? 'text-emerald-600 dark:text-emerald-400'
+                  ? 'text-positive dark:text-positive'
                   : draft.confidence >= 50
                     ? 'text-muted-foreground'
-                    : 'text-amber-600 dark:text-amber-400',
+                    : 'text-muted-foreground dark:text-muted-foreground',
               )}
               title={`${draft.confidence}% confidence`}
             >
@@ -346,10 +346,10 @@ function DraftRow({
                 className={cn(
                   'w-1.5 h-1.5 rounded-full',
                   draft.confidence >= 80
-                    ? 'bg-emerald-500'
+                    ? 'bg-positive-subtle0'
                     : draft.confidence >= 50
                       ? 'bg-muted-foreground/50'
-                      : 'bg-amber-500',
+                      : 'bg-muted0',
                 )}
               />
               {draft.confidence}%
@@ -379,7 +379,7 @@ function DraftRow({
           <span
             className={cn(
               'text-[11px] tabular-nums',
-              overLimit ? 'text-destructive font-medium' : nearLimit ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+              overLimit ? 'text-destructive font-medium' : nearLimit ? 'text-muted-foreground dark:text-muted-foreground' : 'text-muted-foreground',
             )}
           >
             {editedContent.length}{meta.charLimit ? ` / ${meta.charLimit}` : ''} chars
@@ -422,11 +422,11 @@ function DraftRow({
         </p>
       )}
 
-      {/* Trigger provenance breadcrumb — Chippi-voiced one-liner that
+      {/* Trigger provenance breadcrumb — Cola-voiced one-liner that
           says WHY this draft appeared. Renders only when the row carries
           structured trigger source (Composio fired an event). For chat
           / routine / sweep drafts the field is null and the row stays
-          quiet. This is the "Chippi noticed something for me" trust
+          quiet. This is the "Cola noticed something for me" trust
           moment Phase 4 of the triggers work surfaces. */}
       {(() => {
         const crumb = triggerBreadcrumb(draft.triggerSource);
@@ -449,18 +449,18 @@ function DraftRow({
           and the draft cleared the confidence bar. Cancel returns the row to
           the standard approve/dismiss workflow without firing anything. */}
       {autoSendRemainingMs !== null && autoSendRemainingMs > 0 && (
-        <div className="mt-3 flex items-center gap-2 text-[12px] text-emerald-700 dark:text-emerald-400">
+        <div className="mt-3 flex items-center gap-2 text-[12px] text-positive dark:text-positive">
           <span className="relative inline-flex items-center justify-center w-4 h-4 flex-shrink-0">
             <span
               aria-hidden
-              className="absolute inset-0 rounded-full border border-emerald-500/30"
+              className="absolute inset-0 rounded-full border border-positive/20"
             />
             <span
               aria-hidden
-              className="absolute inset-0 rounded-full border-2 border-emerald-500 border-r-transparent border-b-transparent animate-spin"
+              className="absolute inset-0 rounded-full border-2 border-positive/20 border-r-transparent border-b-transparent animate-spin"
               style={{ animationDuration: '1.2s' }}
             />
-            <MessageCircle size={9} className="text-emerald-600 dark:text-emerald-400" strokeWidth={2.25} />
+            <MessageCircle size={9} className="text-positive dark:text-positive" strokeWidth={2.25} />
           </span>
           <span className="font-medium">
             Auto-sending in {Math.ceil(autoSendRemainingMs / 1000)}s
@@ -595,7 +595,7 @@ function DeliveryBanner({ feedback, onClose }: { feedback: DeliveryFeedback; onC
       ? contactName ? `Note logged for ${contactName}` : 'Note logged'
       : contactName ? `Sent to ${contactName} via ${methodLabel}` : `Sent via ${methodLabel}`;
     return (
-      <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 py-2">
+      <div className="flex items-center gap-2 text-xs text-positive dark:text-positive py-2">
         <Send size={12} className="flex-shrink-0" />
         <span>{msg}</span>
         <button onClick={onClose} className="ml-auto text-muted-foreground hover:text-foreground" aria-label="Dismiss">
@@ -622,7 +622,7 @@ function DeliveryBanner({ feedback, onClose }: { feedback: DeliveryFeedback; onC
   }
 
   return (
-    <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 py-2">
+    <div className="flex items-start gap-2 text-xs text-muted-foreground dark:text-muted-foreground py-2">
       <TriangleAlert size={12} className="flex-shrink-0 mt-0.5" />
       <span>
         <span className="font-medium">Delivery failed</span> — draft approved but {methodLabel} not sent.
@@ -813,7 +813,7 @@ export function AgentDraftInbox({ slug }: Props) {
 
       if (!res.ok) {
         // Whole-batch failure (auth, rate limit, validation) — restore the
-        // rows and surface a single error. The realtor can try again.
+        // rows and surface a single error. The seller can try again.
         setDrafts((prev) => {
           const have = new Set(prev.map((d) => d.id));
           return [...snapshot.filter((d) => !have.has(d.id)), ...prev];
@@ -833,7 +833,7 @@ export function AgentDraftInbox({ slug }: Props) {
       const failed = data.results.filter((r) => !r.ok);
       const succeeded = data.results.length - failed.length;
 
-      // Restore any drafts that failed so the realtor can retry them in
+      // Restore any drafts that failed so the seller can retry them in
       // place. Successful ones stay removed.
       if (failed.length) {
         const failedIds = new Set(failed.map((r) => r.draftId));
@@ -858,7 +858,7 @@ export function AgentDraftInbox({ slug }: Props) {
         toast.success(`${succeeded} approved, ${failed.length} got stuck.`);
       }
     } catch {
-      // Network blip — restore the snapshot and let the realtor retry.
+      // Network blip — restore the snapshot and let the seller retry.
       setDrafts((prev) => {
         const have = new Set(prev.map((d) => d.id));
         return [...snapshot.filter((d) => !have.has(d.id)), ...prev];

@@ -1,10 +1,10 @@
--- Client Portal — end-user (applicant / tour-booker) accounts, fully separate
--- from the realtor Clerk auth. A client signs up with email + password; once
+-- Client Portal — end-user (applicant / demo-booker) accounts, fully separate
+-- from the seller Clerk auth. A client signs up with email + password; once
 -- their email is verified, the portal aggregates every Contact (application)
--- and Tour that shares their email across ALL spaces — "one page by email".
+-- and Demo that shares their email across ALL spaces — "one page by email".
 --
--- These tables never touch the realtor auth path. Messaging, info-requests and
--- documents hang off the existing Contact so the realtor sees them in their
+-- These tables never touch the seller auth path. Messaging, info-requests and
+-- documents hang off the existing Contact so the seller sees them in their
 -- normal contact view.
 
 -- ── Accounts ────────────────────────────────────────────────────────────────
@@ -34,19 +34,19 @@ CREATE TABLE IF NOT EXISTS "ClientAuthCode" (
 );
 CREATE INDEX IF NOT EXISTS "ClientAuthCode_lookup_idx" ON "ClientAuthCode"("emailLower","purpose","expiresAt");
 
--- ── Client ↔ realtor messages (hang off the Contact) ─────────────────────────
+-- ── Client ↔ seller messages (hang off the Contact) ─────────────────────────
 CREATE TABLE IF NOT EXISTS "ClientMessage" (
   "id"         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   "contactId"  TEXT NOT NULL REFERENCES "Contact"(id) ON DELETE CASCADE,
   "spaceId"    TEXT NOT NULL REFERENCES "Space"(id) ON DELETE CASCADE,
-  "senderType" TEXT NOT NULL CHECK ("senderType" IN ('client','realtor')),
+  "senderType" TEXT NOT NULL CHECK ("senderType" IN ('client','seller')),
   "body"       TEXT NOT NULL,
   "readAt"     TIMESTAMPTZ,
   "createdAt"  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS "ClientMessage_contact_idx" ON "ClientMessage"("contactId","createdAt");
 
--- ── Realtor → client "please send X" requests ────────────────────────────────
+-- ── Seller → client "please send X" requests ────────────────────────────────
 CREATE TABLE IF NOT EXISTS "ClientInfoRequest" (
   "id"          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   "contactId"   TEXT NOT NULL REFERENCES "Contact"(id) ON DELETE CASCADE,

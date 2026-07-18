@@ -12,22 +12,22 @@ import {
   BarChart3,
 } from 'lucide-react';
 
-// IA: /broker = Chippi home (center affordance). Four side items split
-// 2-left / 2-right so the Chippi avatar sits dead-center, exactly like the
-// realtor bar (People · Deals · [Chippi] · Calendar · Settings). Broker
+// IA: /manager = Cola home (center affordance). Four side items split
+// 2-left / 2-right so the Cola avatar sits dead-center, exactly like the
+// seller bar (People · Deals · [Cola] · Calendar · Settings). Manager
 // destinations differ; the structure is identical.
-//   Brief · Leads · [Chippi] · Realtors · Pipeline
-const brokerSideItems = [
-  { href: '/broker/brief', label: 'Brief', icon: LayoutDashboard, exact: true },
-  { href: '/broker/leads', label: 'Leads', icon: PhoneIncoming, exact: false },
-  { href: '/broker/realtors', label: 'Realtors', icon: UserCircle, exact: false },
-  { href: '/broker/pipeline', label: 'Pipeline', icon: BarChart3, exact: false },
+//   Brief · Leads · [Cola] · Sellers · Pipeline
+const managerSideItems = [
+  { href: '/manager/brief', label: 'Brief', icon: LayoutDashboard, exact: true },
+  { href: '/manager/leads', label: 'Leads', icon: PhoneIncoming, exact: false },
+  { href: '/manager/sellers', label: 'Sellers', icon: UserCircle, exact: false },
+  { href: '/manager/pipeline', label: 'Pipeline', icon: BarChart3, exact: false },
 ];
 
 interface MobileNavProps {
   slug: string;
-  isBroker?: boolean;
-  isBrokerOnly?: boolean;
+  isManager?: boolean;
+  isManagerOnly?: boolean;
 }
 
 // ─── Geometry ─────────────────────────────────────────────────────────────────
@@ -74,13 +74,13 @@ function SideTab({
   );
 }
 
-// ─── Center Chippi tab — flush inside the bar ─────────────────────────────────
+// ─── Center Cola tab — flush inside the bar ─────────────────────────────────
 
-function ChippiTab({ href, isActive }: { href: string; isActive: boolean }) {
+function ColaTab({ href, isActive }: { href: string; isActive: boolean }) {
   return (
     <Link
       href={href}
-      aria-label="Chippi"
+      aria-label="Cola"
       aria-current={isActive ? 'page' : undefined}
       className="relative flex-1 flex items-center justify-center h-full min-h-[44px] focus-visible:outline-none"
     >
@@ -125,18 +125,18 @@ function BarShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ─── Broker variant ───────────────────────────────────────────────────────────
-// Visual shape mirrors the realtor bar exactly:
-//   Brief · Leads · [Chippi center] · Realtors
-// Same BarShell, same SideTab, same ChippiTab — only the items differ.
+// ─── Manager variant ───────────────────────────────────────────────────────────
+// Visual shape mirrors the seller bar exactly:
+//   Brief · Leads · [Cola center] · Sellers
+// Same BarShell, same SideTab, same ColaTab — only the items differ.
 
-function BrokerMobileNav({ pathname }: { pathname: string }) {
+function ManagerMobileNav({ pathname }: { pathname: string }) {
   const isActive = (href: string, exact: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
 
   return (
     <BarShell>
-      {brokerSideItems.slice(0, 2).map((item) => (
+      {managerSideItems.slice(0, 2).map((item) => (
         <SideTab
           key={item.href}
           href={item.href}
@@ -145,8 +145,8 @@ function BrokerMobileNav({ pathname }: { pathname: string }) {
           isActive={isActive(item.href, item.exact)}
         />
       ))}
-      <ChippiTab href="/broker" isActive={pathname === '/broker'} />
-      {brokerSideItems.slice(2).map((item) => (
+      <ColaTab href="/manager" isActive={pathname === '/manager'} />
+      {managerSideItems.slice(2).map((item) => (
         <SideTab
           key={item.href}
           href={item.href}
@@ -161,26 +161,26 @@ function BrokerMobileNav({ pathname }: { pathname: string }) {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export function MobileNav({ slug, isBroker = false, isBrokerOnly = false }: MobileNavProps) {
+export function MobileNav({ slug, isManager = false, isManagerOnly = false }: MobileNavProps) {
   const pathname = usePathname();
   const base = `/s/${slug}`;
 
-  // Chippi workspace owns its own bottom area (sticky composer). Hide the bar there.
-  if (pathname?.startsWith(`${base}/chippi`)) return null;
+  // Cola workspace owns its own bottom area (sticky composer). Hide the bar there.
+  if (pathname?.startsWith(`${base}/cola`)) return null;
 
-  const isOnBrokerPage = pathname.startsWith('/broker');
-  if (isBroker && (isOnBrokerPage || isBrokerOnly)) {
-    return <BrokerMobileNav pathname={pathname} />;
+  const isOnManagerPage = pathname.startsWith('/manager');
+  if (isManager && (isOnManagerPage || isManagerOnly)) {
+    return <ManagerMobileNav pathname={pathname} />;
   }
 
-  // Visual order: People · Deals · Chippi · Calendar · Settings.
-  // Source of truth is `mobileNavItems` (Chippi · People · Deals · Calendar
+  // Visual order: People · Deals · Cola · Calendar · Settings.
+  // Source of truth is `mobileNavItems` (Cola · People · Deals · Calendar
   // · Settings) — we re-order by href lookup for display, the data stays
   // canonical for sidebar parity.
   const byHref = Object.fromEntries(
     mobileNavItems.map((item) => [item.href, item]),
   );
-  const chippiItem = byHref['/chippi'];
+  const colaItem = byHref['/cola'];
   const sideOrder = ['/contacts', '/deals', '/calendar', '/settings'] as const;
   const sideItems = sideOrder.map((href) => byHref[href]).filter(Boolean);
 
@@ -197,10 +197,10 @@ export function MobileNav({ slug, isBroker = false, isBrokerOnly = false }: Mobi
           isActive={isActive(item.href)}
         />
       ))}
-      {chippiItem && (
-        <ChippiTab
-          href={`${base}${chippiItem.href}`}
-          isActive={isActive(chippiItem.href)}
+      {colaItem && (
+        <ColaTab
+          href={`${base}${colaItem.href}`}
+          isActive={isActive(colaItem.href)}
         />
       )}
       {sideItems.slice(2).map((item) => (

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { Card, CardContent } from '@/components/ui/card';
 import { Users, TrendingUp, CreditCard, CheckCircle2, XCircle, AlertTriangle, DollarSign } from 'lucide-react';
 import { isPlatformAdmin } from '@/lib/permissions';
@@ -93,15 +93,34 @@ export default async function AdminCohortsPage() {
   let fetchError = false;
 
   try {
-    const { data, error } = await supabase
-      .from('User')
-      .select('id, createdAt, onboard, Space(id, stripeSubscriptionStatus)')
-      .gte('createdAt', earliestIso)
-      .order('createdAt', { ascending: true });
+    // Users since the window's start. listForAdmin returns full rows; we filter
+    // by createdAt and attach each owner's Space (the old `Space(...)` embed is
+    // keyed on Space.ownerId) via a single listByOwnerIds fan-out.
+    const allUsers = (await convex().query(api.org.users.listForAdmin, {
+      limit: 100000,
+    })) as Array<{ id: string; createdAt: string; onboard: boolean }>;
+    const windowUsers = allUsers.filter((u) => u.createdAt >= earliestIso);
 
-    if (error) throw error;
+    const ownerIds = windowUsers.map((u) => u.id);
+    const windowSpaces =
+      ownerIds.length > 0
+        ? ((await convex().query(api.workspace.spaces.listByOwnerIds, {
+            ownerIds,
+          })) as Array<{ id: string; ownerId: string; stripeSubscriptionStatus: string }>)
+        : [];
+    const spaceByOwner = new Map(windowSpaces.map((s) => [s.ownerId, s]));
 
-    for (const row of (data ?? []) as UserRow[]) {
+    const data: UserRow[] = windowUsers.map((u) => {
+      const sp = spaceByOwner.get(u.id);
+      return {
+        id: u.id,
+        createdAt: u.createdAt,
+        onboard: u.onboard,
+        Space: sp ? { id: sp.id, stripeSubscriptionStatus: sp.stripeSubscriptionStatus as SubscriptionStatus } : null,
+      };
+    });
+
+    for (const row of data) {
       const created = new Date(row.createdAt);
       const wkKey = isoDate(weekStartOf(created));
       const bucket = cohorts.get(wkKey);
@@ -122,13 +141,13 @@ export default async function AdminCohortsPage() {
     }
 
     // Totals from ALL users (not just last 12 weeks) for accurate top-level stats
-    const [totalUsersRes, subStatusRes] = await Promise.all([
-      supabase.from('User').select('*', { count: 'exact', head: true }),
-      supabase.from('Space').select('stripeSubscriptionStatus'),
+    const [userCounts, allSpaces] = await Promise.all([
+      convex().query(api.org.users.counts, {}),
+      convex().query(api.workspace.spaces.listBySubscriptionStatus, {}),
     ]);
 
-    totalSignups = totalUsersRes.count ?? 0;
-    const statuses = (subStatusRes.data ?? []) as {
+    totalSignups = userCounts.total;
+    const statuses = allSpaces as {
       stripeSubscriptionStatus: SubscriptionStatus | null;
     }[];
     for (const s of statuses) {
@@ -213,9 +232,9 @@ export default async function AdminCohortsPage() {
       </Card>
 
       {fetchError && (
-        <Card className="rounded-xl border border-amber-300/50 bg-amber-50/30 dark:border-amber-500/20 dark:bg-amber-500/5">
+        <Card className="rounded-xl border border-border bg-muted/30 dark:border-border dark:bg-muted0/5">
           <CardContent className="px-5 py-4">
-            <p className="text-sm text-amber-700 dark:text-amber-400">
+            <p className="text-sm text-muted-foreground dark:text-muted-foreground">
               Could not load cohort data. Check server logs.
             </p>
           </CardContent>
@@ -263,12 +282,12 @@ export default async function AdminCohortsPage() {
                   <td className="px-3 py-2.5 text-xs font-semibold tabular-nums align-top">
                     {r.signups}
                   </td>
-                  <Cell count={r.onboarded} total={r.signups} color="bg-emerald-500" />
+                  <Cell count={r.onboarded} total={r.signups} color="bg-positive-subtle0" />
                   <Cell count={r.workspace} total={r.signups} color="bg-violet-500" />
                   <Cell count={r.trialing} total={r.signups} color="bg-blue-500" />
                   <Cell count={r.paid} total={r.signups} color="bg-foreground" />
-                  <Cell count={r.churned} total={r.signups} color="bg-rose-500" />
-                  <Cell count={r.active} total={r.signups} color="bg-emerald-600" />
+                  <Cell count={r.churned} total={r.signups} color="bg-negative-subtle0" />
+                  <Cell count={r.active} total={r.signups} color="bg-positive" />
                 </tr>
               ))}
             </tbody>
@@ -293,7 +312,7 @@ export default async function AdminCohortsPage() {
               label: 'Paid',
               value: totalPaid,
               icon: CheckCircle2,
-              color: 'text-emerald-500',
+              color: 'text-positive',
             },
             {
               label: 'Trial',
@@ -305,25 +324,25 @@ export default async function AdminCohortsPage() {
               label: 'Past due',
               value: totalPastDue,
               icon: AlertTriangle,
-              color: 'text-amber-500',
+              color: 'text-muted-foreground',
             },
             {
               label: 'Canceled',
               value: totalCanceled,
               icon: XCircle,
-              color: 'text-rose-500',
+              color: 'text-negative',
             },
             {
               label: 'Paid conv.',
               value: `${overallPaidRate}%`,
               icon: TrendingUp,
-              color: 'text-emerald-500',
+              color: 'text-positive',
             },
             {
               label: 'Churn rate',
               value: `${overallChurnRate}%`,
               icon: DollarSign,
-              color: 'text-rose-500',
+              color: 'text-negative',
             },
           ].map(({ label, value, icon: Icon, color }) => (
             <Card key={label} className="rounded-xl border bg-card h-full">

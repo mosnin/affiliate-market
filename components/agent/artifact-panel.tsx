@@ -27,7 +27,7 @@ function getTypeBadge(type: string): { label: string; className: string } {
       return {
         label: 'Email',
         className:
-          'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60',
+          'bg-brand-subtle text-primary border-primary/20 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60',
       };
     case 'draft':
       return {

@@ -15,10 +15,10 @@ from pydantic import BaseModel, Field
 # Enums / Literals
 # ---------------------------------------------------------------------------
 
-LeadType = Literal["rental", "buyer", "seller"]
+LeadType = Literal["inbound", "outbound", "referral"]
 DealStatus = Literal["active", "won", "lost", "on_hold"]
 Priority = Literal["LOW", "MEDIUM", "HIGH"]
-ContactType = Literal["QUALIFICATION", "TOUR", "APPLICATION"]
+ContactType = Literal["QUALIFICATION", "DEMO", "APPLICATION"]
 DraftChannel = Literal["sms", "email", "note"]
 DraftStatus = Literal["pending", "approved", "dismissed", "sent"]
 ActionOutcome = Literal["completed", "queued_for_approval", "suggested", "failed"]
@@ -37,7 +37,7 @@ class Contact(BaseModel):
     email: str | None = None
     phone: str | None = None
     lead_type: LeadType | None = Field(None, alias="leadType")
-    address: str | None = None
+    company: str | None = None
     notes: str | None = None
     budget: float | None = None
     tags: list[str] = Field(default_factory=list)
@@ -68,7 +68,7 @@ class Deal(BaseModel):
     title: str
     description: str | None = None
     value: float | None = None
-    address: str | None = None
+    product_name: str | None = Field(None, alias="productName")
     priority: Priority = "MEDIUM"
     close_date: str | None = Field(None, alias="closeDate")
     stage_id: str | None = Field(None, alias="stageId")
@@ -97,7 +97,7 @@ class AgentSettings(BaseModel):
     """Per-space agent configuration.
 
     Autonomy modes, per-agent overrides, confidence thresholds, and the
-    enabled-agents list have all been retired — Chippi is one agent and
+    enabled-agents list have all been retired — Cola is one agent and
     every contact-facing action drafts. The DB columns still exist for
     backwards compat with the UI; we just don't read them. `extra="ignore"`
     keeps existing rows loadable without a migration.
@@ -107,7 +107,7 @@ class AgentSettings(BaseModel):
     space_id: str = Field(alias="spaceId")
     enabled: bool = False
     daily_token_budget: int = Field(50_000, alias="dailyTokenBudget")
-    # Realtor-picked primary chat model (OpenRouter slug). None = app default.
+    # Seller-picked primary chat model (OpenRouter slug). None = app default.
     chat_model: str | None = Field(None, alias="chatModel")
 
     model_config = {"populate_by_name": True, "extra": "ignore"}

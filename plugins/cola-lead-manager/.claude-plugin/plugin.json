@@ -1,0 +1,8 @@
+{
+  "name": "cola-lead-manager",
+  "description": "Manage your rental leads from Claude. View hot leads, check follow-ups, and add new leads using your Cola CRM data.",
+  "version": "1.0.0",
+  "author": { "name": "Cola", "url": "https://usecola.com" },
+  "homepage": "https://usecola.com",
+  "keywords": ["crm", "leads", "real-estate", "cola"]
+}

@@ -1,24 +1,24 @@
 /**
- * Per-realtor context that gets folded into the agent's system prompt at
+ * Per-seller context that gets folded into the agent's system prompt at
  * the start of a chat turn.
  *
  * Why this exists — Musk lens: the prior prompt only knew the workspace
  * name and today's date. The agent saying "Hi user" or having to call
  * `pipeline_summary` to answer "what's pressing today" is the symptom.
  * Loading a tight snapshot once per turn (cached for 5 minutes per space)
- * gives the model the realtor's name + the loudest pipeline facts before
+ * gives the model the seller's name + the loudest pipeline facts before
  * it picks up a tool. It saves tool calls AND sounds like the agent knows
- * the realtor.
+ * the seller.
  *
  * What it pulls:
- *   - Realtor's first name (Clerk → User table)
+ *   - Seller's first name (Clerk → User table)
  *   - Counts: active deals, hot persons, overdue follow-ups, pending drafts
  *   - Connected integrations (just the names, so the prompt can reference
- *     them by realtor verb without naming SDK tool slugs)
+ *     them by seller verb without naming SDK tool slugs)
  *
  * What it does NOT pull:
  *   - Full timelines or activity dumps. The agent has tools for that.
- *   - PII beyond first name. The model shouldn't be reciting the realtor's
+ *   - PII beyond first name. The model shouldn't be reciting the seller's
  *     phone number back at them.
  *
  * Cache: same Map+TTL pattern as `context-enrichment.ts`. Five minutes is
@@ -28,6 +28,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { activeToolkits } from '@/lib/integrations/connections';
 import { findIntegration } from '@/lib/integrations/catalog';
@@ -42,7 +43,7 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 
 export interface PersonalizedSnapshot {
-  /** Realtor's first name. Null if we couldn't resolve. */
+  /** Seller's first name. Null if we couldn't resolve. */
   firstName: string | null;
   /** Active deals (status='active'). */
   activeDealCount: number;
@@ -50,7 +51,7 @@ export interface PersonalizedSnapshot {
   hotPersonCount: number;
   /** Contacts whose followUpAt is in the past. */
   overdueFollowUpCount: number;
-  /** Pending AgentDraft rows the realtor needs to decide on. */
+  /** Pending AgentDraft rows the seller needs to decide on. */
   pendingDraftCount: number;
   /** Connected integrations, mapped to display names. Empty when none. */
   connectedApps: string[];
@@ -113,11 +114,10 @@ async function loadFresh(args: SnapshotKey): Promise<PersonalizedSnapshot> {
         .eq('spaceId', args.spaceId)
         .is('snoozedUntil', null)
         .lt('followUpAt', nowIso),
-      supabase
-        .from('AgentDraft')
-        .select('id', { count: 'exact', head: true })
-        .eq('spaceId', args.spaceId)
-        .eq('status', 'pending'),
+      convex().query(api.agent.drafts.countBySpaceStatus, {
+        spaceId: args.spaceId,
+        status: 'pending',
+      }),
       activeToolkits({ spaceId: args.spaceId, userId: args.userId }),
     ]);
 
@@ -141,7 +141,7 @@ async function loadFresh(args: SnapshotKey): Promise<PersonalizedSnapshot> {
     empty.overdueFollowUpCount = overdueResult.value.count ?? 0;
   }
   if (draftsResult.status === 'fulfilled') {
-    empty.pendingDraftCount = draftsResult.value.count ?? 0;
+    empty.pendingDraftCount = draftsResult.value ?? 0;
   }
   if (toolkitsResult.status === 'fulfilled') {
     const slugs = toolkitsResult.value;
@@ -162,7 +162,7 @@ async function loadFresh(args: SnapshotKey): Promise<PersonalizedSnapshot> {
 export function renderSnapshot(s: PersonalizedSnapshot): string {
   const lines: string[] = [];
   if (s.firstName) {
-    lines.push(`Realtor: ${s.firstName}.`);
+    lines.push(`Seller: ${s.firstName}.`);
   }
   const facts: string[] = [];
   if (s.activeDealCount > 0) {

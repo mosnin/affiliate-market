@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { audit } from '@/lib/audit';
 import { formConfigSchema } from '@/lib/form-config-schema';
@@ -21,12 +21,10 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { space } = auth;
 
-  const { data: settings, error } = await supabase
-    .from('SpaceSetting')
-    .select('rentalFormConfig, buyerFormConfig, formConfig, formConfigSource, rentalScoringModel, buyerScoringModel')
-    .eq('spaceId', space.id)
-    .maybeSingle();
-  if (error) {
+  let settings;
+  try {
+    settings = await convex().query(api.workspace.settings.getBySpace, { spaceId: space.id });
+  } catch (error) {
     console.error('[form-config] GET query failed', error);
     return NextResponse.json({ error: 'Failed to fetch form config' }, { status: 500 });
   }
@@ -34,7 +32,7 @@ export async function GET(req: NextRequest) {
   // Backwards compatibility: if rentalFormConfig is null but old formConfig exists, use it
   let rentalFormConfig = settings?.rentalFormConfig ?? null;
   const buyerFormConfig = settings?.buyerFormConfig ?? null;
-  const formConfigSource: 'custom' | 'brokerage' | 'legacy' =
+  const formConfigSource: 'custom' | 'company' | 'legacy' =
     settings?.formConfigSource ?? 'legacy';
 
   if (!rentalFormConfig && settings?.formConfig) {
@@ -108,35 +106,15 @@ export async function PUT(req: NextRequest) {
   // Determine which column to write to
   const column = leadType === 'rental' ? 'rentalFormConfig' : 'buyerFormConfig';
 
-  // Upsert into SpaceSetting
-  const { data: existing } = await supabase
-    .from('SpaceSetting')
-    .select('id')
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  if (existing) {
-    const { error: updateErr } = await supabase
-      .from('SpaceSetting')
-      .update({ [column]: formConfig, formConfigSource: 'custom' })
-      .eq('spaceId', space.id);
-    if (updateErr) {
-      console.error('[form-config] update failed', updateErr);
-      return NextResponse.json({ error: 'Failed to save form config' }, { status: 500 });
-    }
-  } else {
-    const { error: insertErr } = await supabase
-      .from('SpaceSetting')
-      .insert({
-        id: crypto.randomUUID(),
-        spaceId: space.id,
-        [column]: formConfig,
-        formConfigSource: 'custom',
-      });
-    if (insertErr) {
-      console.error('[form-config] insert failed', insertErr);
-      return NextResponse.json({ error: 'Failed to save form config' }, { status: 500 });
-    }
+  // Upsert into SpaceSetting (insert-or-patch is one serializable mutation)
+  try {
+    await convex().mutation(api.workspace.settings.upsertBySpace, {
+      spaceId: space.id,
+      fields: { [column]: formConfig, formConfigSource: 'custom' },
+    });
+  } catch (saveErr) {
+    console.error('[form-config] save failed', saveErr);
+    return NextResponse.json({ error: 'Failed to save form config' }, { status: 500 });
   }
 
   void audit({
@@ -151,18 +129,12 @@ export async function PUT(req: NextRequest) {
   // Fire-and-forget: generate scoring model in background after saving form config
   const scoringColumn = leadType === 'rental' ? 'rentalScoringModel' : 'buyerScoringModel';
   void generateScoringModel(formConfig)
-    .then((scoringModel) => {
-      return supabase
-        .from('SpaceSetting')
-        .update({ [scoringColumn]: scoringModel })
-        .eq('spaceId', space.id);
-    })
-    .then(({ error: scoringErr }) => {
-      if (scoringErr) {
-        console.error('[form-config] Failed to save auto-generated scoring model', scoringErr);
-      } else {
-        console.info('[form-config] Auto-generated scoring model saved', { spaceId: space.id, leadType });
-      }
+    .then(async (scoringModel) => {
+      await convex().mutation(api.workspace.settings.upsertBySpace, {
+        spaceId: space.id,
+        fields: { [scoringColumn]: scoringModel },
+      });
+      console.info('[form-config] Auto-generated scoring model saved', { spaceId: space.id, leadType });
     })
     .catch((err) => {
       console.warn('[form-config] Scoring model generation failed (non-blocking)', err);
@@ -213,11 +185,9 @@ export async function DELETE(req: NextRequest) {
   // If not, both configs are now null and we should reset source to legacy.
   let resolvedSource: 'custom' | 'legacy' = leadType ? 'custom' : 'legacy';
   if (leadType) {
-    const { data: currentSettings } = await supabase
-      .from('SpaceSetting')
-      .select('rentalFormConfig, buyerFormConfig')
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const currentSettings = await convex().query(api.workspace.settings.getBySpace, {
+      spaceId: space.id,
+    });
 
     const otherColumn = leadType === 'rental' ? 'buyerFormConfig' : 'rentalFormConfig';
     const otherConfigExists = currentSettings?.[otherColumn] != null;
@@ -229,12 +199,12 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
-  const { error: updateErr } = await supabase
-    .from('SpaceSetting')
-    .update(updates)
-    .eq('spaceId', space.id);
-
-  if (updateErr) {
+  try {
+    await convex().mutation(api.workspace.settings.upsertBySpace, {
+      spaceId: space.id,
+      fields: updates,
+    });
+  } catch (updateErr) {
     console.error('[form-config] delete failed', updateErr);
     return NextResponse.json({ error: 'Failed to reset form config' }, { status: 500 });
   }

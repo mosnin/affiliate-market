@@ -6,7 +6,7 @@
  *
  * IMPORTANT: This endpoint never sends email or SMS. It triggers the same
  * Modal agent path the manual "Run now" and the 4-hour sweep use — the run
- * produces AgentDraft rows with status 'pending'. Only the realtor approving
+ * produces AgentDraft rows with status 'pending'. Only the seller approving
  * a draft fires an outbound channel.
  *
  * Auth: Bearer ${CRON_SECRET}. Disable: set CRON_ROUTINES_DISABLED=1.
@@ -16,7 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { fireRoutineRun } from '@/lib/routines';
 import { monitorCron } from '@/lib/cron-monitor';
 
@@ -53,19 +53,17 @@ async function handler(req: NextRequest) {
   const nowIso = new Date().toISOString();
 
   // ── 1. Due routines ─────────────────────────────────────────────────────
-  const { data: dueRows, error: dueErr } = await supabase
-    .from('Routine')
-    .select('id, spaceId, instruction')
-    .eq('enabled', true)
-    .lte('nextRunAt', nowIso)
-    .order('nextRunAt', { ascending: true })
-    .limit(MAX_PER_TICK);
-  if (dueErr) {
+  let due: DueRoutine[];
+  try {
+    due = (await convex().query(api.agent.routines.due, {
+      now: nowIso,
+      limit: MAX_PER_TICK,
+    })) as DueRoutine[];
+  } catch (dueErr) {
     console.error('[cron/routines] Failed to load due routines', dueErr);
     return NextResponse.json({ error: 'DB query failed' }, { status: 500 });
   }
 
-  const due = (dueRows ?? []) as DueRoutine[];
   if (due.length === 0) {
     return NextResponse.json({ due: 0, fired: 0, skipped: 0, durationMs: Date.now() - startedAt });
   }
@@ -77,15 +75,14 @@ async function handler(req: NextRequest) {
   // tools for the right entity. (The Modal side can resolve this itself but
   // a silent null breaks integrations; passing it explicitly removes that.)
   const spaceIds = [...new Set(due.map((r) => r.spaceId))];
-  const { data: spaceRows, error: spaceErr } = await supabase
-    .from('Space')
-    .select('id, ownerId, stripeSubscriptionStatus')
-    .in('id', spaceIds);
-  if (spaceErr) {
+  let spaceRows: { id: string; ownerId: string; stripeSubscriptionStatus: string }[];
+  try {
+    spaceRows = await convex().query(api.workspace.spaces.listByIds, { ids: spaceIds });
+  } catch (spaceErr) {
     console.error('[cron/routines] Failed to load spaces', spaceErr);
     return NextResponse.json({ error: 'DB query failed' }, { status: 500 });
   }
-  const activeSpaceRows = (spaceRows ?? []).filter((s) =>
+  const activeSpaceRows = spaceRows.filter((s) =>
     ['active', 'trialing'].includes(s.stripeSubscriptionStatus as string),
   );
   const activeSpaces = new Set(activeSpaceRows.map((s) => s.id as string));
@@ -98,16 +95,13 @@ async function handler(req: NextRequest) {
   const clerkIdByOwner = new Map<string, string>();
   const ownerIds = [...new Set(ownerIdsBySpace.values())];
   if (ownerIds.length > 0) {
-    const { data: userRows, error: userErr } = await supabase
-      .from('User')
-      .select('id, clerkId')
-      .in('id', ownerIds);
-    if (userErr) {
-      console.warn('[cron/routines] Failed to load owners — running without userId', userErr);
-    } else {
-      for (const u of userRows ?? []) {
+    try {
+      const userRows = await convex().query(api.org.users.listByIds, { ids: ownerIds });
+      for (const u of userRows) {
         if (u.clerkId) clerkIdByOwner.set(u.id as string, u.clerkId as string);
       }
+    } catch (userErr) {
+      console.warn('[cron/routines] Failed to load owners — running without userId', userErr);
     }
   }
 
@@ -134,12 +128,14 @@ async function handler(req: NextRequest) {
       if (status === 'ok') fired++;
       else errored++;
 
-      // Stamping lastRunAt fires the trigger that advances nextRunAt — even
+      // Stamping lastRunAt advances nextRunAt (the PG trigger's port) — even
       // on 'error', so a permanently failing dispatch can't jam the queue.
-      await supabase
-        .from('Routine')
-        .update({ lastRunAt: new Date().toISOString(), lastRunStatus: status })
-        .eq('id', routine.id);
+      // Scoped to the routine's own (id, spaceId).
+      await convex().mutation(api.agent.routines.stampRun, {
+        id: routine.id,
+        spaceId: routine.spaceId,
+        lastRunStatus: status,
+      });
     }
   }
 

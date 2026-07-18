@@ -1,0 +1,83 @@
+import { getManagerContext } from '@/lib/permissions';
+import { convex, api } from '@/lib/convex-server';
+import { redirect } from 'next/navigation';
+import { CompanyMcpSection } from '../mcp-section';
+import {
+  H1,
+  TITLE_FONT,
+  BODY_MUTED,
+  SECTION_RHYTHM,
+  READING_MAX,
+} from '@/lib/typography';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = { title: 'MCP — Manager Settings' };
+
+export default async function ManagerSettingsMcpPage() {
+  const ctx = await getManagerContext();
+  if (!ctx) redirect('/');
+
+  const { company, membership } = ctx;
+  const canEdit = membership.role === 'manager_owner' || membership.role === 'manager_admin';
+
+  if (!canEdit) {
+    return (
+      <div className={`${SECTION_RHYTHM} ${READING_MAX} pb-56 md:pb-24`}>
+        <header className="space-y-1.5">
+          <p className={BODY_MUTED}>Settings.</p>
+          <h1 className={H1} style={TITLE_FONT}>
+            MCP
+          </h1>
+          <p className={BODY_MUTED}>Read-only for your role.</p>
+        </header>
+        <p className={BODY_MUTED}>
+          Only the company owner or admins can manage MCP keys.
+        </p>
+      </div>
+    );
+  }
+
+  // Find the manager owner's space slug for MCP key management
+  const ownerSpace = await convex().query(api.workspace.spaces.getByOwnerId, {
+    ownerId: company.ownerId,
+  });
+  const managerSpaceSlug = ownerSpace?.slug ?? null;
+
+  if (!managerSpaceSlug) {
+    return (
+      <div className={`${SECTION_RHYTHM} ${READING_MAX} pb-56 md:pb-24`}>
+        <header className="space-y-1.5">
+          <p className={BODY_MUTED}>Settings.</p>
+          <h1 className={H1} style={TITLE_FONT}>
+            MCP
+          </h1>
+          <p className={BODY_MUTED}>
+            Connect external AI tools to your company data via MCP.
+          </p>
+        </header>
+        <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-10 text-center">
+          <p className="text-sm text-foreground">MCP isn&apos;t available yet.</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            The company owner needs a workspace before keys can be generated.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${SECTION_RHYTHM} ${READING_MAX} pb-56 md:pb-24`}>
+      <header className="space-y-1.5">
+        <p className={BODY_MUTED}>Settings.</p>
+        <h1 className={H1} style={TITLE_FONT}>
+          MCP
+        </h1>
+        <p className={BODY_MUTED}>
+          Connect external AI tools (Claude, Cursor, Windsurf) to {company.name}.
+        </p>
+      </header>
+
+      <CompanyMcpSection slug={managerSpaceSlug} />
+    </div>
+  );
+}

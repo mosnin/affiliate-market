@@ -23,10 +23,10 @@
  *
  * IMPORTANT — what this signal is and isn't: 'deal_advanced' is correlation,
  * not causation. Multiple drafts can fire near a single stage advance, and
- * the realtor can advance by hand. Read it as "drafts that lined up with deal
+ * the seller can advance by hand. Read it as "drafts that lined up with deal
  * progress" — useful as a relative ranking signal, not a hard scoreboard.
  *
- * Auth: Bearer ${CRON_SECRET} (matches agent-sweep, broker-weekly-report).
+ * Auth: Bearer ${CRON_SECRET} (matches agent-sweep, manager-weekly-report).
  * Disable: set CRON_OUTCOMES_DISABLED=1 to short-circuit.
  *
  * Never sends email or SMS. Read-mostly; only writes outcome_signal /
@@ -35,6 +35,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { monitorCron } from '@/lib/cron-monitor';
 
 // Window edges. Adjust here, not at the call site.
@@ -89,22 +90,18 @@ async function handler(req: NextRequest) {
   const upperBound = new Date(now - CHECK_DELAY_MS).toISOString();
 
   // ── 1. Pull candidate drafts ─────────────────────────────────────────────
-  const { data: drafts, error: draftsErr } = await supabase
-    .from('AgentDraft')
-    .select('id, spaceId, dealId, updatedAt')
-    .eq('status', 'sent')
-    .is('outcome_signal', null)
-    .gte('updatedAt', lowerBound)
-    .lte('updatedAt', upperBound)
-    .order('updatedAt', { ascending: true })
-    .limit(BATCH_CAP);
-
-  if (draftsErr) {
+  let draftRows: DraftRow[];
+  try {
+    draftRows = (await convex().query(api.agent.drafts.outcomeCandidates, {
+      lowerBound,
+      upperBound,
+      limit: BATCH_CAP,
+    })) as DraftRow[];
+  } catch (draftsErr) {
     console.error('[cron/draft-outcomes] Failed to load drafts', draftsErr);
     return NextResponse.json({ error: 'DB query failed' }, { status: 500 });
   }
 
-  const draftRows = (drafts ?? []) as DraftRow[];
   if (draftRows.length === 0) {
     return NextResponse.json({
       processed: 0,
@@ -164,16 +161,18 @@ async function handler(req: NextRequest) {
   for (const draft of draftRows) {
     const signal = classifyDraft(draft, dealsById, stageKindsById);
 
-    const { error: updErr } = await supabase
-      .from('AgentDraft')
-      .update({
-        outcome_signal: signal,
-        outcome_checked_at: checkedAt,
-      })
-      .eq('id', draft.id)
-      .is('outcome_signal', null); // race guard: don't clobber a value set elsewhere
-
-    if (updErr) {
+    // labelOutcome carries the `.is('outcome_signal', null)` race guard
+    // internally (it no-ops on an already-labelled row). Counting mirrors the
+    // old behavior: advanced/none tally on a successful call regardless of
+    // whether the guard let the write land; only a thrown error counts as
+    // errored.
+    try {
+      await convex().mutation(api.agent.drafts.labelOutcome, {
+        id: draft.id,
+        outcomeSignal: signal,
+        checkedAt,
+      });
+    } catch (updErr) {
       errored += 1;
       console.error('[cron/draft-outcomes] Failed to update draft', { id: draft.id, error: updErr });
       continue;

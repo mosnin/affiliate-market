@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * IntakeChat — the realtor's intake form rendered as a chat.
+ * IntakeChat — the seller's intake form rendered as a chat.
  *
  * The flow, the questions, the customization, the validation, and the
  * submission contract are exactly what the dynamic form did. Only the
- * presentation changed. Each question becomes a Chippi turn; the matching
+ * presentation changed. Each question becomes a Cola turn; the matching
  * input widget appears inline below it. Tap-to-submit on choice questions;
  * type + send on free-text. When the question list is exhausted (respecting
  * `visibleWhen`), we POST to /api/public/apply with the same payload shape
@@ -17,7 +17,7 @@
  *     AI agent" feel is a presentational layer over a deterministic
  *     state machine.
  *   - It is NOT a redesign of the form-builder or the customization
- *     surface. Realtors edit their questions in the existing form
+ *     surface. Sellers edit their questions in the existing form
  *     builder; the chat presents them.
  *
  * Validation is sourced from `validateQuestion()` in the form-renderer
@@ -84,7 +84,7 @@ export interface IntakeChatProps {
   buyerFormConfig?: IntakeFormConfig | null;
   formConfig?: IntakeFormConfig | null;
   customization: IntakeChatCustomization;
-  brokerageId?: string;
+  companyId?: string;
 }
 
 // ── Synthetic lead-type question (dual-config flows) ─────────────────────────
@@ -158,7 +158,7 @@ function isTapToSubmit(type: FormQuestion['type']): boolean {
 function buildApplicationPayload(args: {
   slug: string;
   spaceId: string;
-  brokerageId?: string;
+  companyId?: string;
   leadType: LeadType;
   answers: AnswerMap;
   formConfigVersion: number;
@@ -168,7 +168,7 @@ function buildApplicationPayload(args: {
   const {
     slug,
     spaceId,
-    brokerageId,
+    companyId,
     leadType,
     answers,
     formConfigVersion,
@@ -189,7 +189,7 @@ function buildApplicationPayload(args: {
     ...answers,
     slug,
     spaceId,
-    ...(brokerageId ? { brokerageId } : {}),
+    ...(companyId ? { companyId } : {}),
     leadType,
     formLeadType: leadType,
     name: systemName,
@@ -198,14 +198,14 @@ function buildApplicationPayload(args: {
     phone: systemPhone,
     additionalNotes: at('additionalNotes') ?? at('notes'),
     targetMoveInDate: at('targetMoveInDate') ?? at('moveTiming'),
-    propertyAddress: at('propertyAddress') ?? at('location'),
+    productAddress: at('productAddress') ?? at('location'),
     monthlyRent: at('monthlyRent') ?? at('budget'),
     monthlyGrossIncome: at('monthlyGrossIncome') ?? at('income'),
     employmentStatus: at('employmentStatus') ?? at('employment'),
     numberOfOccupants: at('numberOfOccupants') ?? at('occupants'),
     buyerBudget: at('buyerBudget'),
     preApprovalStatus: at('preApprovalStatus'),
-    propertyType: at('propertyType'),
+    productType: at('productType'),
     buyerTimeline: at('buyerTimeline'),
     ...(privacyConsent !== undefined ? { privacyConsent } : {}),
     sourceLabel: 'intake-chat',
@@ -227,11 +227,11 @@ export function IntakeChat({
   buyerFormConfig,
   formConfig: legacyFormConfig,
   customization,
-  brokerageId,
+  companyId,
 }: IntakeChatProps) {
-  // Flow resolution. When no realtor-customized config is supplied, fall
+  // Flow resolution. When no seller-customized config is supplied, fall
   // back to the library defaults so the chat always has questions to ask
-  // (this is what makes the brokerage variant work without configuration).
+  // (this is what makes the company variant work without configuration).
   const hasAnyConfig =
     Boolean(rentalFormConfig) || Boolean(buyerFormConfig) || Boolean(legacyFormConfig);
   const effectiveRental: IntakeFormConfig | null = hasAnyConfig
@@ -400,7 +400,7 @@ export function IntakeChat({
     const payload = buildApplicationPayload({
       slug,
       spaceId,
-      brokerageId,
+      companyId,
       leadType,
       answers,
       formConfigVersion: activeConfig.version,
@@ -465,14 +465,14 @@ export function IntakeChat({
   // CurrentQuestion. Past user turns stay as accent-tinted bubbles —
   // they ARE the lead's answers in the lead's voice.
   //
-  // The Chippi intro shows ONCE, before the first question is answered.
+  // The Cola intro shows ONCE, before the first question is answered.
   // Calm, single-sentence chief-of-staff voice (STYLESHEET.md → Voice).
   // It establishes who's running the conversation without stealing focus
-  // from the realtor's hero or the question itself.
-  const showChippiIntro = phase === 'asking' && answeredCount === 0;
+  // from the seller's hero or the question itself.
+  const showColaIntro = phase === 'asking' && answeredCount === 0;
 
   // End-of-flow transition: when the application is submitted, the chat
-  // history, progress bar, and Chippi intro all disappear and the success
+  // history, progress bar, and Cola intro all disappear and the success
   // card takes over the full surface. Anything else stacks confirmation
   // below the last question — which reads as "you submitted, here's a
   // receipt below your conversation" instead of "you're done, well done."
@@ -502,8 +502,8 @@ export function IntakeChat({
         />
       )}
 
-      {showChippiIntro && (
-        <ChippiIntro agentName={agentName} />
+      {showColaIntro && (
+        <ColaIntro agentName={agentName} />
       )}
 
       {turns.map((turn) => {
@@ -563,9 +563,9 @@ export { IntakeChat as IntakeChatView };
 // ─── Progress + turn renderers ───────────────────────────────────────────────
 
 /**
- * Slim segmented progress bar that lives between the realtor hero and the
+ * Slim segmented progress bar that lives between the seller hero and the
  * conversation. One segment per visible question; segments before the
- * cursor fill with the realtor's accent color, the live segment animates
+ * cursor fill with the seller's accent color, the live segment animates
  * to half-opacity, the rest stay muted.
  *
  * Why bars (and not "Question 3 of 14" text)? Because applicants don't
@@ -621,16 +621,16 @@ function ProgressBar({
 }
 
 /**
- * Chippi's calm intro — shown once, before the lead has answered any
+ * Cola's calm intro — shown once, before the lead has answered any
  * questions. Chief-of-staff voice (STYLESHEET.md → Voice): one sentence,
  * period, no exclamation marks, no "Welcome!" / "Get started!". It names
- * Chippi and the realtor in one breath so the applicant knows who's
+ * Cola and the seller in one breath so the applicant knows who's
  * actually doing the work and who they're applying to.
  *
  * Visually it's a small inline caption — text-xs muted, no chrome, no
  * pill. It belongs to the conversation's quiet preamble, not to a CTA.
  */
-function ChippiIntro({ agentName }: { agentName: string }) {
+function ColaIntro({ agentName }: { agentName: string }) {
   return (
     <motion.p
       initial={{ opacity: 0 }}
@@ -638,7 +638,7 @@ function ChippiIntro({ agentName }: { agentName: string }) {
       transition={{ duration: DURATION_BASE, ease: EASE_OUT, delay: 0.05 }}
       className="text-xs text-muted-foreground leading-relaxed"
     >
-      Hi — I&rsquo;m Chippi. I work with {agentName}. A few quick questions
+      Hi — I&rsquo;m Cola. I work with {agentName}. A few quick questions
       and they&rsquo;ll know exactly what to send you.
     </motion.p>
   );
@@ -664,7 +664,7 @@ function PastAssistantTurn({ text }: { text: string }) {
 }
 
 function UserTurn({ text, accentColor }: { text: string; accentColor: string }) {
-  // Accent-tinted bubble — the realtor's brand color at low opacity with
+  // Accent-tinted bubble — the seller's brand color at low opacity with
   // foreground text. Reads as "this is your voice" without the
   // confrontational pure-black slab the old `bg-foreground` produced. The
   // accent border at 30% gives the bubble a defined edge without becoming
@@ -712,7 +712,7 @@ function CurrentQuestion({
 }: CurrentQuestionProps) {
   // The active question is the page's one focal element. Serif Times,
   // tight tracking, generous breathing room above the input. Mirrors the
-  // page-title pattern used everywhere else in Chippi (STYLESHEET.md →
+  // page-title pattern used everywhere else in Cola (STYLESHEET.md →
   // "The status-sentence pattern" and `H1` in lib/typography.ts).
   //
   // Description, when present, reads as a quiet helper line under the
@@ -753,7 +753,7 @@ function CurrentQuestion({
           error,
         })}
         {error && (
-          <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>
+          <p className="mt-2 text-xs text-negative dark:text-negative">{error}</p>
         )}
         {!question.required && question.type !== 'checkbox' && (
           <div className="mt-3 flex justify-start">
@@ -932,7 +932,7 @@ function ChoiceChips({ question, value, onChange, onCommit, accentColor }: Input
 }
 
 function YesNoChoice({ onCommit, accentColor }: InputProps) {
-  // Boolean checkbox → present as two tappable cards. The realtor's
+  // Boolean checkbox → present as two tappable cards. The seller's
   // original `question.label` (e.g. "I agree to the privacy policy.")
   // already lives in the assistant turn above; here we just need a clear
   // affirmative/negative choice.
@@ -973,7 +973,7 @@ function DateField({ value, onChange, onCommit, accentColor, error }: InputProps
           'flex-1 h-11 rounded-xl border bg-background px-4 text-[15px]',
           'transition-colors duration-150',
           error
-            ? 'border-rose-500/60'
+            ? 'border-negative/20'
             : 'border-border/70 focus:border-foreground/40 focus:outline-none',
         )}
       />
@@ -1009,7 +1009,7 @@ const EMAIL_INLINE_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function ChatComposer({ question, value, onChange, onCommit, accentColor, error }: InputProps) {
   // Modern chat composer: rounded pill containing the input + a circular
-  // send button. Mirrors the realtor-facing Chippi composer in shape.
+  // send button. Mirrors the seller-facing Cola composer in shape.
   const v = typeof value === 'string' ? value : '';
   const isTextarea = question.type === 'textarea';
   const inputType =
@@ -1095,7 +1095,7 @@ function ChatComposer({ question, value, onChange, onCommit, accentColor, error 
           'flex items-end gap-2 rounded-3xl border bg-background pl-4 pr-2 py-1.5',
           'transition-colors duration-150',
           error || showInlineError
-            ? 'border-rose-500/60'
+            ? 'border-negative/20'
             : 'border-border/70 focus-within:border-foreground/40',
         )}
       >
@@ -1158,7 +1158,7 @@ function ChatComposer({ question, value, onChange, onCommit, accentColor, error 
       </div>
       {showInlineError && (
         <p
-          className="px-2 text-xs text-rose-600 dark:text-rose-400"
+          className="px-2 text-xs text-negative dark:text-negative"
           role="status"
         >
           {inlineEmailError}
@@ -1217,7 +1217,7 @@ function PrimaryActionButton({
  * Add an alpha channel to a hex/rgb-style color string. Mirrors the
  * shell's helper — kept local so the chat doesn't need to import from a
  * sibling component file. Returns the input untouched on unknown formats
- * so a malformed realtor accent color never crashes the page.
+ * so a malformed seller accent color never crashes the page.
  */
 function withAlpha(color: string, alpha: number): string {
   const a = Math.max(0, Math.min(1, alpha));
@@ -1281,7 +1281,7 @@ function ErrorTurn({
       role="alert"
     >
       <div className="flex items-start gap-2.5 text-sm text-foreground">
-        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-negative dark:text-negative" />
         <p>{message}</p>
       </div>
       <button

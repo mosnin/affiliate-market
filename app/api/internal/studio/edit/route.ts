@@ -1,11 +1,11 @@
 /**
- * POST /api/internal/studio/edit — internal edit endpoint for the Chippi
+ * POST /api/internal/studio/edit — internal edit endpoint for the Cola
  * agent (Modal/Python). Authed by AGENT_INTERNAL_SECRET, not Clerk. Edits an
  * existing File the agent references by id (e.g. an image it just generated).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { falConfigured } from '@/lib/studio/fal';
 import { checkStudioSpendBudget } from '@/lib/studio/spend';
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Daily spend cap — shared budget with the realtor-facing routes.
+  // Daily spend cap — shared budget with the seller-facing routes.
   const budget = await checkStudioSpendBudget(spaceId);
   if (!budget.allowed) {
     return NextResponse.json(
@@ -64,19 +64,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Resolve the space owner's Clerk userId for the File / generation rows.
-  const { data: spaceRow } = await supabase
-    .from('Space')
-    .select('ownerId')
-    .eq('id', spaceId)
-    .maybeSingle();
+  const spaceRow = await convex().query(api.workspace.spaces.getById, { id: spaceId });
   if (!spaceRow?.ownerId) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 });
   }
-  const { data: ownerRow } = await supabase
-    .from('User')
-    .select('clerkId')
-    .eq('id', spaceRow.ownerId as string)
-    .maybeSingle();
+  const ownerRow = await convex().query(api.org.users.getById, { id: spaceRow.ownerId as string });
   const userId = (ownerRow?.clerkId as string | undefined) ?? '';
   if (!userId) {
     return NextResponse.json({ error: 'Space owner not found' }, { status: 404 });

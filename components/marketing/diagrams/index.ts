@@ -15,7 +15,7 @@
  * slot did so page swaps stay layout-neutral.
  */
 
-export { ChippiDiagramShell } from './chippi-diagram-shell';
+export { ColaDiagramShell } from './cola-diagram-shell';
 export { ComposerDraftDiagram } from './composer-draft-diagram';
 export { KanbanDragDiagram } from './kanban-drag-diagram';
 export { LeadScoreDiagram } from './lead-score-diagram';

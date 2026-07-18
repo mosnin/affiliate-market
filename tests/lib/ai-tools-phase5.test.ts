@@ -48,6 +48,24 @@ vi.mock('@/lib/supabase', () => {
   return { supabase: { from: vi.fn((table: string) => makeChain(table)) } };
 });
 
+// ── Convex mock — Demo writes (schedule_demo) moved off Supabase. `api` is a
+// path proxy so any api.<domain>.<module>.<fn> access yields a callable ref
+// whose dotted path is recoverable via ref(). Steer with convexMutationMock.
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
 const { syncContactMock, syncDealMock } = vi.hoisted(() => ({
   syncContactMock: vi.fn(async () => undefined),
   syncDealMock: vi.fn(async () => undefined),
@@ -66,7 +84,7 @@ const { notifyNewDealMock } = vi.hoisted(() => ({ notifyNewDealMock: vi.fn(async
 vi.mock('@/lib/notify', () => ({ notifyNewDeal: notifyNewDealMock }));
 
 import { moveDealStageTool } from '@/lib/ai-tools/tools/move-deal-stage';
-import { scheduleTourTool } from '@/lib/ai-tools/tools/schedule-tour';
+import { scheduleDemoTool } from '@/lib/ai-tools/tools/schedule-demo';
 import { addChecklistItemTool } from '@/lib/ai-tools/tools/add-checklist-item';
 import { sendSmsTool } from '@/lib/ai-tools/tools/send-sms';
 import { createDealTool } from '@/lib/ai-tools/tools/create-deal';
@@ -87,6 +105,24 @@ beforeEach(() => {
   sendSMSMock.mockClear();
   sendSMSMock.mockResolvedValue(true);
   notifyNewDealMock.mockClear();
+  convexQueryMock.mockReset();
+  convexMutationMock.mockReset();
+  // Route Convex queries to mockByTable:
+  //   - api.contacts.contacts.getById → Contact table single (with companyId: null)
+  //   - api.demos.demos.create mutation → handled by convexMutationMock default
+  //   - api.contacts.activity.create / contacts.contacts.findByPhoneInSpace → null/void
+  convexQueryMock.mockImplementation(async (ref?: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('contacts.contacts.getById') || p.includes('contacts.contacts.findByPhoneInSpace')) {
+      const override = mockByTable['Contact'];
+      const raw = override?.single !== undefined ? override.single : (override?.rows?.[0] ?? null);
+      if (raw && !Object.prototype.hasOwnProperty.call(raw, 'companyId')) {
+        return { ...raw, companyId: null };
+      }
+      return raw;
+    }
+    return null;
+  });
 });
 
 // ── move_deal_stage ──────────────────────────────────────────────────────
@@ -119,15 +155,15 @@ describe('moveDealStageTool', () => {
   });
 });
 
-// ── schedule_tour ────────────────────────────────────────────────────────
-describe('scheduleTourTool', () => {
+// ── schedule_demo ────────────────────────────────────────────────────────
+describe('scheduleDemoTool', () => {
   it('requires approval', () => {
-    expect(scheduleTourTool.requiresApproval).toBe(true);
+    expect(scheduleDemoTool.requiresApproval).toBe(true);
   });
 
   it('rejects a schema with no invitee (neither contactId nor guest fields)', () => {
     expect(() =>
-      scheduleTourTool.parameters.parse({
+      scheduleDemoTool.parameters.parse({
         startsAt: '2026-05-01T14:00:00.000Z',
         endsAt: '2026-05-01T15:00:00.000Z',
       }),
@@ -136,7 +172,7 @@ describe('scheduleTourTool', () => {
 
   it('rejects when endsAt is not after startsAt', () => {
     expect(() =>
-      scheduleTourTool.parameters.parse({
+      scheduleDemoTool.parameters.parse({
         guestName: 'A',
         guestEmail: 'a@b.com',
         startsAt: '2026-05-01T15:00:00.000Z',
@@ -145,31 +181,29 @@ describe('scheduleTourTool', () => {
     ).toThrow();
   });
 
-  it('creates a tour for a walk-in guest', async () => {
-    mockByTable = {
-      Tour: {
-        single: {
-          id: 'tour_1',
-          startsAt: '2026-05-01T14:00:00.000Z',
-          endsAt: '2026-05-01T15:00:00.000Z',
-        },
-      },
-    };
-    const result = await scheduleTourTool.handler(
+  it('creates a demo for a walk-in guest', async () => {
+    // schedule_demo writes the Demo via api.demos.demos.create (Convex), which
+    // returns the mapped row.
+    convexMutationMock.mockResolvedValueOnce({
+      id: 'demo_1',
+      startsAt: '2026-05-01T14:00:00.000Z',
+      endsAt: '2026-05-01T15:00:00.000Z',
+    });
+    const result = await scheduleDemoTool.handler(
       {
         guestName: 'Walk-in',
         guestEmail: 'walk@in.com',
         startsAt: '2026-05-01T14:00:00.000Z',
         endsAt: '2026-05-01T15:00:00.000Z',
-        propertyAddress: '123 Main',
+        productAddress: '123 Main',
       },
       makeCtx(),
     );
-    expect(result.display).toBe('tours');
-    expect(result.summary).toMatch(/Tour scheduled/);
-    const tours = (result.data as { tours: { contactId: string | null }[] }).tours;
-    expect(tours).toHaveLength(1);
-    expect(tours[0].contactId).toBeNull();
+    expect(result.display).toBe('demos');
+    expect(result.summary).toMatch(/Demo scheduled/);
+    const demos = (result.data as { demos: { contactId: string | null }[] }).demos;
+    expect(demos).toHaveLength(1);
+    expect(demos[0].contactId).toBeNull();
   });
 });
 

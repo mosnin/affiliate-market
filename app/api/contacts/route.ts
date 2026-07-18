@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireSpaceOwner } from '@/lib/api-auth';
 import { syncContact } from '@/lib/vectorize';
 import { notifyNewContact } from '@/lib/notify';
@@ -22,71 +22,39 @@ export async function GET(req: NextRequest) {
   const includeSnoozed = req.nextUrl.searchParams.get('includeSnoozed') === '1';
   const onlySnoozed = req.nextUrl.searchParams.get('onlySnoozed') === '1';
 
-  let query = supabase
-    .from('Contact')
-    .select('*')
-    .eq('spaceId', space.id)
-    .is('brokerageId', null); // Exclude brokerage leads — those show on /broker/leads
-
-  if (!includeSnoozed && !onlySnoozed) {
-    query = query.or(`snoozedUntil.is.null,snoozedUntil.lte.${new Date().toISOString()}`);
-  } else if (onlySnoozed) {
-    query = query.gt('snoozedUntil', new Date().toISOString());
-  }
-
-  if (search) {
-    // Cap length to prevent expensive full-table-scan patterns
-    const limitedSearch = search.slice(0, 100).trim().toLowerCase();
-    // Forgiving multi-token search:
-    //   - split on whitespace into tokens
-    //   - each non-empty token must match (AND across tokens, via chained .or())
-    //   - each token can match ANY of name/email/phone/preferences (OR within token)
-    // Example: "jane hot" matches a contact named "Jane" tagged "hot".
-    const tokens = limitedSearch
-      .split(/\s+/)
-      .filter((t) => t.length > 0)
-      // Cap the number of tokens to avoid pathological queries
-      .slice(0, 8);
-
-    for (const token of tokens) {
-      // Escape PostgreSQL ILIKE special characters before wrapping in wildcards
-      const escaped = token.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-      // Strip PostgREST filter-breaking characters (commas, parens)
-      const sanitized = escaped.replace(/[,()]/g, '');
-      if (!sanitized) continue;
-      const pattern = `%${sanitized}%`;
-      // Chained .or() calls are AND-combined by PostgREST, giving us
-      // "(field OR field OR ...) AND (field OR field OR ...)" across tokens.
-      query = query.or(
-        `name.ilike.${pattern},email.ilike.${pattern},phone.ilike.${pattern},preferences.ilike.${pattern}`
-      );
-    }
-  }
-
-  if (type && type !== 'ALL') {
-    query = query.eq('type', type);
-  }
-
   // Pagination: default 500, max 1000
   const limitParam = parseInt(req.nextUrl.searchParams.get('limit') ?? '500', 10);
   const offsetParam = parseInt(req.nextUrl.searchParams.get('offset') ?? '0', 10);
   const limit = Math.min(Math.max(1, limitParam || 500), 1000);
   const offset = Math.max(0, offsetParam || 0);
 
-  const { data: contacts, error } = await query
-    .order('createdAt', { ascending: false })
-    .range(offset, offset + limit - 1);
-  if (error) {
+  // listForSpace replicates the same surface the SQL built: companyId IS NULL gate
+  // (excludeCompanyLeads), snooze hygiene (includeSnoozed/onlySnoozed), forgiving
+  // multi-token AND search over name/email/phone/preferences, type filter, and
+  // newest-first offset/limit paging.
+  let contacts;
+  try {
+    contacts = await convex().query(api.contacts.contacts.listForSpace, {
+      spaceId: space.id,
+      excludeCompanyLeads: true,
+      includeSnoozed,
+      onlySnoozed,
+      ...(search ? { search } : {}),
+      ...(type && type !== 'ALL' ? { type } : {}),
+      limit,
+      offset,
+    });
+  } catch (error) {
     console.error('[contacts/GET] query error:', error);
     return NextResponse.json({ error: 'Failed to fetch contacts' }, { status: 500 });
   }
 
-  return NextResponse.json(contacts as Contact[]);
+  return NextResponse.json(contacts as unknown as Contact[]);
 }
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { slug, name, email, phone, budget, preferences, properties, address, notes, type, tags } = body;
+  const { slug, name, email, phone, budget, preferences, products, address, notes, type, tags } = body;
 
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 });
@@ -115,27 +83,28 @@ export async function POST(req: NextRequest) {
 
   // Dedupe by email (case-insensitive) within this space. The intake flow
   // and CSV imports occasionally re-create the same person — better to
-  // hand back the existing record than make the realtor merge later.
+  // hand back the existing record than make the seller merge later.
   // No new DB constraint: case-mismatched emails would be rejected by a
   // unique index, which may not be desired across all data.
   if (emailVal) {
-    const { data: existing, error: dupErr } = await supabase
-      .from('Contact')
-      .select('id')
-      .eq('spaceId', space.id)
-      .ilike('email', emailVal)
-      .limit(1)
-      .maybeSingle();
-    if (!dupErr && existing) {
-      return NextResponse.json(
-        { id: existing.id, duplicate: true },
-        { status: 200 },
-      );
+    try {
+      const existing = await convex().query(api.contacts.contacts.findByEmailInSpace, {
+        spaceId: space.id,
+        email: emailVal,
+      });
+      if (existing) {
+        return NextResponse.json(
+          { id: existing.id, duplicate: true },
+          { status: 200 },
+        );
+      }
+    } catch {
+      // Match the old behavior: a failed dedup probe does not block creation.
     }
   }
 
-  const propsVal = Array.isArray(properties)
-    ? properties
+  const propsVal = Array.isArray(products)
+    ? products
         .filter((p: unknown): p is string => typeof p === 'string')
         .slice(0, 50)
         .map((p) => p.slice(0, 500))
@@ -147,30 +116,34 @@ export async function POST(req: NextRequest) {
         .map((t) => t.slice(0, 100))
     : [];
 
-  const VALID_TYPES = ['QUALIFICATION', 'TOUR', 'APPLICATION'] as const;
+  const VALID_TYPES = ['QUALIFICATION', 'DEMO', 'APPLICATION'] as const;
   const contactType = VALID_TYPES.includes(type) ? type : 'QUALIFICATION';
 
-  const { data: contact, error } = await supabase.from('Contact').insert({
-    id,
-    spaceId: space.id,
-    name: name.trim().slice(0, 200),
-    email: emailVal,
-    phone: phoneVal,
-    address: addressVal,
-    notes: notesVal,
-    type: contactType,
-    budget: budgetVal,
-    preferences: preferencesVal,
-    properties: propsVal,
-    tags: tagsVal,
-  }).select().single();
-  if (error) {
+  let contact;
+  try {
+    contact = await convex().mutation(api.contacts.contacts.create, {
+      id,
+      spaceId: space.id,
+      name: name.trim().slice(0, 200),
+      email: emailVal,
+      phone: phoneVal,
+      address: addressVal,
+      notes: notesVal,
+      type: contactType,
+      budget: budgetVal,
+      preferences: preferencesVal,
+      products: propsVal,
+      tags: tagsVal,
+    });
+  } catch (error) {
     console.error('[contacts/POST] insert error:', error);
     return NextResponse.json({ error: 'Failed to create contact' }, { status: 500 });
   }
 
-  // Async vectorization — don't block the response
-  syncContact(contact as Contact).catch(console.error);
+  // Async vectorization — don't block the response. Convex returns string
+  // timestamps; the legacy Contact type annotates them as Date (pre-migration
+  // fiction). Cast through unknown — syncContact reads ids/strings, not Dates.
+  syncContact(contact as unknown as Contact).catch(console.error);
 
   // SMS notification for new leads
   try {
@@ -183,7 +156,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) { console.error('[contacts] notification failed:', e); }
 
-  // Fire the agent trigger so Chippi can act on the new lead in real time
+  // Fire the agent trigger so Cola can act on the new lead in real time
   // instead of waiting for the 4-hour cron sweep. Never lets a trigger
   // failure fail the response — the contact write is what was requested.
   try {

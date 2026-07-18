@@ -1,12 +1,12 @@
 /**
- * E-signature via Composio — the realtor's OWN connected DocuSign account.
+ * E-signature via Composio — the seller's OWN connected DocuSign account.
  *
  * There is no platform DocuSign app, no JWT, no integration key, no token
  * storage here. DocuSign is a live Composio toolkit (see catalog.ts). The
- * realtor connects it through the same OAuth flow as Gmail/Slack; Composio
+ * seller connects it through the same OAuth flow as Gmail/Slack; Composio
  * owns the OAuth app and holds the tokens. We send and read envelopes on
- * the realtor's behalf by executing Composio DocuSign actions, scoped to
- * the realtor's Clerk userId (the Composio "entity").
+ * the seller's behalf by executing Composio DocuSign actions, scoped to
+ * the seller's Clerk userId (the Composio "entity").
  *
  * Every exported function gates cleanly: if DocuSign isn't connected or
  * Composio isn't configured, it returns a structured result — it never
@@ -26,6 +26,7 @@
 
 import { logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl, uploadObject, buildKey } from '@/lib/storage';
 import {
   composioConfigured,
@@ -127,9 +128,6 @@ export interface SignatureRequestRow {
   updatedAt: string;
 }
 
-const REQUEST_COLUMNS =
-  'id, spaceId, dealId, contactId, documentId, envelopeId, subject, signerEmail, signerName, status, signedDocumentUrl, completedAt, createdAt, updatedAt';
-
 /** Composio's execute response: { successful, data?, error? }. */
 interface ComposioExecuteResult {
   successful?: boolean;
@@ -139,7 +137,7 @@ interface ComposioExecuteResult {
 
 // ── Connection check ───────────────────────────────────────────────────────────
 
-/** True when the realtor has an active DocuSign connection on Composio. */
+/** True when the seller has an active DocuSign connection on Composio. */
 export async function isDocusignConnected(userId: string): Promise<boolean> {
   if (!composioConfigured()) return false;
   try {
@@ -233,7 +231,7 @@ function extractEnvelopeId(data: unknown): string | null {
 }
 
 /**
- * Send a stored document out for signature on the realtor's DocuSign account.
+ * Send a stored document out for signature on the seller's DocuSign account.
  * Fetches the document bytes, base64-encodes them, fires the Composio
  * CREATE_ENVELOPE action, and records a SignatureRequest row.
  */
@@ -284,7 +282,7 @@ export async function sendForSignature(
   const signerName = input.signerName?.trim() || signerEmail;
   const subject = (input.subject?.trim() || 'Please sign this document').slice(0, 200);
 
-  // 4. Fire the Composio CREATE_ENVELOPE action on the realtor's account.
+  // 4. Fire the Composio CREATE_ENVELOPE action on the seller's account.
   let envelopeId: string | null = null;
   try {
     const result = (await executeToolForEntity({
@@ -318,10 +316,9 @@ export async function sendForSignature(
   }
 
   // 5. Record the request.
-  const now = new Date().toISOString();
-  const { data: inserted, error: insertError } = await supabase
-    .from('SignatureRequest')
-    .insert({
+  let inserted: SignatureRequestRow;
+  try {
+    inserted = (await convex().mutation(api.portal.signatures.create, {
       spaceId: input.spaceId,
       dealId: input.dealId?.trim() || (doc.dealId as string | null) || null,
       contactId: input.contactId?.trim() || null,
@@ -331,21 +328,16 @@ export async function sendForSignature(
       signerEmail,
       signerName: input.signerName?.trim() || null,
       status: 'sent',
-      createdAt: now,
-      updatedAt: now,
-    })
-    .select(REQUEST_COLUMNS)
-    .single();
-
-  if (insertError || !inserted) {
+    })) as SignatureRequestRow;
+  } catch (err) {
     logger.error('[esign] insert failed after send', {
       envelopeId,
-      err: insertError?.message,
+      err: err instanceof Error ? err.message : String(err),
     });
     return { ok: false, reason: 'persist_failed' };
   }
 
-  return { ok: true, signatureRequest: inserted as SignatureRequestRow };
+  return { ok: true, signatureRequest: inserted };
 }
 
 // ── Refresh envelope status ────────────────────────────────────────────────────
@@ -428,14 +420,12 @@ export interface RefreshEnvelopeStatusInput {
 export async function refreshEnvelopeStatus(
   input: RefreshEnvelopeStatusInput,
 ): Promise<RefreshEnvelopeStatusResult> {
-  const { data: row, error: rowError } = await supabase
-    .from('SignatureRequest')
-    .select(REQUEST_COLUMNS)
-    .eq('id', input.signatureRequestId)
-    .maybeSingle();
+  const row = (await convex().query(api.portal.signatures.getById, {
+    id: input.signatureRequestId,
+  })) as SignatureRequestRow | null;
 
-  if (rowError || !row) return { ok: false, reason: 'not_found' };
-  const request = row as SignatureRequestRow;
+  if (!row) return { ok: false, reason: 'not_found' };
+  const request = row;
 
   // Terminal states never change — return as-is, no network call.
   if (
@@ -478,10 +468,7 @@ export async function refreshEnvelopeStatus(
   // No change → just bump updatedAt and return. (request.status is already
   // narrowed to non-terminal here, so an unchanged status can't be completed.)
   if (status === request.status) {
-    await supabase
-      .from('SignatureRequest')
-      .update({ updatedAt: new Date().toISOString() })
-      .eq('id', request.id);
+    await convex().mutation(api.portal.signatures.touch, { id: request.id });
     return { ok: true, signatureRequest: { ...request, status } };
   }
 
@@ -539,25 +526,28 @@ export async function refreshEnvelopeStatus(
     }
   }
 
-  const { data: updated, error: updateError } = await supabase
-    .from('SignatureRequest')
-    .update({
+  let updated: SignatureRequestRow | null;
+  try {
+    updated = (await convex().mutation(api.portal.signatures.applyStatus, {
+      id: request.id,
       status,
       signedDocumentUrl,
       completedAt,
-      updatedAt: new Date().toISOString(),
-    })
-    .eq('id', request.id)
-    .select(REQUEST_COLUMNS)
-    .single();
+    })) as SignatureRequestRow | null;
+  } catch (err) {
+    logger.error('[esign] status persist failed', {
+      id: request.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    updated = null;
+  }
 
-  if (updateError || !updated) {
-    logger.error('[esign] status persist failed', { id: request.id, err: updateError?.message });
+  if (!updated) {
     return {
       ok: true,
       signatureRequest: { ...request, status, signedDocumentUrl, completedAt },
     };
   }
 
-  return { ok: true, signatureRequest: updated as SignatureRequestRow };
+  return { ok: true, signatureRequest: updated };
 }

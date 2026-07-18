@@ -12,7 +12,7 @@ interface Props {
 }
 
 /**
- * Sidebar card with two low-touch lifecycle fields realtors want:
+ * Sidebar card with two low-touch lifecycle fields sellers want:
  *   - referralSource: "who sent this lead" (free text)
  *   - snoozedUntil: park the contact out of the main view until a date
  *
@@ -104,7 +104,7 @@ export function ContactLifecycleFields({ contactId, initialReferralSource, initi
             disabled={savingSnooze}
             className={cn(
               'flex-1 text-sm bg-transparent border border-border rounded px-2 py-1',
-              isSnoozed && 'bg-amber-50 dark:bg-amber-500/10 text-amber-900 dark:text-amber-200',
+              isSnoozed && 'bg-muted dark:bg-muted0/10 text-foreground dark:text-muted-foreground',
             )}
           />
           {isSnoozed && (

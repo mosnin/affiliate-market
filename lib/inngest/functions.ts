@@ -11,7 +11,7 @@
  */
 
 import { inngest } from './client';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { publishToPlatform } from '@/lib/studio/publish';
 import { findByComposioId } from '@/lib/integrations/connections';
@@ -29,7 +29,7 @@ import { recordDeadLetter, originalEventData } from './dead-letter';
 async function spaceIdForOwner(userId: unknown): Promise<string> {
   if (typeof userId !== 'string' || !userId) return 'unknown';
   try {
-    const { data } = await supabase.from('Space').select('id').eq('ownerId', userId).maybeSingle();
+    const data = await convex().query(api.workspace.spaces.getByOwnerId, { ownerId: userId });
     return data?.id ?? 'unknown';
   } catch {
     return 'unknown';
@@ -41,7 +41,7 @@ async function spaceIdForOwner(userId: unknown): Promise<string> {
 // total dollar floor. 100/day is conservative: a Modal autonomous run
 // is the costliest dispatch path and a single space accumulating 100 of
 // them in a day already implies something noisy worth investigating.
-// Above the cap → log + drop. The realtor noticing "Chippi got quiet"
+// Above the cap → log + drop. The seller noticing "Cola got quiet"
 // is a better failure mode than a runaway bill.
 const SPACE_DAILY_CAP = 100;
 const DAY_SECONDS = 24 * 60 * 60;
@@ -65,12 +65,8 @@ export const publishScheduledPost = inngest.createFunction(
       const postId = String(data.postId ?? '');
       let spaceId = 'unknown';
       if (postId) {
-        const { data: post } = await supabase
-          .from('StudioPost')
-          .select('userId')
-          .eq('id', postId)
-          .maybeSingle();
-        spaceId = await spaceIdForOwner(post?.userId);
+        const userId = await convex().query(api.studio.posts.getUserId, { id: postId });
+        spaceId = await spaceIdForOwner(userId);
       }
       await recordDeadLetter({
         spaceId,
@@ -86,30 +82,18 @@ export const publishScheduledPost = inngest.createFunction(
 
     // Load the post and the storage key of its image.
     const post = await step.run('load-post', async (): Promise<LoadedPost | null> => {
-      const { data } = await supabase
-        .from('StudioPost')
-        .select('status, userId, caption, platforms, fileId')
-        .eq('id', postId)
-        .maybeSingle();
-      if (!data) return null;
-      const row = data as {
-        status: string;
-        userId: string;
-        caption: string | null;
-        platforms: string[] | null;
-        fileId: string;
-      };
-      const { data: file } = await supabase
-        .from('File')
-        .select('storageKey')
-        .eq('id', row.fileId)
-        .maybeSingle();
+      const row = await convex().query(api.studio.posts.getForPublish, { id: postId });
+      if (!row) return null;
+      // The image's storageKey lives on the File table (a different domain).
+      const files = await convex().query(api.infra.files.storageKeysByIds, {
+        ids: [row.fileId],
+      });
       return {
         status: row.status,
         userId: row.userId,
         caption: row.caption ?? '',
         platforms: row.platforms ?? [],
-        storageKey: (file as { storageKey?: string } | null)?.storageKey ?? null,
+        storageKey: files[0]?.storageKey ?? null,
       };
     });
 
@@ -120,14 +104,7 @@ export const publishScheduledPost = inngest.createFunction(
 
     if (!post.storageKey) {
       await step.run('mark-missing', async () => {
-        await supabase
-          .from('StudioPost')
-          .update({
-            status: 'failed',
-            platformResults: { error: 'The post image is missing.' },
-            updatedAt: new Date().toISOString(),
-          })
-          .eq('id', postId);
+        await convex().mutation(api.studio.posts.markMissingImage, { id: postId });
         return { done: true };
       });
       return { failed: 'missing image' };
@@ -139,15 +116,8 @@ export const publishScheduledPost = inngest.createFunction(
     // both would update to 'publishing' and post twice. If the CAS returns
     // no row, another worker already claimed it; bail.
     const claim = await step.run('claim', async () => {
-      const { data: claimedRow, error: claimErr } = await supabase
-        .from('StudioPost')
-        .update({ status: 'publishing', updatedAt: new Date().toISOString() })
-        .eq('id', postId)
-        .eq('status', 'scheduled')
-        .select('id')
-        .maybeSingle();
-      if (claimErr) throw claimErr;
-      return { claimed: claimedRow !== null };
+      const claimed = await convex().mutation(api.studio.posts.claimForPublish, { id: postId });
+      return { claimed };
     });
     if (!claim.claimed) {
       return { skipped: 'already claimed by another worker' };
@@ -176,15 +146,11 @@ export const publishScheduledPost = inngest.createFunction(
     }
 
     await step.run('finalize', async () => {
-      await supabase
-        .from('StudioPost')
-        .update({
-          status: anyOk ? 'posted' : 'failed',
-          platformResults: results,
-          postedAt: anyOk ? new Date().toISOString() : null,
-          updatedAt: new Date().toISOString(),
-        })
-        .eq('id', postId);
+      await convex().mutation(api.studio.posts.finalize, {
+        id: postId,
+        posted: anyOk,
+        platformResults: results,
+      });
       return { done: true };
     });
 
@@ -200,7 +166,7 @@ export const publishScheduledPost = inngest.createFunction(
  *
  *   1. Resolve the IntegrationConnection (by composioConnectionId) and
  *      IntegrationTrigger (by composioTriggerId) so we can act on the
- *      realtor's space/user. If either is missing or non-active, drop.
+ *      seller's space/user. If either is missing or non-active, drop.
  *   2. Hand off to `dispatchTrigger`, which routes the event to one of
  *      DRAFT (autonomous Modal run), NOTICE (activity card — Phase 4),
  *      DATA_SYNC (direct DB write — Phase 4).
@@ -210,7 +176,7 @@ export const publishScheduledPost = inngest.createFunction(
  * Inngest retries on a thrown error. The downstream paths (`fireRoutineRun`
  * etc.) are idempotent on (space, instruction) by design — a retry that
  * re-fires Modal would at worst produce a duplicate draft, which the
- * realtor can dismiss. We accept that risk over the alternative of
+ * seller can dismiss. We accept that risk over the alternative of
  * eating the error and losing the event.
  */
 export const handleComposioTrigger = inngest.createFunction(
@@ -302,7 +268,7 @@ export const handleComposioTrigger = inngest.createFunction(
 
     // 2. Resolve the trigger row. Missing = stale registration (Composio
     //    sent for a trigger we don't track) — drop silently. Paused =
-    //    realtor turned it off; the receiver doesn't know that, the
+    //    seller turned it off; the receiver doesn't know that, the
     //    handler does.
     const triggerRow = await step.run('resolve-trigger', async () => {
       return findByComposioTriggerId(data.composioTriggerId);
@@ -323,7 +289,7 @@ export const handleComposioTrigger = inngest.createFunction(
     }
 
     // 3. Per-space daily cap. The receiver's per-(connection, slug)
-    //    hourly cap is finer-grained but lets a realtor with five
+    //    hourly cap is finer-grained but lets a seller with five
     //    connected apps each at 60/hr accumulate 300+ Modal runs in a
     //    day. This is the absolute ceiling per space.
     const dayBucket = Math.floor(Date.now() / 1000 / DAY_SECONDS);

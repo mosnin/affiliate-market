@@ -7,13 +7,13 @@
  *
  * Gated on three env vars — with any of them missing this module cleanly
  * no-ops and warns, exactly like lib/sms.ts. It NEVER throws; a broken push
- * subscription can't be allowed to break the lead/tour/deal flow that calls it.
+ * subscription can't be allowed to break the lead/demo/deal flow that calls it.
  *
  *   NEXT_PUBLIC_VAPID_PUBLIC_KEY  — the VAPID public key (also shipped to the
  *                                   browser so it can subscribe)
  *   VAPID_PRIVATE_KEY             — the VAPID private key (server only)
  *   VAPID_SUBJECT                 — a mailto: or https: contact URL for the
- *                                   push service (e.g. mailto:ops@usechippi.com)
+ *                                   push service (e.g. mailto:ops@usecola.com)
  *
  * Generate a keypair with:  npx web-push generate-vapid-keys
  */
@@ -23,7 +23,7 @@
 // resolvable under vitest, which broke the tool-registry tests that reach this
 // file transitively through notify.ts. Matches the sibling lib/sms.ts.
 import webpush from 'web-push';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 const PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -86,15 +86,9 @@ export async function sendPushToSpace(spaceId: string, payload: PushPayload): Pr
 
   let rows: SubscriptionRow[] = [];
   try {
-    const { data, error } = await supabase
-      .from('PushSubscription')
-      .select('id, endpoint, p256dh, auth')
-      .eq('spaceId', spaceId);
-    if (error) {
-      logger.error('[push] failed to load subscriptions', { spaceId, err: error.message });
-      return 0;
-    }
-    rows = (data ?? []) as SubscriptionRow[];
+    rows = (await convex().query(api.notifications.push.listBySpace, {
+      spaceId,
+    })) as SubscriptionRow[];
   } catch (err) {
     logger.error('[push] subscription query threw', { spaceId }, err);
     return 0;
@@ -136,7 +130,7 @@ export async function sendPushToSpace(spaceId: string, payload: PushPayload): Pr
 
   if (dead.length > 0) {
     try {
-      await supabase.from('PushSubscription').delete().in('id', dead);
+      await convex().mutation(api.notifications.push.deleteByIds, { ids: dead });
       logger.info('[push] pruned dead subscriptions', { spaceId, count: dead.length });
     } catch (err) {
       logger.error('[push] failed to prune dead subscriptions', { spaceId }, err);

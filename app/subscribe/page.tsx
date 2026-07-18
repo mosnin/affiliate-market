@@ -3,11 +3,11 @@
 /**
  * Subscribe — the commit moment, in the onboarding's voice.
  *
- * This is the same calm, paper-flat, Chippi-speaks aesthetic as the
- * conversational onboarding: the brand-warm wash, a serif line in Chippi's
+ * This is the same calm, paper-flat, Cola-speaks aesthetic as the
+ * conversational onboarding: the brand-warm wash, a serif line in Cola's
  * first person, a hairline panel (no shadow, no animated border, no decorative
- * orange), and a soft fade-in arrival. By the time a realtor reaches here
- * they've met Chippi; this should feel like the next sentence, not a pivot to
+ * orange), and a soft fade-in arrival. By the time a seller reaches here
+ * they've met Cola; this should feel like the next sentence, not a pivot to
  * a loud SaaS pricing page.
  *
  * The billing logic is UNCHANGED — auth gate, slug resolution, and the
@@ -26,9 +26,9 @@ import { TITLE_FONT } from '@/lib/typography';
 
 const FEATURES = [
   'I draft every follow-up. You approve.',
-  'AI lead scoring on every applicant.',
-  'Intake links that qualify leads for you.',
-  'Tours scheduled and booked.',
+  'AI lead scoring on every quote request.',
+  'Intake links that qualify buyers for you.',
+  'Product demos scheduled and booked automatically.',
   'Unlimited contacts and deals.',
   'Notes, calendar, and analytics.',
   'Connect Gmail, Slack, and more.',
@@ -53,7 +53,7 @@ function SubscribeContent() {
 
   // Redirect unauthenticated users.
   if (isLoaded && !isSignedIn) {
-    window.location.href = '/login/realtor';
+    window.location.href = '/login/seller';
     return null;
   }
 
@@ -97,7 +97,7 @@ function SubscribeContent() {
         aria-hidden
         className={brandOrange(
           'LOGO',
-          'pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-orange-50/70 via-background to-orange-50/50 dark:from-orange-500/[0.04] dark:via-background dark:to-orange-500/[0.03]',
+          'pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-brand-subtle/70 via-background to-brand-subtle/50 dark:from-brand/[0.04] dark:via-background dark:to-brand/[0.03]',
         )}
       />
 
@@ -108,12 +108,12 @@ function SubscribeContent() {
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className="mb-8 flex justify-center">
-          <BrandLogo className="h-6 opacity-90" alt="Chippi" />
+          <BrandLogo className="h-6 opacity-90" alt="Cola" />
         </div>
 
-        {/* Chippi speaks — the focal element. */}
+        {/* Cola speaks — the focal element. */}
         <header className="space-y-2 text-center">
-          <p className="text-sm text-muted-foreground">Chippi Solo.</p>
+          <p className="text-sm text-muted-foreground">Cola Solo.</p>
           <h1 className="text-3xl leading-tight tracking-tight sm:text-[2.5rem]" style={TITLE_FONT}>
             Let&apos;s keep working together.
           </h1>
@@ -148,7 +148,7 @@ function SubscribeContent() {
           </ul>
 
           {error && (
-            <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50/70 px-3 py-2.5 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+            <p className="mt-5 rounded-lg border border-negative/20 bg-negative-subtle/70 px-3 py-2.5 text-sm text-negative dark:border-negative/20 dark:bg-negative-subtle dark:text-negative">
               {error}
             </p>
           )}

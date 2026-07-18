@@ -1,9 +1,9 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 import { ScoringHealthClient } from './scoring-health-client';
 
-export const metadata = { title: 'Scoring Health — Admin — Chippi' };
+export const metadata = { title: 'Scoring Health — Admin — Cola' };
 
 export type SpaceFailureRow = {
   spaceId: string;
@@ -41,68 +41,74 @@ export default async function ScoringHealthPage() {
 
   try {
     const [
-      totalRes,
-      scoredRes,
-      failedRes,
-      pendingRes,
-      failed24hRes,
-      failed7dRes,
-      allFailedSpaces,
-      recentFailedRes,
+      totalContactsCount,
+      scoredCount,
+      failedCount,
+      pendingCount,
+      failed24hCount,
+      failed7dCount,
+      allFailed,
+      recentFailedRows,
     ] = await Promise.all([
-      supabase.from('Contact').select('*', { count: 'exact', head: true }),
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('scoringStatus', 'scored'),
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('scoringStatus', 'failed'),
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('scoringStatus', 'pending'),
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('scoringStatus', 'failed')
-        .gte('createdAt', last24hIso),
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('scoringStatus', 'failed')
-        .gte('createdAt', last7dIso),
-      // Pull all failed spaceIds so we can aggregate top 10
-      supabase
-        .from('Contact')
-        .select('spaceId, Space(slug, name)')
-        .eq('scoringStatus', 'failed')
-        .limit(5000),
-      supabase
-        .from('Contact')
-        .select('id, name, spaceId, createdAt, scoreSummary, Space(slug, name)')
-        .eq('scoringStatus', 'failed')
-        .order('createdAt', { ascending: false })
-        .limit(50),
+      convex().query(api.contacts.contacts.countAll, {}),
+      convex().query(api.contacts.contacts.countAll, { scoringStatus: 'scored' }),
+      convex().query(api.contacts.contacts.countAll, { scoringStatus: 'failed' }),
+      convex().query(api.contacts.contacts.countAll, { scoringStatus: 'pending' }),
+      convex().query(api.contacts.contacts.countAll, {
+        scoringStatus: 'failed',
+        createdGte: last24hIso,
+      }),
+      convex().query(api.contacts.contacts.countAll, {
+        scoringStatus: 'failed',
+        createdGte: last7dIso,
+      }),
+      // All failed contacts so we can aggregate top-10 spaces (scanForAnalytics
+      // returns full rows newest-first; Space(slug,name) is resolved below).
+      convex().query(api.contacts.contacts.scanForAnalytics, {
+        scoringStatus: 'failed',
+        limit: 5000,
+      }),
+      convex().query(api.contacts.contacts.scanForAnalytics, {
+        scoringStatus: 'failed',
+        limit: 50,
+      }),
     ]);
 
-    totalContacts = totalRes.count ?? 0;
-    totalScored = scoredRes.count ?? 0;
-    totalFailed = failedRes.count ?? 0;
-    totalPending = pendingRes.count ?? 0;
-    failed24h = failed24hRes.count ?? 0;
-    failed7d = failed7dRes.count ?? 0;
+    totalContacts = totalContactsCount;
+    totalScored = scoredCount;
+    totalFailed = failedCount;
+    totalPending = pendingCount;
+    failed24h = failed24hCount;
+    failed7d = failed7dCount;
 
-    type FailedSpaceRow = {
+    type FailedContact = {
+      id: string;
+      name: string | null;
       spaceId: string;
-      Space: { slug: string | null; name: string | null } | { slug: string | null; name: string | null }[] | null;
+      createdAt: string;
+      scoreSummary: string | null;
     };
+    const allFailedRows = allFailed as FailedContact[];
+    const recentRows = recentFailedRows as FailedContact[];
+
+    // Resolve the embedded Space(slug,name) for every spaceId across both scans.
+    const spaceIds = Array.from(
+      new Set([...allFailedRows, ...recentRows].map((r) => r.spaceId).filter(Boolean)),
+    );
+    const spaces =
+      spaceIds.length > 0
+        ? ((await convex().query(api.workspace.spaces.listByIds, { ids: spaceIds })) as Array<{
+            id: string;
+            slug: string | null;
+            name: string | null;
+          }>)
+        : [];
+    const spaceById = new Map(spaces.map((s) => [s.id, s]));
 
     const counts = new Map<string, SpaceFailureRow>();
-    for (const row of (allFailedSpaces.data ?? []) as FailedSpaceRow[]) {
+    for (const row of allFailedRows) {
       if (!row.spaceId) continue;
-      const sp = Array.isArray(row.Space) ? row.Space[0] : row.Space;
+      const sp = spaceById.get(row.spaceId) ?? null;
       const existing = counts.get(row.spaceId);
       if (existing) {
         existing.failedCount += 1;
@@ -119,17 +125,8 @@ export default async function ScoringHealthPage() {
       .sort((a, b) => b.failedCount - a.failedCount)
       .slice(0, 10);
 
-    type RecentFailedRow = {
-      id: string;
-      name: string | null;
-      spaceId: string;
-      createdAt: string;
-      scoreSummary: string | null;
-      Space: { slug: string | null; name: string | null } | { slug: string | null; name: string | null }[] | null;
-    };
-
-    recentFailed = ((recentFailedRes.data ?? []) as RecentFailedRow[]).map((r) => {
-      const sp = Array.isArray(r.Space) ? r.Space[0] : r.Space;
+    recentFailed = recentRows.map((r) => {
+      const sp = spaceById.get(r.spaceId) ?? null;
       return {
         id: r.id,
         name: r.name,

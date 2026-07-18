@@ -8,7 +8,7 @@ const WORKFLOW_LABEL: Record<string, string> = {
   pipeline_audit: 'Pipeline audit',
   followup_sequence: 'Follow-up sequence',
   lead_qualification: 'Lead qualification',
-  tour_booking: 'Tour booking',
+  demo_booking: 'Demo booking',
   daily_briefing: 'Daily briefing',
   call_prep: 'Call prep',
   lead_score: 'Lead score',
@@ -30,7 +30,7 @@ function ago(iso: string): string {
 /**
  * Credits panel for the billing surface — current plan, spendable balance, the
  * buy-more packs, and recent ledger activity. Resolves the funding account
- * (space, or brokerage pool for Team) itself. Degrades to nothing if the credit
+ * (space, or company pool for Team) itself. Degrades to nothing if the credit
  * tables aren't provisioned yet, so it's safe to drop on any billing page.
  */
 export async function CreditsSummary({ spaceId, slug }: { spaceId: string; slug: string }) {
@@ -81,7 +81,7 @@ export async function CreditsSummary({ spaceId, slug }: { spaceId: string; slug:
                   <span
                     className={cn(
                       'text-sm tabular-nums',
-                      t.delta < 0 ? 'text-muted-foreground' : 'text-emerald-600 dark:text-emerald-400',
+                      t.delta < 0 ? 'text-muted-foreground' : 'text-positive dark:text-positive',
                     )}
                   >
                     {t.delta > 0 ? '+' : ''}

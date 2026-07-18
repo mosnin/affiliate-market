@@ -18,11 +18,14 @@ vi.mock('@/lib/agent-memory/embed', () => ({
   EMBED_DIMS: 1536,
 }));
 
-const { supabaseMock, rpcResp, contactResp, dealResp, propertyResp } = vi.hoisted(() => {
+// Contact + Deal name-matches still go through Supabase; the vector memory
+// search uses supabase.rpc('match_agent_memory'). Product moved to Convex
+// (matchProductsByAddress → api.marketplace.products.listForSpace), so its
+// canned rows are served by the Convex mock below, not this chain.
+const { supabaseMock, rpcResp, contactResp, dealResp } = vi.hoisted(() => {
   const rpcResp = { data: [] as Array<Record<string, unknown>>, error: null as { message: string } | null };
   const contactResp = { data: [] as Array<Record<string, unknown>>, error: null as { message: string } | null };
   const dealResp = { data: [] as Array<Record<string, unknown>>, error: null as { message: string } | null };
-  const propertyResp = { data: [] as Array<Record<string, unknown>>, error: null as { message: string } | null };
 
   // Track which table the current chain is for so the limit() resolver
   // returns the right canned response.
@@ -35,7 +38,6 @@ const { supabaseMock, rpcResp, contactResp, dealResp, propertyResp } = vi.hoiste
     limit() {
       if (activeTable === 'Contact') return Promise.resolve(contactResp);
       if (activeTable === 'Deal') return Promise.resolve(dealResp);
-      if (activeTable === 'Property') return Promise.resolve(propertyResp);
       return Promise.resolve({ data: [], error: null });
     },
   });
@@ -47,10 +49,30 @@ const { supabaseMock, rpcResp, contactResp, dealResp, propertyResp } = vi.hoiste
     },
     rpc: vi.fn(() => Promise.resolve(rpcResp)),
   };
-  return { supabaseMock, rpcResp, contactResp, dealResp, propertyResp };
+  return { supabaseMock, rpcResp, contactResp, dealResp };
 });
 
 vi.mock('@/lib/supabase', () => ({ supabase: supabaseMock }));
+
+// ── Convex mock — Product literal-name matches read api.marketplace.products
+// .listForSpace. `api` is a path proxy; the single query mock serves the
+// canned product rows a test seeds (the tool filters them by spaceId +
+// address substring in-process).
+const { convexQueryMock, convexActionMock, productResp } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexActionMock: vi.fn(),
+  productResp: { data: [] as Array<Record<string, unknown>> },
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: vi.fn(), action: convexActionMock }),
+  };
+});
 
 import {
   retrieveContext,
@@ -68,8 +90,14 @@ beforeEach(() => {
   contactResp.error = null;
   dealResp.data = [];
   dealResp.error = null;
-  propertyResp.data = [];
-  propertyResp.error = null;
+  productResp.data = [];
+  // products.listForSpace serves whatever a test stages in productResp.data.
+  convexQueryMock.mockReset();
+  convexQueryMock.mockImplementation(async () => productResp.data);
+  // matchAgentMemory is now a Convex action returning the memory rows directly
+  // (the old supabase.rpc returned { data }). Reuse rpcResp.data as the source.
+  convexActionMock.mockReset();
+  convexActionMock.mockImplementation(async () => rpcResp.data);
 });
 
 describe('retrieveContext — short circuits', () => {
@@ -91,7 +119,7 @@ describe('retrieveContext — happy path', () => {
   it('embeds the message and queries match_agent_memory', async () => {
     rpcResp.data = [
       { content: 'Preston wants a 3-bed under $500k', similarity: 0.82 },
-      { content: 'Sarah\'s tour was canceled', similarity: 0.71 },
+      { content: 'Sarah\'s demo was canceled', similarity: 0.71 },
     ];
     const r = await retrieveContext({
       spaceId: 'sp1',
@@ -99,14 +127,17 @@ describe('retrieveContext — happy path', () => {
       k: 3,
     });
     expect(embedMock).toHaveBeenCalledWith('What did Preston say about pricing recently?');
-    expect(supabaseMock.rpc).toHaveBeenCalledWith('match_agent_memory', expect.objectContaining({
-      match_space_id: 'sp1',
-      match_count: 3,
-      filter_memory_type: null,
-      filter_entity_type: null,
-      filter_entity_id: null,
-      min_similarity: 0.5,
-    }));
+    expect(convexActionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        spaceId: 'sp1',
+        matchCount: 3,
+        filterMemoryType: null,
+        filterEntityType: null,
+        filterEntityId: null,
+        minSimilarity: 0.5,
+      }),
+    );
     expect(r.memories).toHaveLength(2);
     expect(r.block).toMatch(/## Workspace context/);
     expect(r.block).toMatch(/Relevant prior notes/);
@@ -114,15 +145,17 @@ describe('retrieveContext — happy path', () => {
     expect(r.block).toMatch(/82%/);
   });
 
-  it('includes literal-name matches for contacts/deals/properties', async () => {
+  it('includes literal-name matches for contacts/deals/products', async () => {
     contactResp.data = [
       { id: 'c1', name: 'Preston Wilms', leadType: 'buyer', leadScore: 72 },
     ];
     dealResp.data = [
       { id: 'd1', title: '456 Oak Ave', value: 480000, status: 'active', address: '456 Oak Ave' },
     ];
-    propertyResp.data = [
-      { id: 'p1', address: '456 Oak Ave', city: 'Austin', listingStatus: 'active', listPrice: 480000 },
+    productResp.data = [
+      // spaceId must match the query's spaceId — matchProductsByAddress scopes
+      // the Convex rows to the space in-process before the address substring test.
+      { id: 'p1', spaceId: 'sp1', address: '456 Oak Ave', city: 'Austin', listingStatus: 'active', listPrice: 480000 },
     ];
     const r = await retrieveContext({
       spaceId: 'sp1',
@@ -130,7 +163,7 @@ describe('retrieveContext — happy path', () => {
     });
     expect(r.contacts[0]).toMatchObject({ id: 'c1', label: 'Preston Wilms' });
     expect(r.deals[0]).toMatchObject({ id: 'd1', label: '456 Oak Ave' });
-    expect(r.properties[0]).toMatchObject({ id: 'p1', label: '456 Oak Ave' });
+    expect(r.products[0]).toMatchObject({ id: 'p1', label: '456 Oak Ave' });
     expect(r.block).toMatch(/Preston Wilms/);
     expect(r.block).toMatch(/456 Oak Ave/);
   });
@@ -153,9 +186,9 @@ describe('retrieveContext — caching', () => {
     const r1 = await retrieveContext({ spaceId: 'sp1', userMessage: m });
     const r2 = await retrieveContext({ spaceId: 'sp1', userMessage: m });
     expect(r1).toBe(r2);
-    // embed + rpc are called exactly once across both retrievals
+    // embed + match action are called exactly once across both retrievals
     expect(embedMock).toHaveBeenCalledTimes(1);
-    expect(supabaseMock.rpc).toHaveBeenCalledTimes(1);
+    expect(convexActionMock).toHaveBeenCalledTimes(1);
   });
 
   it('separates cache entries by spaceId', async () => {

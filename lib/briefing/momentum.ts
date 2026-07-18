@@ -1,14 +1,14 @@
 /**
- * Momentum line — the one-sentence summary of what the realtor did
+ * Momentum line — the one-sentence summary of what the seller did
  * yesterday. Rendered as plain prose at the bottom of the brief.
  *
  * The rule: only one sentence, only render when there was real movement,
  * return null otherwise. The right to say nothing applies here too — a
- * realtor who didn't act yesterday doesn't need a momentum line that
+ * seller who didn't act yesterday doesn't need a momentum line that
  * sounds like a tiny disappointment.
  *
  * Counted today:
- *   - AgentDrafts that flipped to 'sent' yesterday (the agent + realtor
+ *   - AgentDrafts that flipped to 'sent' yesterday (the agent + seller
  *     loop's main output)
  *   - ContactActivity rows authored yesterday by type (call, email logged
  *     manually, note, meeting)
@@ -17,7 +17,7 @@
  *   - Opens, replies, thread health changes
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 interface Counts {
   sent: number;
@@ -58,26 +58,25 @@ function renderCounts(counts: Counts): string | null {
 export async function composeMomentum(spaceId: string): Promise<string | null> {
   const { start, end } = yesterdayBounds();
 
-  const [sentRes, activityRes] = await Promise.all([
-    supabase
-      .from('AgentDraft')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', spaceId)
-      .eq('status', 'sent')
-      .gte('updatedAt', start)
-      .lt('updatedAt', end),
-    supabase
-      .from('ContactActivity')
-      .select('type')
-      .eq('spaceId', spaceId)
-      .gte('createdAt', start)
-      .lt('createdAt', end),
+  const [sentCount, activityRows] = await Promise.all([
+    // 'sent' drafts in [start, end) — count lives in Convex now.
+    convex()
+      .query(api.agent.drafts.countSentInWindow, { spaceId, start, end })
+      .catch(() => 0),
+    // ContactActivity rows in [start, end) for this space — Convex.
+    convex()
+      .query(api.contacts.activity.listForSpaces, {
+        spaceIds: [spaceId],
+        createdGte: start,
+        createdLt: end,
+      })
+      .catch(() => [] as { type: string }[]),
   ]);
 
-  const counts: Counts = { sent: sentRes.count ?? 0, calls: 0, notes: 0, meetings: 0 };
+  const counts: Counts = { sent: sentCount ?? 0, calls: 0, notes: 0, meetings: 0 };
 
-  if (activityRes.data) {
-    for (const row of activityRes.data as { type: string }[]) {
+  if (activityRows) {
+    for (const row of activityRows as { type: string }[]) {
       switch (row.type) {
         case 'call':
           counts.calls += 1;

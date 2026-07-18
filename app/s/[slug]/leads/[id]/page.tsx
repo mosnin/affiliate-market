@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,8 +23,8 @@ import {
 } from 'lucide-react';
 
 function tierStyles(label: string | null) {
-  if (label === 'hot') return 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400';
-  if (label === 'warm') return 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400';
+  if (label === 'hot') return 'bg-negative-subtle text-negative dark:bg-negative-subtle0/15 dark:text-red-400';
+  if (label === 'warm') return 'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground';
   return 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300';
 }
 
@@ -36,7 +36,7 @@ export default async function LeadDetailPage({
   const { slug, id } = await params;
 
   const { userId } = await auth();
-  if (!userId) redirect('/login/realtor');
+  if (!userId) redirect('/login/seller');
 
   // Validate UUID format to avoid unnecessary DB round-trips
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -49,16 +49,13 @@ export default async function LeadDetailPage({
   const userSpace = await getSpaceForUser(userId);
   if (!userSpace || userSpace.id !== space.id) notFound();
 
-  const { data, error } = await supabase
-    .from('Contact')
-    .select('*')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .single();
-  if (error?.code === 'PGRST116') notFound();
-  if (error) throw error;
+  const data = await convex().query(api.contacts.contacts.getById, {
+    id,
+    spaceId: space.id,
+  });
+  if (!data) notFound();
 
-  const lead = data as Contact;
+  const lead = data as unknown as Contact;
   if (!lead.tags?.includes('application-link')) notFound();
 
   const app = lead.applicationData as ApplicationData | null;
@@ -137,13 +134,13 @@ export default async function LeadDetailPage({
             <InfoRow icon={DollarSign} label="Budget" value={typeof app?.monthlyRent === 'number' ? `${formatMoney(app.monthlyRent)}/mo` : lead.budget ? `${formatMoney(lead.budget)}/mo` : null} />
             <InfoRow icon={Briefcase} label="Employment" value={app?.employmentStatus ?? null} />
             <InfoRow icon={Calendar} label="Move-in" value={app?.targetMoveInDate ?? null} />
-            <InfoRow icon={MapPin} label="Location" value={app?.propertyAddress ?? lead.preferences ?? null} />
-            <InfoRow icon={Home} label="Property type" value={app?.propertyType ?? null} />
+            <InfoRow icon={MapPin} label="Location" value={app?.productAddress ?? lead.preferences ?? null} />
+            <InfoRow icon={Home} label="Product type" value={app?.productType ?? null} />
           </div>
 
           {details?.recommendedNextAction && (
             <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground flex items-start gap-2">
-              <CircleAlert size={14} className="mt-0.5 text-amber-600" />
+              <CircleAlert size={14} className="mt-0.5 text-muted-foreground" />
               {details.recommendedNextAction}
             </div>
           )}

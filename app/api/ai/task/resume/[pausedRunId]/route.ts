@@ -3,7 +3,7 @@
  *
  * Resume a chat turn that paused on a tool approval. The new SDK-based
  * runtime persists every paused run as one row in `AgentPausedRun`. This
- * endpoint loads that row, applies the realtor's approve/deny decision,
+ * endpoint loads that row, applies the seller's approve/deny decision,
  * and streams the continuation as SSE — same wire format as the fresh
  * turn at /api/ai/task.
  *
@@ -28,10 +28,10 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { chippiErrorMessage } from '@/lib/ai-tools/chippi-voice';
+import { colaErrorMessage } from '@/lib/ai-tools/cola-voice';
 import type { ToolContext } from '@/lib/ai-tools/types';
 import { streamTsResumeTurn } from '@/lib/ai-tools/sdk-chat-stream';
 import { chatRuntime } from '@/lib/ai-tools/runtime-flag';
@@ -85,21 +85,21 @@ export async function POST(
   // Per-user rate limit. Approvals are cheap so we allow plenty of them.
   const { allowed } = await checkRateLimit(`ai:task:resume:${auth.userId}`, 60, 3600);
   if (!allowed) {
-    return NextResponse.json({ error: chippiErrorMessage('rate_limited') }, { status: 429 });
+    return NextResponse.json({ error: colaErrorMessage('rate_limited') }, { status: 429 });
   }
 
   // Load + scope check. The userId stored on the row is the Clerk userId.
-  const { data: row, error } = await supabase
-    .from('AgentPausedRun')
-    .select('id, spaceId, userId, conversationId, runState, approvals, status, expiresAt')
-    .eq('id', pausedRunId)
-    .maybeSingle();
-  if (error) {
-    logger.error('[ai/task resume] load failed', { pausedRunId }, error);
-    return NextResponse.json({ error: chippiErrorMessage('internal') }, { status: 500 });
+  let row: PausedRunRow | null;
+  try {
+    row = (await convex().query(api.agent.paused.getById, {
+      id: pausedRunId,
+    })) as PausedRunRow | null;
+  } catch (err) {
+    logger.error('[ai/task resume] load failed', { pausedRunId }, err);
+    return NextResponse.json({ error: colaErrorMessage('internal') }, { status: 500 });
   }
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const paused = row as PausedRunRow;
+  const paused = row;
   if (paused.userId !== auth.userId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -108,7 +108,7 @@ export async function POST(
   }
   if (paused.expiresAt && new Date(paused.expiresAt).getTime() < Date.now()) {
     // Best-effort flip; ignore failures — the request is over either way.
-    await supabase.from('AgentPausedRun').update({ status: 'expired' }).eq('id', paused.id);
+    await convex().mutation(api.agent.paused.markExpired, { id: paused.id });
     return NextResponse.json({ error: 'Run expired' }, { status: 410 });
   }
 
@@ -116,11 +116,9 @@ export async function POST(
   // resolveToolContext here because that helper takes a slug — the paused
   // run carries the spaceId directly, which is more precise (the slug
   // could have changed between pause and resume).
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id, slug, name, ownerId')
-    .eq('id', paused.spaceId)
-    .maybeSingle();
+  const space = await convex()
+    .query(api.workspace.spaces.getById, { id: paused.spaceId })
+    .catch(() => null);
   if (!space) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 });
   }
@@ -130,11 +128,9 @@ export async function POST(
   // outside the caller's own space (e.g. if space ownership changed between
   // pause and resume). paused.userId is the Clerk id; map it to the internal
   // User id the way resolveToolContext does.
-  const { data: ownerRow } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', auth.userId)
-    .maybeSingle();
+  const ownerRow = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: auth.userId })
+    .catch(() => null);
   if (!ownerRow || space.ownerId !== ownerRow.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -159,19 +155,17 @@ export async function POST(
   // AgentPausedRun row — we don't reuse the old one because the run state
   // has advanced past it.
   // Compare-and-swap: only the request that flips pending→resumed proceeds.
-  // Without the status filter two concurrent resumes both passed the
-  // `status !== 'pending'` check above and both ran the approved tool.
-  const { data: marked, error: markErr } = await supabase
-    .from('AgentPausedRun')
-    .update({ status: 'resumed', updatedAt: new Date().toISOString() })
-    .eq('id', paused.id)
-    .eq('status', 'pending')
-    .select('id');
-  if (markErr) {
+  // Without the guard two concurrent resumes both passed the
+  // `status !== 'pending'` check above and both ran the approved tool. The
+  // mutation does the CAS atomically and reports 'lost' if it didn't win.
+  let resumeOutcome: { outcome: 'resumed' | 'lost' | 'missing' };
+  try {
+    resumeOutcome = await convex().mutation(api.agent.paused.markResumed, { id: paused.id });
+  } catch (markErr) {
     logger.error('[ai/task resume] status update failed', { pausedRunId }, markErr);
-    return NextResponse.json({ error: chippiErrorMessage('internal') }, { status: 500 });
+    return NextResponse.json({ error: colaErrorMessage('internal') }, { status: 500 });
   }
-  if (!marked || marked.length === 0) {
+  if (resumeOutcome.outcome !== 'resumed') {
     return NextResponse.json({ error: 'Run is already resumed' }, { status: 409 });
   }
 

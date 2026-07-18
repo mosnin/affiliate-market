@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { AuthorizeClient } from './authorize-client';
 
 /**
@@ -28,7 +28,7 @@ export default async function AuthorizePage({
   if (!userId) {
     // Redirect to login, then back here
     const currentUrl = `/authorize?${new URLSearchParams(params as Record<string, string>).toString()}`;
-    redirect(`/login/realtor?redirect_url=${encodeURIComponent(currentUrl)}`);
+    redirect(`/login/seller?redirect_url=${encodeURIComponent(currentUrl)}`);
   }
 
   // Validate required params
@@ -44,11 +44,9 @@ export default async function AuthorizePage({
   }
 
   // Validate client_id exists in our database
-  const { data: mcpKey } = await supabase
-    .from('McpApiKey')
-    .select('id, name, spaceId')
-    .eq('clientId', params.client_id)
-    .maybeSingle();
+  const mcpKey = await convex().query(api.infra.mcpApiKeys.summaryByClientId, {
+    clientId: params.client_id,
+  });
 
   if (!mcpKey) {
     return (
@@ -62,18 +60,12 @@ export default async function AuthorizePage({
   }
 
   // Verify the user owns this space
-  const { data: user } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .maybeSingle();
+  const user = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
 
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id, name')
-    .eq('id', mcpKey.spaceId)
-    .eq('ownerId', user?.id ?? '')
-    .maybeSingle();
+  const spaceRow = await convex().query(api.workspace.spaces.getById, { id: mcpKey.spaceId });
+  // Enforce ownership exactly as the old `.eq('ownerId', user?.id ?? '')` filter:
+  // an absent user (id '') never matches a real ownerId.
+  const space = spaceRow && spaceRow.ownerId === (user?.id ?? '') ? spaceRow : null;
 
   if (!space) {
     return (

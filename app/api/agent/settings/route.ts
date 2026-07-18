@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { audit } from '@/lib/audit';
@@ -13,14 +13,10 @@ export async function GET(_req: NextRequest) {
   const space = await getSpaceForUser(userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data } = await supabase
-    .from('AgentSettings')
-    .select('spaceId, enabled, dailyTokenBudget, chatModel')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const data = await convex().query(api.agent.settings.getBySpace, { spaceId: space.id });
 
-  // Default if no row yet (shouldn't happen since we have an auto-seed
-  // trigger, but defensive: never make the UI block on a missing row).
+  // Default if no row yet (shouldn't happen since we auto-seed, but defensive:
+  // never make the UI block on a missing row).
   if (!data) {
     return NextResponse.json({
       spaceId: space.id,
@@ -30,7 +26,12 @@ export async function GET(_req: NextRequest) {
     });
   }
 
-  return NextResponse.json(data);
+  return NextResponse.json({
+    spaceId: data.spaceId,
+    enabled: data.enabled,
+    dailyTokenBudget: data.dailyTokenBudget,
+    chatModel: data.chatModel,
+  });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -68,15 +69,22 @@ export async function PATCH(req: NextRequest) {
     patch.chatModel = body.chatModel;
   }
 
-  // Upsert — creates the row on first save (defensive; the auto-seed
-  // trigger should have already inserted it).
-  const { data, error } = await supabase
-    .from('AgentSettings')
-    .upsert({ spaceId: space.id, ...patch }, { onConflict: 'spaceId' })
-    .select('spaceId, enabled, dailyTokenBudget, chatModel')
-    .single();
+  // Upsert (Convex) — one-row-per-space, read-then-patch-or-insert. Only the
+  // provided fields change; chatModel is tri-state (absent=leave, null=clear,
+  // string=set), matching the validation above.
+  const updated = await convex().mutation(api.agent.settings.upsert, {
+    spaceId: space.id,
+    ...(patch.enabled !== undefined ? { enabled: patch.enabled as boolean } : {}),
+    ...(patch.dailyTokenBudget !== undefined ? { dailyTokenBudget: patch.dailyTokenBudget as number } : {}),
+    ...(body.chatModel !== undefined ? { chatModel: body.chatModel as string | null } : {}),
+  });
 
-  if (error) throw error;
+  const data = {
+    spaceId: updated.spaceId,
+    enabled: updated.enabled,
+    dailyTokenBudget: updated.dailyTokenBudget,
+    chatModel: updated.chatModel,
+  };
 
   void audit({
     actorClerkId: userId,

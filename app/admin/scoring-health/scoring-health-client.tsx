@@ -118,7 +118,7 @@ export function ScoringHealthClient({
       value: stats.totalScored,
       sub: `${scoredRate}% of all`,
       icon: CheckCircle2,
-      color: 'text-emerald-500',
+      color: 'text-positive',
       accent: false,
     },
     {
@@ -126,7 +126,7 @@ export function ScoringHealthClient({
       value: stats.totalFailed,
       sub: `${failedRate}% of all`,
       icon: AlertTriangle,
-      color: 'text-rose-500',
+      color: 'text-negative',
       accent: stats.totalFailed > 0,
     },
     {
@@ -134,7 +134,7 @@ export function ScoringHealthClient({
       value: stats.totalPending,
       sub: 'awaiting scoring',
       icon: Clock,
-      color: 'text-amber-500',
+      color: 'text-muted-foreground',
       accent: false,
     },
   ];
@@ -164,7 +164,7 @@ export function ScoringHealthClient({
             key={label}
             className={`rounded-xl border bg-card h-full ${
               accent
-                ? 'border-rose-300/50 bg-rose-50/30 dark:border-rose-500/20 dark:bg-rose-500/5'
+                ? 'border-negative/20 bg-negative-subtle/30 dark:border-negative/20 dark:bg-negative-subtle0/5'
                 : ''
             }`}
           >
@@ -174,7 +174,7 @@ export function ScoringHealthClient({
                   <p className="text-xs text-muted-foreground font-medium">{label}</p>
                   <p
                     className={`text-[25px] leading-tight tracking-tight mt-0.5 tabular-nums ${
-                      accent ? 'text-rose-600 dark:text-rose-400' : ''
+                      accent ? 'text-negative dark:text-negative' : ''
                     }`}
                   >
                     {value}
@@ -183,10 +183,10 @@ export function ScoringHealthClient({
                 </div>
                 <div
                   className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                    accent ? 'bg-rose-100 dark:bg-rose-500/10' : 'bg-muted'
+                    accent ? 'bg-negative-subtle dark:bg-negative-subtle0/10' : 'bg-muted'
                   }`}
                 >
-                  <Icon size={15} className={accent ? 'text-rose-600 dark:text-rose-400' : color} />
+                  <Icon size={15} className={accent ? 'text-negative dark:text-negative' : color} />
                 </div>
               </div>
             </CardContent>
@@ -246,7 +246,7 @@ export function ScoringHealthClient({
                       <p className="text-xs text-muted-foreground truncate">/{row.spaceSlug}</p>
                     )}
                   </div>
-                  <span className="text-sm font-semibold tabular-nums text-rose-600 dark:text-rose-400">
+                  <span className="text-sm font-semibold tabular-nums text-negative dark:text-negative">
                     {row.failedCount}
                   </span>
                 </div>
@@ -314,9 +314,9 @@ export function ScoringHealthClient({
                         <p
                           className={`text-[11px] mt-0.5 ${
                             state === 'success'
-                              ? 'text-emerald-600 dark:text-emerald-400'
+                              ? 'text-positive dark:text-positive'
                               : state === 'error'
-                                ? 'text-rose-600 dark:text-rose-400'
+                                ? 'text-negative dark:text-negative'
                                 : 'text-muted-foreground'
                           }`}
                         >
@@ -334,7 +334,7 @@ export function ScoringHealthClient({
                       {state === 'loading' ? (
                         <Loader2 size={13} className="animate-spin" />
                       ) : state === 'success' ? (
-                        <Check size={13} className="text-emerald-500" />
+                        <Check size={13} className="text-positive" />
                       ) : (
                         <RefreshCw size={13} />
                       )}

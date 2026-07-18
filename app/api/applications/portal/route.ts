@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 /**
@@ -33,16 +33,13 @@ export async function GET(req: NextRequest) {
   }
 
   // Validate both applicationRef AND statusPortalToken match (defense in depth)
-  const { data: contact, error: contactError } = await supabase
-    .from('Contact')
-    .select(
-      'id, name, applicationStatus, applicationStatusNote, applicationRef, spaceId, createdAt',
-    )
-    .eq('applicationRef', ref)
-    .eq('statusPortalToken', token)
-    .maybeSingle();
-
-  if (contactError) {
+  let contact;
+  try {
+    contact = await convex().query(api.contacts.contacts.findByApplicationRef, {
+      applicationRef: ref,
+      statusPortalToken: token,
+    });
+  } catch (contactError) {
     console.error('[portal] Contact lookup error:', contactError);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
@@ -52,46 +49,39 @@ export async function GET(req: NextRequest) {
   }
 
   // Fetch status history
-  const { data: statusHistory } = await supabase
-    .from('ApplicationStatusUpdate')
-    .select('id, fromStatus, toStatus, note, createdAt')
-    .eq('contactId', contact.id)
-    .order('createdAt', { ascending: true });
+  const statusHistory = await convex().query(api.portal.applicationStatus.listForContact, {
+    contactId: contact.id,
+  });
 
   // Fetch messages
-  const { data: messages } = await supabase
-    .from('ApplicationMessage')
-    .select('id, senderType, content, readAt, createdAt')
-    .eq('contactId', contact.id)
-    .order('createdAt', { ascending: true });
+  const messages = await convex().query(api.portal.applicationMessages.listForContact, {
+    contactId: contact.id,
+  });
 
-  // Fetch tours linked to this contact. Filter to active/recent statuses
-  // — applicants don't need to see cancelled tours linger in their portal.
-  const { data: tours } = await supabase
-    .from('Tour')
-    .select('id, startsAt, endsAt, propertyAddress, notes, status')
-    .eq('contactId', contact.id)
-    .in('status', ['scheduled', 'confirmed', 'completed'])
-    .order('startsAt', { ascending: true });
+  // Fetch demos linked to this contact. Filter to active/recent statuses
+  // — applicants don't need to see cancelled demos linger in their portal.
+  const demos = await convex().query(api.demos.demos.listByContact, {
+    contactId: contact.id,
+    statuses: ['scheduled', 'confirmed', 'completed'],
+    order: 'asc',
+  });
 
-  // Mark unread realtor messages as read
-  if (messages?.some((m: { senderType: string; readAt: string | null }) => m.senderType === 'realtor' && !m.readAt)) {
+  // Mark unread seller messages as read
+  if (messages.some((m) => m.senderType === 'seller' && !m.readAt)) {
     const unreadIds = messages
-      .filter((m: { senderType: string; readAt: string | null }) => m.senderType === 'realtor' && !m.readAt)
-      .map((m: { id: string }) => m.id);
+      .filter((m) => m.senderType === 'seller' && !m.readAt)
+      .map((m) => m.id);
 
-    await supabase
-      .from('ApplicationMessage')
-      .update({ readAt: new Date().toISOString() })
-      .in('id', unreadIds);
+    await convex().mutation(api.portal.applicationMessages.markRead, {
+      contactId: contact.id,
+      ids: unreadIds,
+    });
   }
 
   // Fetch business name for display
-  const { data: settings } = await supabase
-    .from('SpaceSetting')
-    .select('businessName')
-    .eq('spaceId', contact.spaceId)
-    .maybeSingle();
+  const settings = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: contact.spaceId,
+  });
 
   return NextResponse.json({
     contact: {
@@ -103,7 +93,7 @@ export async function GET(req: NextRequest) {
     },
     statusHistory: statusHistory ?? [],
     messages: messages ?? [],
-    tours: tours ?? [],
+    demos: demos ?? [],
     businessName: settings?.businessName ?? null,
   });
 }

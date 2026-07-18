@@ -5,14 +5,14 @@
  * conversational onboarding.
  *
  *   OnboardingIntro  (Act I)  - the cold open. A title line blur-rises in,
- *                               holds, swaps to the Chippi mark, then the
+ *                               holds, swaps to the Cola mark, then the
  *                               whole overlay blurs out to reveal the chat.
  *   OnboardingReady  (Act III) - the build. A few working-words flash one at
  *                               a time, then "Your account is ready.", then it
  *                               dissolves into the dashboard.
  *
  * Both share the EXACT motion vocabulary of the dashboard splash
- * (`components/dashboard/chippi-splash.tsx`): `motion/react`, the Apple-ish
+ * (`components/dashboard/cola-splash.tsx`): `motion/react`, the Apple-ish
  * expo ease, the blur-rise transition, the serif title font, theme-aware
  * bg/fg, and `prefers-reduced-motion` → render instantly. They read as the
  * same product because they ARE the same vocabulary, not a lookalike.
@@ -47,7 +47,7 @@ export function OnboardingIntro({
   line = INTRO_LINE,
 }: {
   onDone: () => void;
-  /** The cold-open title line. Defaults to the realtor copy; the brokerage
+  /** The cold-open title line. Defaults to the seller copy; the company
    *  flow passes its own. */
   line?: string;
 }) {
@@ -96,8 +96,7 @@ export function OnboardingIntro({
             {stage === 'line' ? (
               <motion.h1
                 key="intro-line"
-                className="max-w-2xl text-center text-3xl leading-tight tracking-tight sm:text-[2.75rem]"
-                style={{ fontFamily: 'var(--font-title)' }}
+                className="max-w-2xl text-center text-3xl font-semibold leading-tight tracking-tight sm:text-[2.75rem]"
                 transition={{ duration: 0.8, ease: EASE }}
                 {...rise}
               >
@@ -109,7 +108,7 @@ export function OnboardingIntro({
                 transition={{ duration: 0.7, ease: EASE }}
                 {...rise}
               >
-                <BrandLogo className="h-8 sm:h-9" alt="Chippi" />
+                <BrandLogo className="h-8 sm:h-9" alt="Cola" />
               </motion.div>
             )}
           </AnimatePresence>
@@ -139,9 +138,9 @@ export function OnboardingReady({
   finalLine = READY_FINAL,
 }: {
   onDone: () => void;
-  /** The working-words that flash one at a time. Defaults to the realtor set. */
+  /** The working-words that flash one at a time. Defaults to the seller set. */
   words?: readonly string[];
-  /** The line that lands before the dissolve. Defaults to the realtor copy. */
+  /** The line that lands before the dissolve. Defaults to the seller copy. */
   finalLine?: string;
 }) {
   // -1 → not started; 0..n-1 → working words; n → final line; 'gone' handled
@@ -207,18 +206,16 @@ export function OnboardingReady({
                 {...rise}
               >
                 <p
-                  className="text-3xl tracking-tight sm:text-[2.5rem]"
-                  style={{ fontFamily: 'var(--font-title)' }}
+                  className="text-3xl font-semibold tracking-tight sm:text-[2.5rem]"
                 >
                   {finalLine}
                 </p>
-                <BrandLogo className="h-5 opacity-80" alt="Chippi" />
+                <BrandLogo className="h-5 opacity-80" alt="Cola" />
               </motion.div>
             ) : (
               <motion.p
                 key={`ready-word-${index}`}
-                className="text-2xl tracking-tight text-muted-foreground sm:text-3xl"
-                style={{ fontFamily: 'var(--font-title)' }}
+                className="text-2xl font-semibold tracking-tight text-muted-foreground sm:text-3xl"
                 transition={{ duration: 0.4, ease: EASE }}
                 {...rise}
               >

@@ -2,61 +2,43 @@
  * Integration tests for lib/agent/task-state-machine.ts
  *
  * canTransition() is a pure guard — no mocking needed.
- * transitionTask() and enqueueTask() write to Supabase — mocked via vi.mock.
+ * transitionTask() and enqueueTask() now write to Convex (the AgentTask
+ * persistence layer moved off Supabase). They call:
+ *   - convex().query(api.agent.tasks.getById, { id })        → row | null
+ *   - convex().mutation(api.agent.tasks.transition, …)       → { ok, error? }
+ *   - convex().mutation(api.agent.tasks.enqueue, …)          → new task id
+ *
+ * The compare-and-swap that used to live in `.update().eq('status', current)`
+ * now lives in the `transition` mutation: it returns { ok:false,
+ * error:'invalid_transition' } when the row's status no longer equals
+ * expectedFrom (lost race), and { ok:false, error:'not_found' } when the row
+ * is gone. The lib already validates canTransition() BEFORE calling the
+ * mutation, so an invalid edge never reaches the mutation — the lib short-
+ * circuits and the mutation is not called.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ── Supabase mock ─────────────────────────────────────────────────────────────
+// ── Convex mock ─────────────────────────────────────────────────────────────
 //
-// We need two independent chainable builders: one for the initial SELECT (fetch
-// current status) and one for the UPDATE (write new status).  The queue lets
-// each test control exactly what each Supabase call returns.
+// `api` is a path proxy: api.agent.tasks.getById stringifies to its dotted
+// path when called, so the mocks can branch on the fn the lib invoked. The
+// query mock answers the getById status read; the mutation mock answers both
+// `transition` (the CAS) and `enqueue` (the insert), branched on the path.
 
-type TerminalResult = { data?: unknown; error?: unknown };
-let supabaseQueue: TerminalResult[] = [];
-
-function makeChain(): Record<string, unknown> {
-  const terminal: TerminalResult = supabaseQueue.shift() ?? { data: null, error: null };
-
-  const chain: Record<string, unknown> = {};
-  let isUpdate = false;
-
-  const passthroughs = ['select', 'eq', 'update', 'insert', 'limit', 'order'];
-  for (const method of passthroughs) {
-    chain[method] = vi.fn((..._args: unknown[]) => {
-      if (method === 'update') isUpdate = true;
-      return chain;
-    });
-  }
-
-  // .single() terminates and resolves
-  chain.single = vi.fn(() => Promise.resolve(terminal));
-  // .maybeSingle() same
-  chain.maybeSingle = vi.fn(() => Promise.resolve(terminal));
-
-  // Allow `await supabase.from(...).update(...).eq(...).select()`. Real
-  // Supabase resolves an update().select() to the affected rows; when a test
-  // queues only { error } (or { data: null }) for an update, treat a
-  // non-error result as one affected row so compare-and-swap sees it.
-  chain.then = (
-    resolve: (v: TerminalResult) => unknown,
-    reject?: (e: unknown) => unknown,
-  ) => {
-    const resolved: TerminalResult =
-      isUpdate && !terminal.error && terminal.data == null
-        ? { data: [{}], error: null }
-        : terminal;
-    return Promise.resolve(resolved).then(resolve, reject);
-  };
-
-  return chain;
-}
-
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    from: vi.fn((_table: string) => makeChain()),
-  },
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
 }));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
 
 // Import AFTER vi.mock so the module picks up the mock
 import {
@@ -68,14 +50,14 @@ import {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Push results for successive supabase.from() calls */
-function queue(...results: TerminalResult[]) {
-  supabaseQueue.push(...results);
+/** Resolve the dotted fn path from a path-proxy ref. */
+function fnPath(ref: unknown): string {
+  return typeof ref === 'function' ? (ref as () => string)() : '';
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  supabaseQueue = [];
+  convexQueryMock.mockReset();
+  convexMutationMock.mockReset();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,85 +111,94 @@ describe('canTransition()', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// transitionTask() — mocked Supabase
+// transitionTask() — mocked Convex
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('transitionTask()', () => {
-  it('valid transition: DB called with new status, returns { ok: true }', async () => {
-    // First call: SELECT current status → running
-    queue({ data: { status: 'running' as TaskStatus }, error: null });
-    // Second call: UPDATE → success (no error)
-    queue({ data: null, error: null });
+  it('valid transition: getById returns running, transition mutation succeeds, returns { ok: true }', async () => {
+    convexQueryMock.mockResolvedValue({ id: 'task-001', status: 'running' as TaskStatus });
+    convexMutationMock.mockResolvedValue({ ok: true });
 
     const result = await transitionTask('task-001', 'completed');
 
     expect(result).toEqual({ ok: true });
+    // The transition mutation must carry the CAS guard (expectedFrom = current).
+    expect(convexMutationMock).toHaveBeenCalledTimes(1);
+    const [, mutArgs] = convexMutationMock.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(mutArgs).toMatchObject({ taskId: 'task-001', to: 'completed', expectedFrom: 'running' });
   });
 
-  it('invalid transition: DB SELECT happens but UPDATE is NOT called, returns { ok: false }', async () => {
-    // Current status is 'completed' — terminal, cannot go to 'running'
-    queue({ data: { status: 'completed' as TaskStatus }, error: null });
-    // We queue a second result to verify it's never consumed (UPDATE not called)
-    queue({ data: null, error: null });
+  it('invalid transition: getById happens but the transition mutation is NOT called, returns { ok: false }', async () => {
+    // Current status is 'completed' — terminal, cannot go to 'running'. The lib
+    // short-circuits on canTransition() before ever hitting the mutation.
+    convexQueryMock.mockResolvedValue({ id: 'task-002', status: 'completed' as TaskStatus });
 
     const result = await transitionTask('task-002', 'running');
 
     expect(result.ok).toBe(false);
     expect(result.error).toBe('invalid_transition');
-    // The second queue entry should remain unconsumed
-    expect(supabaseQueue).toHaveLength(1);
+    // The CAS mutation must never run for an edge the guard already rejected.
+    expect(convexMutationMock).not.toHaveBeenCalled();
   });
 
-  it('DB UPDATE error: returns { ok: false, error: <message> } and never throws', async () => {
-    queue({ data: { status: 'running' as TaskStatus }, error: null });
-    queue({ data: null, error: { message: 'connection timeout' } });
+  it('lost CAS race: the transition mutation reports invalid_transition (status moved underneath), returns it', async () => {
+    // canTransition passes (running → completed), but the mutation's compare-
+    // and-swap finds the row already moved and reports the lost race.
+    convexQueryMock.mockResolvedValue({ id: 'task-003', status: 'running' as TaskStatus });
+    convexMutationMock.mockResolvedValue({ ok: false, error: 'invalid_transition' });
 
     const result = await transitionTask('task-003', 'completed');
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('invalid_transition');
+  });
+
+  it('mutation throws: returns { ok: false, error: <message> } and never throws', async () => {
+    convexQueryMock.mockResolvedValue({ id: 'task-004', status: 'running' as TaskStatus });
+    convexMutationMock.mockRejectedValue(new Error('connection timeout'));
+
+    const result = await transitionTask('task-004', 'completed');
 
     expect(result.ok).toBe(false);
     expect(result.error).toBe('connection timeout');
   });
 
-  it('task not found (SELECT returns null): returns { ok: false, error: "not_found" }', async () => {
-    // Simulates .single() returning fetchError (row missing)
-    queue({ data: null, error: { message: 'Row not found' } });
+  it('task not found (getById returns null): returns { ok: false, error: "not_found" }', async () => {
+    convexQueryMock.mockResolvedValue(null);
 
     const result = await transitionTask('task-nonexistent', 'running');
 
     expect(result.ok).toBe(false);
     expect(result.error).toBe('not_found');
+    // No mutation attempted for a task that doesn't exist.
+    expect(convexMutationMock).not.toHaveBeenCalled();
   });
 
-  it('SELECT returns null data (no error but row missing): returns { ok: false, error: "not_found" }', async () => {
-    // Some Supabase adapters return { data: null, error: null } for missing rows
-    queue({ data: null, error: null });
-
-    const result = await transitionTask('task-ghost', 'running');
-
-    expect(result.ok).toBe(false);
-    expect(result.error).toBe('not_found');
-  });
-
-  it('passes metadata fields (startedAt, completedAt, cancelledAt) through to the update', async () => {
-    queue({ data: { status: 'running' as TaskStatus }, error: null });
-    queue({ data: null, error: null });
+  it('passes metadata fields (completedAt) through to the transition mutation', async () => {
+    convexQueryMock.mockResolvedValue({ id: 'task-005', status: 'running' as TaskStatus });
+    convexMutationMock.mockResolvedValue({ ok: true });
 
     const meta = {
       completedAt: '2026-05-06T12:00:00.000Z',
     };
-    const result = await transitionTask('task-004', 'completed', meta);
+    const result = await transitionTask('task-005', 'completed', meta);
 
     expect(result).toEqual({ ok: true });
+    const [, mutArgs] = convexMutationMock.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(mutArgs).toMatchObject({ completedAt: '2026-05-06T12:00:00.000Z' });
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// enqueueTask() — mocked Supabase
+// enqueueTask() — mocked Convex
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('enqueueTask()', () => {
   it('success: inserts row with status queued, returns the new task id', async () => {
-    queue({ data: { id: 'new-task-xyz' }, error: null });
+    convexMutationMock.mockImplementation(async (ref: unknown) => {
+      if (fnPath(ref).includes('enqueue')) return 'new-task-xyz';
+      return null;
+    });
 
     const id = await enqueueTask('space-abc', {
       title: 'Follow up with Sam Chen',
@@ -219,23 +210,25 @@ describe('enqueueTask()', () => {
   });
 
   it('success with minimal input (title only): returns id', async () => {
-    queue({ data: { id: 'task-min-001' }, error: null });
+    convexMutationMock.mockResolvedValue('task-min-001');
 
     const id = await enqueueTask('space-abc', { title: 'Quick check-in' });
 
     expect(id).toBe('task-min-001');
   });
 
-  it('DB error: throws with an error message', async () => {
-    queue({ data: null, error: { message: 'unique constraint violation' } });
+  it('Convex error: throws with an error message', async () => {
+    convexMutationMock.mockRejectedValue(new Error('unique constraint violation'));
 
     await expect(
       enqueueTask('space-abc', { title: 'Duplicate task' }),
     ).rejects.toThrow();
   });
 
-  it('DB returns null data with no error: throws', async () => {
-    queue({ data: null, error: null });
+  it('non-Error rejection: throws the default "Failed to enqueue AgentTask" message', async () => {
+    // The Convex insert always returns an id on success; the only "no id" path
+    // is a thrown non-Error, which the lib wraps in its default message.
+    convexMutationMock.mockRejectedValue('opaque failure');
 
     await expect(
       enqueueTask('space-abc', { title: 'Ghost task' }),

@@ -18,7 +18,7 @@ interface BookingFormProps {
   timezone: string;
   accentColor?: string;
   /** When set, the confirmed-state renders an outbound link back to the
-   *  realtor's public page so the applicant has somewhere to go after
+   *  seller's public page so the applicant has somewhere to go after
    *  booking. Same dead-end fix the intake success card has. */
   profileHref?: string | null;
 }
@@ -28,14 +28,14 @@ interface DaySlots {
   times: string[];
 }
 
-interface PropertyProfile {
+interface ProductProfile {
   id: string;
   name: string;
   address: string | null;
-  tourDuration: number;
+  demoDuration: number;
 }
 
-type Step = 'property' | 'date' | 'details' | 'confirmed';
+type Step = 'product' | 'date' | 'details' | 'confirmed';
 
 // Uniform paper-flat input class. Identical for input + textarea so the eye
 // reads them as one family.
@@ -45,7 +45,7 @@ const INPUT_CLASS = cn(FIELD_BASE, 'h-10');
 const TEXTAREA_CLASS = cn(FIELD_BASE, 'py-2 min-h-[72px]');
 const FIELD_LABEL = 'text-[12.5px] font-medium text-foreground';
 
-export function BookingForm({ slug, duration: defaultDuration, businessName, timezone, accentColor = '#ff964f', profileHref }: BookingFormProps) {
+export function BookingForm({ slug, duration: defaultDuration, businessName, timezone, accentColor = '#34c77f', profileHref }: BookingFormProps) {
   const primaryTextColor = pickContrastColor(accentColor);
   const confettiRef = useRef<ConfettiRef>(null);
   const [step, setStep] = useState<Step>('date');
@@ -56,15 +56,15 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Property selection
-  const [properties, setProperties] = useState<PropertyProfile[]>([]);
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+  // Product selection
+  const [products, setProducts] = useState<ProductProfile[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [effectiveDuration, setEffectiveDuration] = useState(defaultDuration);
 
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
-  const [propertyAddress, setPropertyAddress] = useState('');
+  const [productAddress, setProductAddress] = useState('');
   const [notes, setNotes] = useState('');
 
   // Waitlist state
@@ -84,19 +84,19 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
     setSelectedDate(null);
     setSelectedTime(null);
     try {
-      let url = `/api/tours/available?slug=${encodeURIComponent(slug)}`;
-      if (propId) url += `&propertyId=${encodeURIComponent(propId)}`;
+      let url = `/api/demos/available?slug=${encodeURIComponent(slug)}`;
+      if (propId) url += `&productId=${encodeURIComponent(propId)}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setSlots(data.slots ?? []);
         setEffectiveDuration(data.duration ?? defaultDuration);
-        // If properties exist and we haven't shown the property picker yet
+        // If products exist and we haven't shown the product picker yet
         // Use the passed-in step to avoid stale closure on the state variable
         const stepAtLoad = currentStep ?? step;
-        if (data.propertyProfiles?.length > 0 && !propId && stepAtLoad === 'date') {
-          setProperties(data.propertyProfiles);
-          setStep('property');
+        if (data.productProfiles?.length > 0 && !propId && stepAtLoad === 'date') {
+          setProducts(data.productProfiles);
+          setStep('product');
         }
       } else {
         setError('Could not load availability');
@@ -110,11 +110,11 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
 
   useEffect(() => { loadSlots(null, 'date'); }, [slug]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function selectProperty(id: string | null) {
-    setSelectedPropertyId(id);
+  function selectProduct(id: string | null) {
+    setSelectedProductId(id);
     if (id) {
-      const prop = properties.find((p) => p.id === id);
-      if (prop?.address) setPropertyAddress(prop.address);
+      const prop = products.find((p) => p.id === id);
+      if (prop?.address) setProductAddress(prop.address);
     }
     setStep('date');
     loadSlots(id, 'date');
@@ -128,7 +128,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
     setError(null);
 
     try {
-      const res = await fetch('/api/tours/book', {
+      const res = await fetch('/api/demos/book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -136,10 +136,10 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
           guestName: guestName.trim(),
           guestEmail: guestEmail.trim(),
           guestPhone: guestPhone.trim() || null,
-          propertyAddress: propertyAddress.trim() || null,
+          productAddress: productAddress.trim() || null,
           notes: notes.trim() || null,
           startsAt: selectedTime,
-          propertyProfileId: selectedPropertyId,
+          productProfileId: selectedProductId,
         }),
       });
 
@@ -181,7 +181,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
     if (!waitlistName.trim() || !waitlistEmail.trim() || !waitlistDate) return;
     setWaitlistSubmitting(true);
     try {
-      const res = await fetch('/api/tours/waitlist', {
+      const res = await fetch('/api/demos/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -189,7 +189,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
           guestName: waitlistName.trim(),
           guestEmail: waitlistEmail.trim(),
           preferredDate: waitlistDate,
-          propertyProfileId: selectedPropertyId,
+          productProfileId: selectedProductId,
         }),
       });
       if (res.ok || res.status === 409) {
@@ -228,15 +228,15 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.15, type: 'spring', stiffness: 200, damping: 15 }}
-            className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto"
+            className="w-12 h-12 rounded-full bg-positive-subtle0/10 flex items-center justify-center mx-auto"
           >
-            <Check size={20} className="text-emerald-600 dark:text-emerald-400" />
+            <Check size={20} className="text-positive dark:text-positive" />
           </motion.div>
           <h2 className="text-3xl tracking-tight text-foreground" style={TITLE_FONT}>
             Confirmed.
           </h2>
           <p className="text-base text-muted-foreground max-w-sm mx-auto">
-            Your tour is set for <span className="font-medium text-foreground">{dateLabel}</span>{' '}
+            Your demo is set for <span className="font-medium text-foreground">{dateLabel}</span>{' '}
             at <span className="font-medium text-foreground">{timeLabel}</span>.
             {` ${businessName} will reach out if anything changes.`}
           </p>
@@ -255,30 +255,30 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
   }
 
   // Visual sections render progressively. The state machine is preserved:
-  // - 'property' lock: only the property section is interactive
-  // - 'date' lock: property is summarized + collapsed; date+time is open
+  // - 'product' lock: only the product section is interactive
+  // - 'date' lock: product is summarized + collapsed; date+time is open
   // - 'details' lock: above are summarized; details form is open
-  const showProperty = properties.length > 0;
-  const propertyChosen = step === 'date' || step === 'details';
+  const showProduct = products.length > 0;
+  const productChosen = step === 'date' || step === 'details';
   const showDateSection = step === 'date' || step === 'details';
   const showDetailsSection = step === 'details';
 
-  const selectedProperty = selectedPropertyId
-    ? properties.find((p) => p.id === selectedPropertyId)
+  const selectedProduct = selectedProductId
+    ? products.find((p) => p.id === selectedProductId)
     : null;
 
   return (
     <>
       <div className="rounded-xl bg-background border border-border/70 p-6">
-        {/* ─── Property section ─────────────────────────────────────────── */}
-        {showProperty && (
+        {/* ─── Product section ─────────────────────────────────────────── */}
+        {showProduct && (
           <section>
             <div className="flex items-center justify-between mb-4">
-              <p className={SECTION_LABEL}>Property</p>
-              {propertyChosen && (
+              <p className={SECTION_LABEL}>Product</p>
+              {productChosen && (
                 <button
                   type="button"
-                  onClick={() => { setStep('property'); setSelectedPropertyId(null); }}
+                  onClick={() => { setStep('product'); setSelectedProductId(null); }}
                   className={cn(QUIET_LINK, 'text-xs')}
                 >
                   Change
@@ -286,15 +286,15 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
               )}
             </div>
 
-            {step === 'property' ? (
+            {step === 'product' ? (
               <div className="space-y-2">
-                {properties.map((p) => {
-                  const active = selectedPropertyId === p.id;
+                {products.map((p) => {
+                  const active = selectedProductId === p.id;
                   return (
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => selectProperty(p.id)}
+                      onClick={() => selectProduct(p.id)}
                       className={cn(
                         'w-full flex items-center gap-3 px-4 py-3 rounded-lg border text-left transition-colors',
                         active
@@ -312,7 +312,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
                 })}
                 <button
                   type="button"
-                  onClick={() => selectProperty(null)}
+                  onClick={() => selectProduct(null)}
                   className="w-full px-4 py-3 rounded-lg border border-dashed border-border/70 text-center text-xs text-muted-foreground hover:bg-foreground/[0.04] transition-colors"
                 >
                   Not sure yet / general inquiry
@@ -320,11 +320,11 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
               </div>
             ) : (
               <p className="text-sm text-foreground">
-                {selectedProperty ? (
+                {selectedProduct ? (
                   <>
-                    <span className="font-medium">{selectedProperty.name}</span>
-                    {selectedProperty.address && (
-                      <span className="text-muted-foreground"> · {selectedProperty.address}</span>
+                    <span className="font-medium">{selectedProduct.name}</span>
+                    {selectedProduct.address && (
+                      <span className="text-muted-foreground"> · {selectedProduct.address}</span>
                     )}
                   </>
                 ) : (
@@ -336,7 +336,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
         )}
 
         {/* Divider only between sections that are both visible */}
-        {showProperty && showDateSection && (
+        {showProduct && showDateSection && (
           <div className="border-t border-border/60 my-8" />
         )}
 
@@ -433,7 +433,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
                   </div>
                 )}
                 {waitlistDone && (
-                  <div className="flex items-center justify-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                  <div className="flex items-center justify-center gap-2 text-sm text-positive dark:text-positive">
                     <Check size={16} />
                     You&apos;re on the waitlist. We&apos;ll let you know.
                   </div>
@@ -568,14 +568,14 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="propertyAddress" className={FIELD_LABEL}>
-                      Property address <span className="ml-1 text-[11px] font-normal text-muted-foreground">(optional)</span>
+                    <Label htmlFor="productAddress" className={FIELD_LABEL}>
+                      Product address <span className="ml-1 text-[11px] font-normal text-muted-foreground">(optional)</span>
                     </Label>
                     <input
-                      id="propertyAddress"
+                      id="productAddress"
                       type="text"
-                      value={propertyAddress}
-                      onChange={(e) => setPropertyAddress(e.target.value)}
+                      value={productAddress}
+                      onChange={(e) => setProductAddress(e.target.value)}
                       placeholder="123 Main St"
                       className={INPUT_CLASS}
                     />
@@ -597,7 +597,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
               </div>
 
               {error && (
-                <p className="text-xs text-rose-600 dark:text-rose-400 mt-3">{error}</p>
+                <p className="text-xs text-negative dark:text-negative mt-3">{error}</p>
               )}
 
               <button
@@ -616,7 +616,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
 
         {/* Surface availability errors at the bottom of the picker step */}
         {error && step !== 'details' && (
-          <p className="text-xs text-rose-600 dark:text-rose-400 mt-4 text-center">{error}</p>
+          <p className="text-xs text-negative dark:text-negative mt-4 text-center">{error}</p>
         )}
       </div>
 
@@ -636,7 +636,7 @@ export function BookingForm({ slug, duration: defaultDuration, businessName, tim
               className="rounded-xl bg-background border border-border/70 p-6 text-center space-y-3"
             >
               <Loader2 size={20} className="animate-spin text-muted-foreground mx-auto" />
-              <p className="text-sm text-foreground">Booking your tour…</p>
+              <p className="text-sm text-foreground">Booking your demo…</p>
             </motion.div>
           </motion.div>
         )}

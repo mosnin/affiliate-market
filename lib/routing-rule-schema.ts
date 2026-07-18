@@ -10,7 +10,7 @@ import { z } from 'zod';
 
 export type DealRoutingRuleRow = {
   id: string;
-  brokerageId: string;
+  companyId: string;
   name: string;
   priority: number;
   enabled: boolean;
@@ -26,7 +26,7 @@ export type DealRoutingRuleRow = {
 };
 
 export const RULE_COLUMNS =
-  'id, brokerageId, name, priority, enabled, leadType, minBudget, maxBudget, matchTag, destinationUserId, destinationPoolMethod, destinationPoolTag, createdAt, updatedAt';
+  'id, companyId, name, priority, enabled, leadType, minBudget, maxBudget, matchTag, destinationUserId, destinationPoolMethod, destinationPoolTag, createdAt, updatedAt';
 
 // Field-level validators — kept granular so both POST (all required with
 // defaults) and PATCH (all optional) can share.

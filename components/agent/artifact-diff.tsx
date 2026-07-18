@@ -100,7 +100,7 @@ export function ArtifactDiff({ versionA, versionB }: ArtifactDiffProps) {
               <span className="text-green-700 dark:text-green-400">+{added}</span>
             )}
             {removed > 0 && (
-              <span className="text-red-700 dark:text-red-400">−{removed}</span>
+              <span className="text-negative dark:text-red-400">−{removed}</span>
             )}
           </span>
         )}
@@ -121,7 +121,7 @@ export function ArtifactDiff({ versionA, versionB }: ArtifactDiffProps) {
                 op.type === 'added'
                   ? 'bg-green-50 text-green-800 dark:bg-green-950/30 dark:text-green-300'
                   : op.type === 'removed'
-                  ? 'bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300'
+                  ? 'bg-negative-subtle text-red-800 dark:bg-red-950/30 dark:text-red-300'
                   : 'bg-background text-muted-foreground';
 
               return (

@@ -1,9 +1,9 @@
 /**
  * POST /api/agent/quick-draft
  *
- * The /chippi home's inline draft engine. Phase 7 — no more chat teleport.
- * The realtor taps "Send a check-in" on the home, this composes a draft
- * inline and returns it; the UI shows it; the realtor taps Send and the
+ * The /cola home's inline draft engine. Phase 7 — no more chat teleport.
+ * The seller taps "Send a check-in" on the home, this composes a draft
+ * inline and returns it; the UI shows it; the seller taps Send and the
  * existing AgentDraft → PATCH approve → sendDraft pipeline fires the email
  * (or SMS, or note). One surface, one tap, done.
  *
@@ -28,6 +28,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getSpaceForUser } from '@/lib/space';
@@ -65,8 +66,8 @@ const ALLOWED_CHANNELS: Channel[] = ['email', 'sms', 'note'];
 
 /**
  * Map an intent to a channel. Log-call is always a note (internal record);
- * everything else is email — that's the realtor's primary outbound rail and
- * the only one the chat tool fires today. The realtor can always Edit →
+ * everything else is email — that's the seller's primary outbound rail and
+ * the only one the chat tool fires today. The seller can always Edit →
  * chat to switch channels.
  */
 function channelForIntent(intent: Intent): Channel {
@@ -187,28 +188,25 @@ export async function POST(req: NextRequest) {
     // from server code — and the logic is small. We replicate it inline:
     // insert pending → sendDraft → flip status. Same audit shape.
     const now = new Date().toISOString();
-    const { data: inserted, error: insertError } = await supabase
-      .from('AgentDraft')
-      .insert({
+    let inserted;
+    try {
+      inserted = await convex().mutation(api.agent.drafts.create, {
         spaceId: space.id,
         contactId,
         dealId,
         channel: sendBody.channel,
         subject: sendBody.channel === 'email' ? sendBody.subject!.trim() : null,
         content: sendBody.body.trim(),
-        reasoning: `Quick draft from /chippi home (${sendBody.intent}).`,
+        reasoning: `Quick draft from /cola home (${sendBody.intent}).`,
         priority: 0,
         status: 'pending',
-      })
-      .select('id, channel, subject, content, contactId')
-      .single();
-
-    if (insertError || !inserted) {
-      logger.error('[quick-draft] insert failed', { err: insertError?.message });
+      });
+    } catch (insertError) {
+      logger.error('[quick-draft] insert failed', { err: insertError instanceof Error ? insertError.message : String(insertError) });
       return NextResponse.json({ error: 'Failed to create draft' }, { status: 500 });
     }
 
-    const draftId = (inserted as { id: string }).id;
+    const draftId = inserted.id;
 
     // Hydrate contact for delivery (needs email/phone).
     let contact = { name: subjectLabel, email: null as string | null, phone: null as string | null };
@@ -230,13 +228,14 @@ export async function POST(req: NextRequest) {
     );
 
     const finalStatus = deliveryResult.sent ? 'sent' : 'approved';
-    const { error: patchError } = await supabase
-      .from('AgentDraft')
-      .update({ status: finalStatus, updatedAt: now })
-      .eq('id', draftId)
-      .eq('spaceId', space.id);
-    if (patchError) {
-      logger.error('[quick-draft] status update failed', { err: patchError.message });
+    try {
+      await convex().mutation(api.agent.drafts.updateForSpace, {
+        id: draftId,
+        spaceId: space.id,
+        patch: { status: finalStatus, touchUpdatedAt: true },
+      });
+    } catch (patchError) {
+      logger.error('[quick-draft] status update failed', { err: patchError instanceof Error ? patchError.message : String(patchError) });
     }
 
     void audit({

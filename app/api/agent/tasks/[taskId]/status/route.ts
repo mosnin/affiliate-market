@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import {
@@ -49,14 +49,10 @@ export async function PATCH(
   }
 
   // Fetch current task to verify ownership and read current status.
-  const { data: task, error: fetchError } = await supabase
-    .from('AgentTask')
-    .select('id, status')
-    .eq('id', taskId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  if (fetchError) {
+  let task;
+  try {
+    task = await convex().query(api.agent.tasks.getByIdForSpace, { id: taskId, spaceId: space.id });
+  } catch (fetchError) {
     console.error('[agent/tasks/[taskId]/status/PATCH] fetch error:', fetchError);
     return NextResponse.json({ error: 'Failed to fetch task' }, { status: 500 });
   }
@@ -95,19 +91,17 @@ export async function PATCH(
   };
   const actionType = actionTypeMap[status];
   if (actionType) {
-    void Promise.resolve(
-      supabase
-        .from('AgentActivityLog')
-        .insert({
-          spaceId: space.id,
-          runId: taskId,
-          agentType: 'human',
-          actionType,
-          outcome: 'completed',
-          reversible: status !== 'cancelled',
-          metadata: { previousStatus, triggeredBy: 'user', userId },
-        }),
-    ).catch(() => {});
+    void convex()
+      .mutation(api.agent.activity.log, {
+        spaceId: space.id,
+        runId: taskId,
+        agentType: 'human',
+        actionType,
+        outcome: 'completed',
+        reversible: status !== 'cancelled',
+        metadata: { previousStatus, triggeredBy: 'user', userId },
+      })
+      .catch(() => {});
   }
 
   return NextResponse.json({ ok: true, task: { id: taskId, status } });

@@ -18,7 +18,7 @@
  *   - Top-K AgentMemory rows by cosine similarity to the user message
  *   - Any Contact whose `name` appears verbatim in the message (regex pass)
  *   - Any Deal whose `title` appears verbatim in the message (regex pass)
- *   - Any Property whose `address` appears verbatim in the message
+ *   - Any Product whose `address` appears verbatim in the message
  *
  * Skipped entirely when the user message is <10 chars — context for "ok"
  * or "thanks" is wasted tokens. The 10-char floor also dodges the worst
@@ -28,12 +28,13 @@
  * the header `## Workspace context` so it knows what it's reading.
  *
  * Caching: process-local map keyed by (spaceId, sha256(message)). TTL 5 min.
- * If the same realtor re-sends the same query in five minutes (refresh, retry
+ * If the same seller re-sends the same query in five minutes (refresh, retry
  * button, conversation restart) we don't pay the embedding cost again.
  */
 
 import crypto from 'crypto';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server'; // Product reads (Product is Convex; Contact/Deal stay Supabase)
 import { logger } from '@/lib/logger';
 import { embed } from '@/lib/agent-memory/embed';
 
@@ -66,7 +67,7 @@ export interface RetrieveContextResult {
   memories: ContextMemory[];
   contacts: ContextEntity[];
   deals: ContextEntity[];
-  properties: ContextEntity[];
+  products: ContextEntity[];
 }
 
 interface CacheEntry {
@@ -86,10 +87,6 @@ export function _clearContextCacheForTesting(): void {
   cache.clear();
 }
 
-function vectorLiteral(vec: number[]): string {
-  return '[' + vec.map((x) => x.toFixed(7)).join(',') + ']';
-}
-
 /**
  * Cheap literal-name match. We do a single SQL query per table that ILIKEs
  * against any word longer than 3 chars in the message — `Preston Wilms`
@@ -97,7 +94,7 @@ function vectorLiteral(vec: number[]): string {
  * Cap the result set per table so a generic query doesn't pull the whole
  * book.
  *
- * Trade-off: we accept some over-matching (e.g. "send" matching a property
+ * Trade-off: we accept some over-matching (e.g. "send" matching a product
  * named "Sender's Lane") because the context block is bounded anyway —
  * worst case the noise is trimmed by MAX_CONTEXT_CHARS.
  */
@@ -177,22 +174,11 @@ async function matchDealsByTitle(
   });
 }
 
-async function matchPropertiesByAddress(
+async function matchProductsByAddress(
   spaceId: string,
   tokens: string[],
 ): Promise<ContextEntity[]> {
   if (tokens.length === 0) return [];
-  const orSpec = tokens.map((t) => `address.ilike.%${escapeIlike(t)}%`).join(',');
-  const { data, error } = await supabase
-    .from('Property')
-    .select('id, address, city, "listingStatus", "listPrice"')
-    .eq('spaceId', spaceId)
-    .or(orSpec)
-    .limit(MAX_NAME_MATCHES);
-  if (error) {
-    logger.warn('[vector-context] property address match failed', { spaceId }, error);
-    return [];
-  }
   type Row = {
     id: string;
     address: string;
@@ -200,12 +186,33 @@ async function matchPropertiesByAddress(
     listingStatus: string | null;
     listPrice: number | null;
   };
-  return ((data ?? []) as Row[]).map((r) => {
+  // Product is on Convex now. The old query matched the space's products whose
+  // address ILIKE any token; we list the space's (owned-only, matching the old
+  // `.eq('spaceId')`) products and filter by case-insensitive address substring,
+  // then cap at MAX_NAME_MATCHES.
+  let rows: Row[];
+  try {
+    const all = (await convex().query(api.marketplace.products.listForSpace, {
+      spaceId,
+    })) as Array<Row & { spaceId: string; address: string | null }>;
+    const lowered = tokens.map((t) => t.toLowerCase()).filter(Boolean);
+    rows = all
+      .filter((r) => r.spaceId === spaceId)
+      .filter((r) => {
+        const addr = (r.address ?? '').toLowerCase();
+        return addr && lowered.some((t) => addr.includes(t));
+      })
+      .slice(0, MAX_NAME_MATCHES) as Row[];
+  } catch (err) {
+    logger.warn('[vector-context] product address match failed', { spaceId, err: String(err) });
+    return [];
+  }
+  return rows.map((r) => {
     const parts: string[] = [];
     if (r.listingStatus) parts.push(r.listingStatus);
     if (r.listPrice != null) parts.push(`$${Math.round(r.listPrice).toLocaleString()}`);
     if (r.city) parts.push(r.city);
-    return { id: r.id, label: r.address, hint: parts.join(' · ') || 'property' };
+    return { id: r.id, label: r.address, hint: parts.join(' · ') || 'product' };
   });
 }
 
@@ -227,21 +234,26 @@ async function vectorMemorySearch(
     logger.warn('[vector-context] embed failed — skipping memory retrieval', { spaceId }, err);
     return [];
   }
-  const { data, error } = await supabase.rpc('match_agent_memory', {
-    query_embedding: vectorLiteral(embedding),
-    match_space_id: spaceId,
-    match_count: k,
-    filter_memory_type: null,
-    filter_entity_type: null,
-    filter_entity_id: null,
-    min_similarity: 0.5, // floor — sub-0.5 similarities are noise
-  });
-  if (error) {
-    logger.warn('[vector-context] match_agent_memory rpc failed', { spaceId }, error);
+  // Convex vector-search action. Embedding goes as a raw number[] (no pgvector
+  // literal). Returns rows already filtered by min_similarity and capped at
+  // matchCount, ranked by cosine similarity desc.
+  type Row = { content: string; similarity: number | null };
+  let data: Row[];
+  try {
+    data = (await convex().action(api.swarmvector.agentMemory.matchAgentMemory, {
+      queryEmbedding: embedding,
+      spaceId,
+      matchCount: k,
+      filterMemoryType: null,
+      filterEntityType: null,
+      filterEntityId: null,
+      minSimilarity: 0.5, // floor — sub-0.5 similarities are noise
+    })) as Row[];
+  } catch (err) {
+    logger.warn('[vector-context] match_agent_memory rpc failed', { spaceId }, err);
     return [];
   }
-  type Row = { content: string; similarity: number | null };
-  return ((data ?? []) as Row[]).map((r) => ({
+  return (data ?? []).map((r) => ({
     content: r.content,
     similarity: typeof r.similarity === 'number' ? r.similarity : 0,
   }));
@@ -263,9 +275,9 @@ function formatBlock(result: Omit<RetrieveContextResult, 'block'>): string {
     lines.push('### Mentioned deals');
     for (const d of result.deals) lines.push(`- ${d.label} (${d.hint})`);
   }
-  if (result.properties.length > 0) {
-    lines.push('### Mentioned properties');
-    for (const p of result.properties) lines.push(`- ${p.label} (${p.hint})`);
+  if (result.products.length > 0) {
+    lines.push('### Mentioned products');
+    for (const p of result.products) lines.push(`- ${p.label} (${p.hint})`);
   }
   if (result.memories.length > 0) {
     lines.push('### Relevant prior notes');
@@ -295,7 +307,7 @@ export async function retrieveContext(
     memories: [],
     contacts: [],
     deals: [],
-    properties: [],
+    products: [],
   };
 
   const message = (input.userMessage ?? '').trim();
@@ -312,7 +324,7 @@ export async function retrieveContext(
 
   // Fan out — vector search + entity matches in parallel. Any single
   // failure is logged and swallowed; the others still contribute.
-  const [memories, contacts, deals, properties] = await Promise.all([
+  const [memories, contacts, deals, products] = await Promise.all([
     vectorMemorySearch(input.spaceId, message, k).catch((err) => {
       logger.warn('[vector-context] vector search threw', { spaceId: input.spaceId }, err);
       return [] as ContextMemory[];
@@ -325,8 +337,8 @@ export async function retrieveContext(
       logger.warn('[vector-context] deal match threw', { spaceId: input.spaceId }, err);
       return [] as ContextEntity[];
     }),
-    matchPropertiesByAddress(input.spaceId, tokens).catch((err) => {
-      logger.warn('[vector-context] property match threw', { spaceId: input.spaceId }, err);
+    matchProductsByAddress(input.spaceId, tokens).catch((err) => {
+      logger.warn('[vector-context] product match threw', { spaceId: input.spaceId }, err);
       return [] as ContextEntity[];
     }),
   ]);
@@ -335,7 +347,7 @@ export async function retrieveContext(
     memories,
     contacts,
     deals,
-    properties,
+    products,
     block: '',
   };
   result.block = formatBlock(result);

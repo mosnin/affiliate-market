@@ -31,7 +31,7 @@ import {
 } from 'recharts';
 import type {
   ScoreDistribution,
-  BrokerageSubmissionRow,
+  CompanySubmissionRow,
   SpaceSubmissionRow,
   SourceRow,
   TrendPoint,
@@ -48,14 +48,14 @@ type Stats = {
 export function FormAnalyticsClient({
   stats,
   distribution,
-  topBrokerages,
+  topCompanies,
   topSpaces,
   trend,
   perSource,
 }: {
   stats: Stats;
   distribution: ScoreDistribution;
-  topBrokerages: BrokerageSubmissionRow[];
+  topCompanies: CompanySubmissionRow[];
   topSpaces: SpaceSubmissionRow[];
   trend: TrendPoint[];
   perSource: SourceRow[];
@@ -63,13 +63,13 @@ export function FormAnalyticsClient({
   const [filter, setFilter] = useState('');
   const [days, setDays] = useState(30);
 
-  const filteredBrokerages = useMemo(() => {
+  const filteredCompanies = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return topBrokerages;
-    return topBrokerages.filter((b) =>
-      (b.brokerageName ?? b.brokerageId).toLowerCase().includes(q),
+    if (!q) return topCompanies;
+    return topCompanies.filter((b) =>
+      (b.companyName ?? b.companyId).toLowerCase().includes(q),
     );
-  }, [filter, topBrokerages]);
+  }, [filter, topCompanies]);
 
   const filteredSpaces = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -89,22 +89,22 @@ export function FormAnalyticsClient({
       label: 'Hot',
       value: distribution.hot,
       icon: Flame,
-      bar: 'bg-red-500',
-      text: 'text-red-600 dark:text-red-400',
+      bar: 'bg-negative-subtle0',
+      text: 'text-negative dark:text-red-400',
     },
     {
       label: 'Warm',
       value: distribution.warm,
       icon: Thermometer,
-      bar: 'bg-amber-500',
-      text: 'text-amber-600 dark:text-amber-400',
+      bar: 'bg-muted0',
+      text: 'text-muted-foreground dark:text-muted-foreground',
     },
     {
       label: 'Cold',
       value: distribution.cold,
       icon: Snowflake,
-      bar: 'bg-blue-500',
-      text: 'text-blue-600 dark:text-blue-400',
+      bar: 'bg-brand-subtle0',
+      text: 'text-primary dark:text-blue-400',
     },
     {
       label: 'Unqualified',
@@ -128,7 +128,7 @@ export function FormAnalyticsClient({
       value: stats.submissions30d,
       sub: 'rolling window',
       icon: TrendingUp,
-      color: 'text-emerald-500',
+      color: 'text-positive',
     },
     {
       label: 'Avg lead score',
@@ -142,7 +142,7 @@ export function FormAnalyticsClient({
       value: stats.emptyApplications,
       sub: 'no application data',
       icon: AlertTriangle,
-      color: 'text-amber-500',
+      color: 'text-muted-foreground',
     },
   ];
 
@@ -185,7 +185,7 @@ export function FormAnalyticsClient({
               className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
             <Input
-              placeholder="Filter brokerages or spaces…"
+              placeholder="Filter companies or spaces…"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               className="pl-9"
@@ -352,19 +352,19 @@ export function FormAnalyticsClient({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-3">
           <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            Top brokerages
+            Top companies
           </h2>
-          {filteredBrokerages.length === 0 ? (
+          {filteredCompanies.length === 0 ? (
             <Card className="rounded-xl border bg-card">
-              <EmptyState icon={Building2} title="No brokerage submissions yet." size="sm" />
+              <EmptyState icon={Building2} title="No company submissions yet." size="sm" />
             </Card>
           ) : (
             <Card className="rounded-xl border bg-card">
               <div className="divide-y divide-border">
-                {filteredBrokerages.map((b) => (
+                {filteredCompanies.map((b) => (
                   <Link
-                    key={b.brokerageId}
-                    href={`/admin/brokerages/${b.brokerageId}`}
+                    key={b.companyId}
+                    href={`/admin/companies/${b.companyId}`}
                     className="flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors"
                   >
                     <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
@@ -372,7 +372,7 @@ export function FormAnalyticsClient({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">
-                        {b.brokerageName || b.brokerageId}
+                        {b.companyName || b.companyId}
                       </p>
                     </div>
                     <span className="text-sm font-semibold tabular-nums">{b.count}</span>

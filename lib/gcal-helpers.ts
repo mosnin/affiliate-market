@@ -1,19 +1,19 @@
 /**
  * Google Calendar helpers — token refresh + event mutation primitives.
  *
- * Lives outside the gcal/ route handler so the tour PATCH path can call
- * `deleteEvent` directly when a tour is cancelled, instead of inlining a
+ * Lives outside the gcal/ route handler so the demo PATCH path can call
+ * `deleteEvent` directly when a demo is cancelled, instead of inlining a
  * second copy of the access-token-refresh dance. The route still owns
  * the OAuth flow (`?action=...`); this module owns the API verbs.
  *
  * Every function is best-effort from the caller's perspective: GCal
- * failures should never block the realtor's primary action (cancelling
- * a tour). The route's job is to update the DB; this module's job is to
+ * failures should never block the seller's primary action (cancelling
+ * a demo). The route's job is to update the DB; this module's job is to
  * make a respectable attempt at keeping GCal in sync, and to log
  * loudly enough that ops can chase orphans manually if needed.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { decrypt, encrypt, decryptOrPassthrough } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
 
@@ -31,7 +31,7 @@ export interface GoogleCalendarTokenRow {
  * Return a valid access token for the space, refreshing if the cached
  * one is within 60s of expiry. Updates the token row on refresh so the
  * next caller hits the fast path. Throws on refresh failure — callers
- * should catch and log; the realtor's primary action must not depend
+ * should catch and log; the seller's primary action must not depend
  * on Google being reachable.
  */
 export async function getValidAccessToken(
@@ -65,14 +65,11 @@ export async function getValidAccessToken(
   const tokens = (await res.json()) as { access_token?: string; expires_in?: number };
   if (!tokens.access_token) throw new Error('No access_token in Google refresh response');
 
-  await supabase
-    .from('GoogleCalendarToken')
-    .update({
-      accessToken: encrypt(tokens.access_token),
-      expiresAt: new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
-    .eq('spaceId', spaceId);
+  await convex().mutation(api.calendar.tokens.updateTokens, {
+    spaceId,
+    accessToken: encrypt(tokens.access_token),
+    expiresAt: new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString(),
+  });
 
   return tokens.access_token;
 }
@@ -92,11 +89,9 @@ export async function deleteGoogleEvent(args: {
 }): Promise<boolean> {
   if (!args.googleEventId) return true;
 
-  const { data: tokenRow } = await supabase
-    .from('GoogleCalendarToken')
-    .select('accessToken, refreshToken, expiresAt, calendarId')
-    .eq('spaceId', args.spaceId)
-    .maybeSingle();
+  const tokenRow = await convex().query(api.calendar.tokens.getBySpace, {
+    spaceId: args.spaceId,
+  });
   if (!tokenRow) return true;
 
   let accessToken: string;

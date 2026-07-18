@@ -17,7 +17,7 @@
  *   });
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getClientIp } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import type { NextRequest } from 'next/server';
@@ -30,10 +30,12 @@ export type AuditAction =
   | 'LOGIN'
   | 'LOGOUT'
   | 'ADMIN_ACTION'
-  // Brokerage-specific lifecycle actions — kept in the union so callers
+  // Company-specific lifecycle actions — kept in the union so callers
   // don't have to cast. OFFBOARD covers the agent-offboarding transfer
-  // (Phase BP1); future brokerage phases can add more verbs here.
-  | 'OFFBOARD';
+  // (Phase BP1); future company phases can add more verbs here.
+  | 'OFFBOARD'
+  // Affiliate engine: payout batches move money — always audited.
+  | 'PAYOUT';
 
 export interface AuditParams {
   /** Clerk userId of the person performing the action */
@@ -65,8 +67,7 @@ export async function audit(params: AuditParams): Promise<void> {
   const ipAddress = req ? getClientIp(req) : null;
 
   try {
-    const { error } = await supabase.from('AuditLog').insert({
-      id: crypto.randomUUID(),
+    await convex().mutation(api.infra.auditLog.insert, {
       clerkId: actorClerkId,
       ipAddress,
       action,
@@ -75,9 +76,6 @@ export async function audit(params: AuditParams): Promise<void> {
       spaceId: spaceId ?? null,
       metadata: metadata ?? null,
     });
-    if (error) {
-      logger.error('[audit] failed to persist audit event', { action, resource, resourceId }, error);
-    }
   } catch (err) {
     logger.error('[audit] unexpected error', { action, resource, resourceId }, err);
   }

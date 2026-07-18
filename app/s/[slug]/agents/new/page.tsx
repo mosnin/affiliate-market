@@ -1,10 +1,10 @@
 import { redirect, notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { AgentBuilderForm } from '@/components/agents/agent-builder-form';
 
-export const metadata = { title: 'New Agent — Chippi' };
+export const metadata = { title: 'New Agent — Cola' };
 
 export default async function NewAgentPage({
   params,
@@ -13,19 +13,16 @@ export default async function NewAgentPage({
 }) {
   const { slug } = await params;
   const { userId } = await auth();
-  if (!userId) redirect('/login/realtor');
+  if (!userId) redirect('/login/seller');
 
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
   // Verify the authenticated user owns this space.
-  const { data: spaceOwner } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .eq('id', space.ownerId)
-    .maybeSingle();
-  if (!spaceOwner) notFound();
+  const spaceOwner = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: userId })
+    .catch(() => null);
+  if (!spaceOwner || spaceOwner.id !== space.ownerId) notFound();
 
   return (
     <div className="max-w-2xl mx-auto pb-12">

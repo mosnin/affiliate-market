@@ -64,7 +64,7 @@ export function IntakeLinkRow({
         className={cn(
           'inline-flex items-center justify-center w-8 h-8 rounded-md border transition-colors duration-150 flex-shrink-0 active:scale-[0.98]',
           copied
-            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+            ? 'border-positive/20 bg-positive-subtle0/10 text-positive dark:text-positive'
             : 'border-border/60 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]',
         )}
       >

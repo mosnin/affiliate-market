@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { uploadObject, deleteObject, buildKey } from '@/lib/storage';
 import { validateUpload } from '@/lib/storage/limits';
@@ -24,7 +24,7 @@ export const runtime = 'nodejs';
 
 const MAX_CAPTION = 2200;
 
-/** The realtor's connected social accounts — active toolkits that live in
+/** The seller's connected social accounts — active toolkits that live in
  *  the catalog's `social` category. Same source the Integrations tab reads. */
 async function connectedSocials(
   spaceId: string,
@@ -47,21 +47,26 @@ export async function GET() {
   const space = await getSpaceForUser(auth.userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const [platforms, postsRes] = await Promise.all([
-    connectedSocials(space.id, auth.userId),
-    supabase
-      .from('StudioPost')
-      .select('id, caption, platforms, scheduledAt, status, createdAt')
-      .eq('spaceId', space.id)
-      .order('scheduledAt', { ascending: true })
-      .limit(100),
-  ]);
-  if (postsRes.error) {
-    logger.error('[studio.schedule] list failed', { spaceId: space.id }, postsRes.error);
+  let platforms: Array<{ toolkit: string; name: string }>;
+  let posts: Array<{
+    id: string;
+    caption: string;
+    platforms: string[];
+    scheduledAt: string;
+    status: string;
+    createdAt: string;
+  }>;
+  try {
+    [platforms, posts] = await Promise.all([
+      connectedSocials(space.id, auth.userId),
+      convex().query(api.studio.posts.listForSpace, { spaceId: space.id }),
+    ]);
+  } catch (error) {
+    logger.error('[studio.schedule] list failed', { spaceId: space.id }, error as Error);
     return NextResponse.json({ error: 'Could not load scheduled posts.' }, { status: 500 });
   }
 
-  return NextResponse.json({ platforms, posts: postsRes.data ?? [] });
+  return NextResponse.json({ platforms, posts });
 }
 
 export async function POST(req: NextRequest) {
@@ -78,7 +83,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid form data' }, { status: 400 });
   }
 
-  // Hourly per-realtor cap so a script can't flood StudioPost / Inngest.
+  // Hourly per-seller cap so a script can't flood StudioPost / Inngest.
   const rl = await checkRateLimit(`studio:schedule:${userId}`, 30, 3600);
   if (!rl.allowed) {
     return NextResponse.json(
@@ -136,7 +141,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Pick a time in the future.' }, { status: 400 });
   }
 
-  // Only allow platforms the realtor has actually connected.
+  // Only allow platforms the seller has actually connected.
   const connected = new Set((await connectedSocials(space.id, userId)).map((p) => p.toolkit));
   const targets = requested.filter((p) => connected.has(p));
   if (targets.length === 0) {
@@ -150,12 +155,10 @@ export async function POST(req: NextRequest) {
   // Create / Edit / Library, or a fresh upload.
   let fileId: string;
   if (fileIdInput) {
-    const { data: existing } = await supabase
-      .from('File')
-      .select('id')
-      .eq('id', fileIdInput)
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const existing = await convex().query(api.infra.files.getByIdForSpace, {
+      id: fileIdInput,
+      spaceId: space.id,
+    });
     if (!existing) {
       return NextResponse.json({ error: 'That image was not found.' }, { status: 400 });
     }
@@ -186,40 +189,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Couldn't schedule the post — usually temporary." }, { status: 500 });
     }
 
-    const { error: fileErr } = await supabase.from('File').insert({
-      id: fileId,
-      spaceId: space.id,
-      userId,
-      storageKey,
-      name,
-      mimeType: file.type,
-      category: 'image',
-      sizeBytes: buffer.length,
-      isPublic: false,
-    });
-    if (fileErr) {
+    try {
+      await convex().mutation(api.infra.files.create, {
+        id: fileId,
+        spaceId: space.id,
+        userId,
+        storageKey,
+        name,
+        mimeType: file.type,
+        category: 'image',
+        sizeBytes: buffer.length,
+        isPublic: false,
+      });
+    } catch (fileErr) {
       await deleteObject(storageKey).catch(() => undefined);
-      logger.error('[studio.schedule] file insert failed', { spaceId: space.id }, fileErr);
+      logger.error('[studio.schedule] file insert failed', { spaceId: space.id }, fileErr as Error);
       return NextResponse.json({ error: "Couldn't schedule the post — usually temporary." }, { status: 500 });
     }
   }
 
-  const { data: post, error: postErr } = await supabase
-    .from('StudioPost')
-    .insert({
-      id: crypto.randomUUID(),
+  let post: {
+    id: string;
+    caption: string;
+    platforms: string[];
+    scheduledAt: string;
+    status: string;
+    createdAt: string;
+  };
+  try {
+    post = await convex().mutation(api.studio.posts.insertPost, {
       spaceId: space.id,
       userId,
       fileId,
       caption,
       platforms: targets,
       scheduledAt: scheduledAt.toISOString(),
-      status: 'scheduled',
-    })
-    .select('id, caption, platforms, scheduledAt, status, createdAt')
-    .single();
-  if (postErr) {
-    logger.error('[studio.schedule] post insert failed', { spaceId: space.id }, postErr);
+    });
+  } catch (postErr) {
+    logger.error('[studio.schedule] post insert failed', { spaceId: space.id }, postErr as Error);
     return NextResponse.json({ error: "Couldn't schedule the post — usually temporary." }, { status: 500 });
   }
 
@@ -234,17 +241,14 @@ export async function POST(req: NextRequest) {
     });
     const eventId = sent.ids?.[0];
     if (eventId) {
-      await supabase
-        .from('StudioPost')
-        .update({ inngestEventId: eventId })
-        .eq('id', post.id);
+      await convex().mutation(api.studio.posts.setInngestEventId, {
+        id: post.id,
+        inngestEventId: eventId,
+      });
     }
   } catch (err) {
     logger.error('[studio.schedule] inngest send failed', { spaceId: space.id }, err as Error);
-    await supabase
-      .from('StudioPost')
-      .update({ status: 'failed', updatedAt: new Date().toISOString() })
-      .eq('id', post.id);
+    await convex().mutation(api.studio.posts.markFailed, { id: post.id });
     return NextResponse.json(
       { error: "Couldn't schedule the post — usually temporary." },
       { status: 500 },
@@ -268,19 +272,14 @@ export async function DELETE(req: NextRequest) {
   // Only a still-scheduled post in this space can be canceled. The Inngest
   // publish function skips any post that is not 'scheduled', so flipping the
   // status is the whole cancel mechanism.
-  const { data, error } = await supabase
-    .from('StudioPost')
-    .update({ status: 'canceled', updatedAt: new Date().toISOString() })
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .eq('status', 'scheduled')
-    .select('id')
-    .maybeSingle();
-  if (error) {
-    logger.error('[studio.schedule] cancel failed', { spaceId: space.id }, error);
+  let canceled: boolean;
+  try {
+    canceled = await convex().mutation(api.studio.posts.cancel, { id, spaceId: space.id });
+  } catch (error) {
+    logger.error('[studio.schedule] cancel failed', { spaceId: space.id }, error as Error);
     return NextResponse.json({ error: 'Could not cancel the post.' }, { status: 500 });
   }
-  if (!data) {
+  if (!canceled) {
     return NextResponse.json(
       { error: 'That post can no longer be canceled.' },
       { status: 409 },

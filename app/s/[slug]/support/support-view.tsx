@@ -3,12 +3,12 @@
 /**
  * /s/[slug]/support — Get help.
  *
- * One intent: a realtor submits a support request. The form is the focal
- * element; the realtor's own past tickets sit below it with status badges.
+ * One intent: a seller submits a support request. The form is the focal
+ * element; the seller's own past tickets sit below it with status badges.
  *
  * Design: Jobs lens — paper-flat, one focal element (serif h1 + status
  * sentence), hairline-divided ticket list, calm copy. No configuration the
- * realtor has to operate — just say what's wrong and send it.
+ * seller has to operate — just say what's wrong and send it.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -61,9 +61,9 @@ const CATEGORY_LABELS: Record<Category, string> = {
 
 // Status pill tones — the canonical status palette from STYLESHEET.md.
 const STATUS_STYLES: Record<TicketStatus, string> = {
-  open: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  in_progress: 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
-  resolved: 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
+  open: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  in_progress: 'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15',
+  resolved: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
   closed: 'text-muted-foreground bg-muted',
 };
 

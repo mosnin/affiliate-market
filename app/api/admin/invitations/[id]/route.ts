@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logAdminAction } from '@/lib/admin';
 
@@ -35,14 +35,16 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'status must be cancelled or expired' }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from('Invitation')
-    .update({ status })
-    .eq('id', id)
-    .select()
-    .maybeSingle();
-
-  if (error || !data) {
+  let data;
+  try {
+    data = await convex().mutation(api.org.invitations.setStatus, {
+      id,
+      status: status as 'cancelled' | 'expired',
+    });
+  } catch {
+    return NextResponse.json({ error: 'Invitation not found' }, { status: 404 });
+  }
+  if (!data) {
     return NextResponse.json({ error: 'Invitation not found' }, { status: 404 });
   }
 

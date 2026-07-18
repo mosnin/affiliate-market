@@ -9,7 +9,7 @@ interface FollowUpSuggestionsProps {
   contactId: string;
   scoreLabel: string | null;
   contactType: string;
-  hasTours: boolean;
+  hasDemos: boolean;
   hasDeals: boolean;
   hasFollowUp: boolean;
 }
@@ -21,7 +21,7 @@ interface Suggestion {
 }
 
 function getSuggestions(props: FollowUpSuggestionsProps): Suggestion[] {
-  const { scoreLabel, contactType, hasTours, hasDeals, hasFollowUp } = props;
+  const { scoreLabel, contactType, hasDemos, hasDeals, hasFollowUp } = props;
 
   if (hasFollowUp) return [];
 
@@ -48,11 +48,11 @@ function getSuggestions(props: FollowUpSuggestionsProps): Suggestion[] {
     });
   }
 
-  // Tour-based suggestions
-  if (hasTours && contactType === 'TOUR' && !hasDeals) {
+  // Demo-based suggestions
+  if (hasDemos && contactType === 'DEMO' && !hasDeals) {
     suggestions.push({
-      label: 'Post-tour follow-up',
-      description: 'Tour completed — check in on their interest level',
+      label: 'Post-demo follow-up',
+      description: 'Demo completed — check in on their interest level',
       delayHours: 24,
     });
   }
@@ -119,7 +119,7 @@ export function FollowUpSuggestions(props: FollowUpSuggestionsProps) {
             className={cn(
               'flex items-center justify-between gap-3 p-2.5 rounded-lg border transition-all',
               applied.has(i)
-                ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-900/10'
+                ? 'border-positive/20 bg-positive-subtle/50 dark:border-positive/20 dark:bg-positive-subtle'
                 : 'border-border bg-card hover:bg-accent/30'
             )}
           >
@@ -131,7 +131,7 @@ export function FollowUpSuggestions(props: FollowUpSuggestionsProps) {
               </div>
             </div>
             {applied.has(i) ? (
-              <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium flex-shrink-0">
+              <span className="flex items-center gap-1 text-xs text-positive dark:text-positive font-medium flex-shrink-0">
                 <Check size={12} /> Set
               </span>
             ) : (

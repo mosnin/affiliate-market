@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -28,20 +28,18 @@ export async function GET() {
   const space = await getSpaceForUser(authResult.userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data, error } = await supabase
-    .from('StudioBrand')
-    .select('colors, voice, handles')
-    .eq('spaceId', space.id)
-    .maybeSingle();
-  if (error) {
-    logger.error('[studio.brand] read failed', { spaceId: space.id }, error);
+  let data: { colors: string[]; voice: string; handles: Record<string, unknown> } | null;
+  try {
+    data = await convex().query(api.studio.brand.getBrand, { spaceId: space.id });
+  } catch (error) {
+    logger.error('[studio.brand] read failed', { spaceId: space.id }, error as Error);
     return NextResponse.json({ error: 'Could not load your brand kit.' }, { status: 500 });
   }
   if (!data) return NextResponse.json(EMPTY);
 
   return NextResponse.json({
-    colors: (data.colors as string[] | null) ?? [],
-    voice: (data.voice as string | null) ?? '',
+    colors: data.colors ?? [],
+    voice: data.voice ?? '',
     handles: (data.handles as BrandHandles | null) ?? {},
   });
 }
@@ -75,18 +73,15 @@ export async function PUT(req: NextRequest) {
     linkedin: clean(h.linkedin),
   };
 
-  const { error } = await supabase.from('StudioBrand').upsert(
-    {
+  try {
+    await convex().mutation(api.studio.brand.upsertBrand, {
       spaceId: space.id,
       colors,
       voice,
       handles,
-      updatedAt: new Date().toISOString(),
-    },
-    { onConflict: 'spaceId' },
-  );
-  if (error) {
-    logger.error('[studio.brand] save failed', { spaceId: space.id }, error);
+    });
+  } catch (error) {
+    logger.error('[studio.brand] save failed', { spaceId: space.id }, error as Error);
     return NextResponse.json({ error: 'Could not save your brand kit.' }, { status: 500 });
   }
 

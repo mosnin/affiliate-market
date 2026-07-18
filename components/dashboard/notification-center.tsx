@@ -29,15 +29,15 @@ interface Notification {
 
 const TYPE_ICONS: Record<string, typeof Bell> = {
   new_lead: PhoneIncoming,
-  upcoming_tour: CalendarDays,
+  upcoming_demo: CalendarDays,
   follow_up_due: Clock,
   waitlist: Users,
-  tour_needs_action: Briefcase,
+  demo_needs_action: Briefcase,
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  high: 'text-red-600 dark:text-red-400',
-  medium: 'text-amber-600 dark:text-amber-400',
+  high: 'text-negative',
+  medium: 'text-muted-foreground',
   low: 'text-muted-foreground',
 };
 
@@ -66,7 +66,7 @@ export function NotificationCenter({ slug, spaceId }: { slug: string; spaceId?: 
     return () => clearInterval(interval);
   }, [loadNotifications]);
 
-  // Realtime: refetch notifications when this space's Contact or Tour
+  // Realtime: refetch notifications when this space's Contact or Demo
   // rows change. The channel name includes spaceId so two tabs of the
   // same workspace each get their own channel (Supabase rejects
   // duplicate channel names on the same client) and the postgres_changes
@@ -86,7 +86,7 @@ export function NotificationCenter({ slug, spaceId }: { slug: string; spaceId?: 
       )
       .on(
         'postgres_changes' as any,
-        { event: '*', schema: 'public', table: 'Tour', filter: `spaceId=eq.${spaceId}` },
+        { event: '*', schema: 'public', table: 'Demo', filter: `spaceId=eq.${spaceId}` },
         () => { loadNotifications(); },
       )
       .subscribe();
@@ -141,9 +141,9 @@ export function NotificationCenter({ slug, spaceId }: { slug: string; spaceId?: 
                     className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-foreground/[0.04] transition-colors"
                   >
                     <div className={cn(
-                      'w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5',
-                      n.priority === 'high' ? 'bg-red-100 dark:bg-red-500/15' :
-                      n.priority === 'medium' ? 'bg-amber-100 dark:bg-amber-500/15' :
+                      'w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5',
+                      n.priority === 'high' ? 'bg-negative-subtle' :
+                      n.priority === 'medium' ? 'bg-muted' :
                       'bg-muted'
                     )}>
                       <Icon size={14} className={PRIORITY_COLORS[n.priority]} />
@@ -168,7 +168,7 @@ export function NotificationCenter({ slug, spaceId }: { slug: string; spaceId?: 
       <button
         ref={btnRef}
         onClick={() => setOpen(!open)}
-        className="relative h-8 w-8 flex items-center justify-center rounded-full border border-border/70 bg-background text-muted-foreground/70 hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+        className="relative h-9 w-9 inline-flex items-center justify-center rounded-xl border border-border bg-card text-muted-foreground hover:bg-muted/60 transition-colors duration-150"
         title="Notifications"
         aria-label={totalCount > 0 ? `${totalCount} notifications` : 'Notifications'}
       >
@@ -177,7 +177,7 @@ export function NotificationCenter({ slug, spaceId }: { slug: string; spaceId?: 
           <span className={cn(
             'absolute top-1 right-1 min-w-[14px] h-3.5 rounded-full text-[9px] font-semibold flex items-center justify-center px-1 leading-none ring-2 ring-background',
             highCount > 0
-              ? 'bg-orange-500 text-white'
+              ? 'bg-negative text-white'
               : 'bg-foreground/15 text-foreground/70'
           )}>
             {totalCount > 9 ? '9+' : totalCount}

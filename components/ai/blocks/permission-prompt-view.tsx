@@ -40,7 +40,7 @@ export interface PermissionPromptData {
 
 /**
  * Human-readable args preview. The JSON dump works for tools where the
- * realtor truly needs to see the shape (update_contact, create_deal), but
+ * seller truly needs to see the shape (update_contact, create_deal), but
  * for send_email / send_sms — the tools where the ACTUAL content matters
  * most — JSON is noisy and the body field escapes newlines. Switch on the
  * tool name and render labeled fields for those.
@@ -89,11 +89,11 @@ function PrettyArgs({ prompt }: { prompt: PermissionPromptData }): React.ReactEl
 }
 
 /**
- * Inline compose card for send_email / send_sms. The realtor edits in place
+ * Inline compose card for send_email / send_sms. The seller edits in place
  * — no JSON, no pencil. Send fires the existing approval pipeline with the
  * edited subject/body, which routes to Resend (email) or Telnyx (SMS) on
  * the server side. Read-only recipient (To:) — recipient selection happens
- * upstream in the Chippi conversation, not in this card.
+ * upstream in the Cola conversation, not in this card.
  */
 function InlineComposeCard({
   kind,
@@ -171,7 +171,7 @@ function InlineComposeCard({
       {/* Char counter for SMS */}
       {kind === 'sms' && (
         <div className="flex items-center justify-end gap-2 px-2.5 pb-1.5 text-[11px] tabular-nums text-muted-foreground/70">
-          <span className={cn(smsOver && 'text-amber-600 dark:text-amber-400')}>
+          <span className={cn(smsOver && 'text-muted-foreground dark:text-muted-foreground')}>
             {smsLen} / {SMS_SOFT_LIMIT}
             {smsSegments > 1 && (
               <>
@@ -228,7 +228,7 @@ export function PermissionPromptView({
   // Inline compose state for send_email / send_sms. The draft fields are
   // editable in place — no JSON-pencil step — and ride through to the
   // server as `editedArgs` on Send. Initial values come from the prompt's
-  // args (what Chippi composed). Reset when the prompt id changes so a
+  // args (what Cola composed). Reset when the prompt id changes so a
   // second queued send doesn't show the previous draft.
   const initialCompose = useMemo(() => {
     const a = prompt.args as Record<string, unknown>;
@@ -306,13 +306,13 @@ export function PermissionPromptView({
   const disabled = busy || submitting !== null;
 
   return (
-    <div className="rounded-xl border border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/5 px-4 py-3">
+    <div className="rounded-xl border border-border bg-muted/70 dark:bg-muted0/5 px-4 py-3">
       <div className="flex items-start gap-3">
-        <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0 text-amber-700 dark:text-amber-400">
+        <div className="w-8 h-8 rounded-lg bg-muted0/15 flex items-center justify-center flex-shrink-0 text-muted-foreground dark:text-muted-foreground">
           <ShieldCheck size={15} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-0.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground mb-0.5">
             {isSendEmail ? 'Email draft — review and send' : isSendSms ? 'SMS draft — review and send' : 'Approve before running'}
           </p>
           <p className="text-sm font-semibold text-foreground">{prompt.summary}</p>
@@ -346,7 +346,7 @@ export function PermissionPromptView({
                 disabled={disabled}
               />
               {parseError && (
-                <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">{parseError}</p>
+                <p className="mt-1 text-[11px] text-negative dark:text-negative">{parseError}</p>
               )}
             </div>
           ) : (
@@ -418,7 +418,7 @@ export function PermissionPromptView({
               type="button"
               onClick={doDeny}
               disabled={disabled}
-              className="inline-flex items-center gap-1 rounded-md border border-rose-400/50 bg-background text-rose-700 dark:text-rose-400 hover:bg-rose-500/10 px-3 py-2.5 min-h-[44px] text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-md border border-negative/20 bg-background text-negative dark:text-negative hover:bg-negative-subtle0/10 px-3 py-2.5 min-h-[44px] text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting === 'deny' ? (
                 <Loader2 size={12} className="animate-spin" />

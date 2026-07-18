@@ -1,5 +1,5 @@
 -- Affiliate program — stores the FirstPromoter promoter id + referral link
--- for each Chippi workspace. One row per space (UNIQUE on spaceId).
+-- for each Cola workspace. One row per space (UNIQUE on spaceId).
 --
 -- spaceId FK cascades on delete so if a workspace is removed the affiliate
 -- row goes with it — no orphaned FP references.

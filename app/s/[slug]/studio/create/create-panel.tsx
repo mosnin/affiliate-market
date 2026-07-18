@@ -4,7 +4,7 @@
  * CreatePanel — the interactive surface of /s/[slug]/studio/create.
  *
  * Prompt in, image out. The result is stored server-side as a File row, so it
- * lands in the realtor's Files library, and generation cost is metered into
+ * lands in the seller's Files library, and generation cost is metered into
  * usage by the API route. This surface stays about the creative output.
  */
 
@@ -35,7 +35,7 @@ export function CreatePanel({
   initialPrompt?: string;
   initialModel?: string;
 } = {}) {
-  // Duplicate flow: the realtor opened this panel from a Library tile and
+  // Duplicate flow: the seller opened this panel from a Library tile and
   // wants to re-render the same prompt. We seed state from the URL params
   // so the form is pre-filled and a single click re-runs the generation.
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
@@ -108,7 +108,7 @@ export function CreatePanel({
     setGenerating(true);
     setError(null);
     // Visible affordance — a 5-10s silent wait reads as broken. The toast
-    // outlives the in-page spinner if the realtor scrolls or switches tabs.
+    // outlives the in-page spinner if the seller scrolls or switches tabs.
     const kind = STUDIO_MODELS[model]?.kind === 'video' ? 'video' : 'image';
     const toastId = toastLoading(
       kind === 'video' ? 'Generating your video…' : 'Generating your image…',
@@ -200,13 +200,13 @@ export function CreatePanel({
 
       {/* Error */}
       {error && (
-        <div className="rounded-lg border border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/5 px-3 py-2 flex items-start gap-2 text-[12.5px] text-rose-700 dark:text-rose-400">
+        <div className="rounded-lg border border-negative/20 bg-negative-subtle/70 dark:bg-negative-subtle0/5 px-3 py-2 flex items-start gap-2 text-[12.5px] text-negative dark:text-negative">
           <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
           <span>{error}</span>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="ml-auto text-rose-700/70 dark:text-rose-400/70 hover:text-rose-700 dark:hover:text-rose-400"
+            className="ml-auto text-negative/70 dark:text-negative/70 hover:text-negative dark:hover:text-negative"
           >
             Dismiss
           </button>

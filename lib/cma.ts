@@ -1,44 +1,53 @@
 /**
- * CMA (Comparative Market Analysis) — pure logic.
+ * Competitive Pricing Analysis (CPA) — pure logic.
  *
- * In-house only. Comps come from the realtor's own Property rows (the same
- * source `find_comparable_properties` uses) — never MLS, never an external API.
+ * In-house only. Comparable products come from the seller's own Product rows
+ * (the same source `find_comparable_products` uses) — never an external catalog
+ * or marketplace API.
  *
- * `buildCma` selects comps for a subject (by beds/baths/price/area similarity),
- * computes the headline stats, and returns a frozen payload the public report
- * page renders verbatim. Stats are split into small pure helpers so the
- * computation is unit-testable without a database.
+ * `buildCma` selects comparable products for a subject (by category/price
+ * similarity), computes the headline stats, and returns a frozen payload the
+ * public report page renders verbatim. Stats are split into small pure helpers
+ * so the computation is unit-testable without a database.
  */
 
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server'; // Product reads (Product is Convex)
 
 // ── Public payload shapes ────────────────────────────────────────────────────
 
-/** Snapshot of the subject property frozen into the report. */
+/** Snapshot of the subject product frozen into the report. */
 export interface CmaSubject {
-  propertyId: string | null;
+  productId: string | null;
+  /** Product name or website URL used as the primary identifier. */
   address: string;
+  /** Category used for comp filtering (e.g. "saas", "devtools"). */
   city: string | null;
+  /** Region / market segment — optional refinement. */
   stateRegion: string | null;
+  /** Legacy field — maps to plan tier / seat count for software products. */
   beds: number | null;
+  /** Legacy field — maps to integration count or add-ons for software products. */
   baths: number | null;
+  /** Legacy field — not used for software; kept for schema compatibility. */
   squareFeet: number | null;
-  propertyType: string | null;
+  productType: string | null;
   listPrice: number | null;
 }
 
-/** A single comparable, snapshotted so the report is stable over time. */
+/** A single comparable product, snapshotted so the report is stable over time. */
 export interface CmaComp {
   id: string;
+  /** Product name or website URL. */
   address: string;
+  /** Category of the comparable product. */
   city: string | null;
   beds: number | null;
   baths: number | null;
   squareFeet: number | null;
-  /** The price we analysed — sold price preferred, else list price. */
+  /** The price analysed — published price preferred, else list price. */
   price: number | null;
-  /** Whether `price` came from a sold listing vs an active list price. */
+  /** Whether `price` came from a published listing vs a draft list price. */
   priceBasis: 'sold' | 'list';
   pricePerSqft: number | null;
   listingStatus: string;
@@ -52,12 +61,12 @@ export interface CmaStats {
   low: number | null;
   median: number | null;
   high: number | null;
-  /** Average $/sqft across comps that had both a price and a sqft. */
+  /** Average $/seat (or $/unit for one-time products) across comps with both a price and a seat count. */
   avgPricePerSqft: number | null;
-  /** Suggested list-price range, derived from the comp spread + subject sqft. */
+  /** Suggested pricing range, derived from the comp spread. */
   suggestedLow: number | null;
   suggestedHigh: number | null;
-  /** Whether the priced comps were mostly sold (vs list) prices. */
+  /** Whether the priced comps were mostly published (sold) or draft (list) prices. */
   basis: 'sold' | 'list' | 'mixed' | 'none';
 }
 
@@ -71,15 +80,17 @@ export interface CmaPayload {
 
 // ── Subject input ────────────────────────────────────────────────────────────
 
-/** Free-typed subject fields (when the realtor isn't picking a saved row). */
+/** Free-typed subject fields (when the seller isn't picking a saved Product row). */
 export interface SubjectFields {
+  /** Product name or website URL. */
   address: string;
+  /** Category / market segment (e.g. "saas", "devtools"). */
   city?: string | null;
   stateRegion?: string | null;
   beds?: number | null;
   baths?: number | null;
   squareFeet?: number | null;
-  propertyType?: string | null;
+  productType?: string | null;
   listPrice?: number | null;
 }
 
@@ -158,7 +169,7 @@ export function computeStats(comps: CmaComp[], subject: CmaSubject): CmaStats {
 // ── Comp selection ───────────────────────────────────────────────────────────
 
 /**
- * Resolve the comp `price` + basis for a Property row: prefer a sold listing's
+ * Resolve the comp `price` + basis for a Product row: prefer a sold listing's
  * price (the truest comp signal), otherwise fall back to the list price.
  */
 function priceForComp(row: {
@@ -169,32 +180,33 @@ function priceForComp(row: {
   return { price: row.listPrice ?? null, basis };
 }
 
-interface PropertyRow {
+interface ProductRow {
   id: string;
+  spaceId: string;
   address: string;
   city: string | null;
   stateRegion: string | null;
   beds: number | null;
   baths: number | null;
   squareFeet: number | null;
-  propertyType: string | null;
+  productType: string | null;
   listPrice: number | null;
   listingStatus: string;
   updatedAt: string;
 }
 
 const COMP_SELECT =
-  'id, address, city, stateRegion, beds, baths, squareFeet, propertyType, listPrice, listingStatus, updatedAt';
+  'id, address, city, stateRegion, beds, baths, squareFeet, productType, listPrice, listingStatus, updatedAt';
 
 const MAX_COMPS = 6;
 
 /**
  * Score a candidate against the subject. Lower is closer. Mirrors the
- * intent of `find_comparable_properties` (beds/baths/price similarity) but
+ * intent of `find_comparable_products` (beds/baths/price similarity) but
  * adds sqft + a sold-comp preference, since a CMA wants the most relevant
  * recent sales near the top.
  */
-function scoreComp(row: PropertyRow, subject: CmaSubject): number {
+function scoreComp(row: ProductRow, subject: CmaSubject): number {
   let score = 0;
   if (subject.beds != null && row.beds != null) score += Math.abs(row.beds - subject.beds) * 2;
   if (subject.baths != null && row.baths != null) score += Math.abs(row.baths - subject.baths) * 1.5;
@@ -209,13 +221,13 @@ function scoreComp(row: PropertyRow, subject: CmaSubject): number {
   ) {
     score += (Math.abs(row.listPrice - subject.listPrice) / subject.listPrice) * 5;
   }
-  // Prefer sold comps and same property type as light tie-breakers.
+  // Prefer sold comps and same product type as light tie-breakers.
   if (row.listingStatus === 'sold') score -= 1;
-  if (subject.propertyType && row.propertyType === subject.propertyType) score -= 0.5;
+  if (subject.productType && row.productType === subject.productType) score -= 0.5;
   return score;
 }
 
-function toComp(row: PropertyRow): CmaComp {
+function toComp(row: ProductRow): CmaComp {
   const { price, basis } = priceForComp(row);
   const pricePerSqft =
     price != null && row.squareFeet != null && row.squareFeet > 0
@@ -237,72 +249,70 @@ function toComp(row: PropertyRow): CmaComp {
 
 export interface BuildCmaArgs {
   spaceId: string;
-  /** Pick a saved Property as the subject. */
-  subjectPropertyId?: string;
+  /** Pick a saved Product as the subject. */
+  subjectProductId?: string;
   /** Or type subject details directly. One of these is required. */
   subjectFields?: SubjectFields;
 }
 
 /**
- * Build a full CMA payload for a space. Selects up to 6 comps from the space's
- * own Property rows, scores them by similarity to the subject, and computes the
- * stats. Throws on bad input or DB error; the route translates to HTTP.
+ * Build a full competitive pricing analysis payload for a space. Selects up to
+ * 6 comparable products from the space's own Product rows, scores them by
+ * similarity to the subject (category match + price proximity), and computes
+ * the headline stats. Throws on bad input or DB error; the route translates to HTTP.
  */
 export async function buildCma(args: BuildCmaArgs): Promise<CmaPayload> {
-  const { spaceId, subjectPropertyId, subjectFields } = args;
+  const { spaceId, subjectProductId, subjectFields } = args;
 
   // ── Resolve the subject ───────────────────────────────────────────────────
   let subject: CmaSubject;
-  if (subjectPropertyId) {
-    const { data, error } = await supabase
-      .from('Property')
-      .select(COMP_SELECT)
-      .eq('id', subjectPropertyId)
-      .eq('spaceId', spaceId)
-      .maybeSingle();
-    if (error) throw new Error(`Subject lookup failed: ${error.message}`);
-    if (!data) throw new Error('Subject property not found.');
-    const row = data as PropertyRow;
+  if (subjectProductId) {
+    // Product is on Convex now; the full row carries every COMP_SELECT column.
+    const data = (await convex().query(api.marketplace.products.getByIdInSpace, {
+      id: subjectProductId,
+      spaceId,
+    })) as ProductRow | null;
+    if (!data) throw new Error('Subject product not found.');
+    const row = data;
     subject = {
-      propertyId: row.id,
+      productId: row.id,
       address: row.address,
       city: row.city,
       stateRegion: row.stateRegion,
       beds: row.beds,
       baths: row.baths,
       squareFeet: row.squareFeet,
-      propertyType: row.propertyType,
+      productType: row.productType,
       listPrice: row.listPrice,
     };
   } else if (subjectFields && subjectFields.address.trim()) {
     subject = {
-      propertyId: null,
+      productId: null,
       address: subjectFields.address.trim(),
       city: subjectFields.city ?? null,
       stateRegion: subjectFields.stateRegion ?? null,
       beds: subjectFields.beds ?? null,
       baths: subjectFields.baths ?? null,
       squareFeet: subjectFields.squareFeet ?? null,
-      propertyType: subjectFields.propertyType ?? null,
+      productType: subjectFields.productType ?? null,
       listPrice: subjectFields.listPrice ?? null,
     };
   } else {
-    throw new Error('Provide a subjectPropertyId or subject fields with an address.');
+    throw new Error('Provide a subjectProductId or subject fields with an address.');
   }
 
   // ── Pull candidate comps from this space ──────────────────────────────────
   // Over-fetch and score in memory (small data, same as find_comparable).
-  const { data, error } = await supabase
-    .from('Property')
-    .select(COMP_SELECT)
-    .eq('spaceId', spaceId)
-    .order('updatedAt', { ascending: false })
-    .limit(50);
-  if (error) throw new Error(`Comp lookup failed: ${error.message}`);
-
-  let rows = (data ?? []) as PropertyRow[];
+  // listForSpace returns owned + assigned-pool products newest-updated first;
+  // the old query was `.eq('spaceId')` only, so keep owned-only here, then cap to
+  // 50 to match the old .limit(50).
+  const allForSpace = (await convex().query(api.marketplace.products.listForSpace, {
+    spaceId,
+    order: 'updated',
+  })) as ProductRow[];
+  let rows = allForSpace.filter((r) => r.spaceId === spaceId).slice(0, 50);
   // Never include the subject itself as its own comp.
-  if (subject.propertyId) rows = rows.filter((r) => r.id !== subject.propertyId);
+  if (subject.productId) rows = rows.filter((r) => r.id !== subject.productId);
 
   rows.sort((a, b) => scoreComp(a, subject) - scoreComp(b, subject));
   const comps = rows.slice(0, MAX_COMPS).map(toComp);
@@ -321,7 +331,7 @@ export async function buildCma(args: BuildCmaArgs): Promise<CmaPayload> {
 
 /**
  * URL-safe random token for the public /cma/[token] route. 32 hex chars of
- * crypto-strong randomness — same posture as PropertyPacket tokens.
+ * crypto-strong randomness — same posture as ProductPacket tokens.
  */
 export function generateShareToken(): string {
   return crypto.randomBytes(16).toString('hex');

@@ -1,6 +1,6 @@
 /**
  * POST /api/internal/studio/generate — internal generation endpoint for the
- * Chippi agent (Modal/Python). Authed by AGENT_INTERNAL_SECRET, not Clerk.
+ * Cola agent (Modal/Python). Authed by AGENT_INTERNAL_SECRET, not Clerk.
  *
  * The agent run carries spaceId only, so this route resolves the space
  * owner's Clerk userId for the File / StudioGeneration rows, then runs the
@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { falConfigured } from '@/lib/studio/fal';
 import { runStudioGeneration, StudioGenerationError } from '@/lib/studio/generate';
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Daily spend cap — shared with the realtor-facing route. If the agent
+  // Daily spend cap — shared with the seller-facing route. If the agent
   // path and human path both burn budget, this catches the combined total
   // before fal.ai is called.
   const budget = await checkStudioSpendBudget(spaceId);
@@ -66,19 +66,11 @@ export async function POST(req: NextRequest) {
 
   // The agent context carries spaceId only — resolve the space owner's Clerk
   // userId, since File rows are stamped with a Clerk userId.
-  const { data: spaceRow } = await supabase
-    .from('Space')
-    .select('ownerId')
-    .eq('id', spaceId)
-    .maybeSingle();
+  const spaceRow = await convex().query(api.workspace.spaces.getById, { id: spaceId });
   if (!spaceRow?.ownerId) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 });
   }
-  const { data: ownerRow } = await supabase
-    .from('User')
-    .select('clerkId')
-    .eq('id', spaceRow.ownerId as string)
-    .maybeSingle();
+  const ownerRow = await convex().query(api.org.users.getById, { id: spaceRow.ownerId as string });
   const userId = (ownerRow?.clerkId as string | undefined) ?? '';
   if (!userId) {
     return NextResponse.json({ error: 'Space owner not found' }, { status: 404 });

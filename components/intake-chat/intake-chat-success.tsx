@@ -43,10 +43,10 @@ export function IntakeChatSuccess({
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
         transition={{ delay: 0.18, type: 'spring', stiffness: 200, damping: 15 }}
-        className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center"
+        className="w-14 h-14 rounded-full bg-positive-subtle0/10 flex items-center justify-center"
         aria-hidden="true"
       >
-        <CheckCircle2 size={28} className="text-emerald-600 dark:text-emerald-400" />
+        <CheckCircle2 size={28} className="text-positive dark:text-positive" />
       </motion.div>
 
       {/* Headline + subtext */}
@@ -69,7 +69,7 @@ export function IntakeChatSuccess({
 
       {/* Application ref — 6 chars uppercase. A 64-char hex dump means
           nothing to an applicant; a short code is something they can quote
-          on a phone call if the realtor asks for it. */}
+          on a phone call if the seller asks for it. */}
       {applicationRef && (
         <motion.p
           initial={{ opacity: 0 }}

@@ -3,7 +3,7 @@
  *
  * Daily sweeper for AgentPausedRun rows. Without this, every paused-then-
  * abandoned chat turn accumulates indefinitely. The resume route only
- * marks rows expired lazily on access — abandoned runs that the realtor
+ * marks rows expired lazily on access — abandoned runs that the seller
  * never returns to never expire.
  *
  * Behavior:
@@ -14,7 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { monitorCron } from '@/lib/cron-monitor';
 
@@ -35,32 +35,28 @@ async function handler(req: NextRequest) {
   const cutoffIso = new Date(Date.now() - HARD_DELETE_DAYS * 86_400_000).toISOString();
 
   // (1) Mark expired anything still pending past its expiresAt.
-  const { data: expiredData, error: expireErr } = await supabase
-    .from('AgentPausedRun')
-    .update({ status: 'expired', updatedAt: nowIso })
-    .eq('status', 'pending')
-    .lt('expiresAt', nowIso)
-    .select('id');
-
-  if (expireErr) {
-    logger.error('[cron.sweep-paused-runs] expire failed', { err: expireErr.message });
+  let expiredCount: number;
+  try {
+    const res = await convex().mutation(api.agent.paused.sweepExpire, { now: nowIso });
+    expiredCount = res.expired;
+  } catch (err) {
+    logger.error('[cron.sweep-paused-runs] expire failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'expire failed' }, { status: 500 });
   }
-  const expiredCount = (expiredData ?? []).length;
 
   // (2) Hard-delete anything older than HARD_DELETE_DAYS.
-  const { data: deletedData, error: deleteErr } = await supabase
-    .from('AgentPausedRun')
-    .delete()
-    .lt('createdAt', cutoffIso)
-    .select('id');
-
-  if (deleteErr) {
-    logger.error('[cron.sweep-paused-runs] delete failed', { err: deleteErr.message });
+  let deletedCount: number;
+  try {
+    const res = await convex().mutation(api.agent.paused.sweepDelete, { cutoff: cutoffIso });
+    deletedCount = res.deleted;
+  } catch (err) {
+    logger.error('[cron.sweep-paused-runs] delete failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'delete failed' }, { status: 500 });
   }
-
-  const deletedCount = (deletedData ?? []).length;
 
   return NextResponse.json({
     ok: true,

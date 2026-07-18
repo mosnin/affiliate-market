@@ -1,5 +1,5 @@
 /**
- * `log_email_sent` — record an email the realtor sent OUTSIDE Chippi.
+ * `log_email_sent` — record an email the seller sent OUTSIDE Cola.
  *
  * Approval-gated. Mutating: inserts a ContactActivity of type 'email'.
  * No delivery, no SMTP, no draft. This is purely for the audit trail.
@@ -9,7 +9,7 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
 
@@ -20,7 +20,7 @@ const parameters = z
     body: z.string().trim().min(1).max(10_000).describe('Body text — stored in metadata.'),
     sentAt: z.string().datetime().optional().describe('Optional ISO timestamp the email was sent. Defaults to now.'),
   })
-  .describe('Log an email sent outside Chippi to a contact. Audit trail only.');
+  .describe('Log an email sent outside Cola to a contact. Audit trail only.');
 
 interface LogEmailResult {
   contactId: string;
@@ -32,7 +32,7 @@ export const logEmailSentTool = defineTool<typeof parameters, LogEmailResult>({
   name: 'log_email_sent',
   riskLevel: 'low',
   description:
-    'Record an email the realtor sent OUTSIDE Chippi against a contact\'s timeline. Does NOT send anything.',
+    'Record an email the seller sent OUTSIDE Cola against a contact\'s timeline. Does NOT send anything.',
   parameters,
   requiresApproval: true,
   rateLimit: { max: 60, windowSeconds: 3600 },
@@ -41,12 +41,15 @@ export const logEmailSentTool = defineTool<typeof parameters, LogEmailResult>({
   },
 
   async handler(args, ctx) {
-    const { data: contact } = await supabase
-      .from('Contact')
-      .select('id, name')
-      .eq('id', args.personId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
+    let contact: { id: string; name: string } | null;
+    try {
+      contact = await convex().query(api.contacts.contacts.getById, {
+        id: args.personId,
+        spaceId: ctx.space.id,
+      });
+    } catch {
+      contact = null;
+    }
     if (!contact) {
       return { summary: 'Contact not found in this workspace.', display: 'error' };
     }
@@ -54,17 +57,19 @@ export const logEmailSentTool = defineTool<typeof parameters, LogEmailResult>({
 
     const sentAt = args.sentAt ?? new Date().toISOString();
     const activityId = crypto.randomUUID();
-    const { error } = await supabase.from('ContactActivity').insert({
-      id: activityId,
-      contactId: c.id,
-      spaceId: ctx.space.id,
-      type: 'email',
-      content: `Sent: ${args.subject}`,
-      metadata: { body: args.body, manualLog: true, sentAt, via: 'on_demand_agent' },
-    });
-    if (error) {
+    try {
+      await convex().mutation(api.contacts.activity.create, {
+        id: activityId,
+        contactId: c.id,
+        spaceId: ctx.space.id,
+        type: 'email',
+        content: `Sent: ${args.subject}`,
+        metadata: { body: args.body, manualLog: true, sentAt, via: 'on_demand_agent' },
+      });
+    } catch (error) {
       logger.error('[tools.log_email_sent] insert failed', { contactId: c.id }, error);
-      return { summary: `Logging failed: ${error.message}`, display: 'error' };
+      const message = error instanceof Error ? error.message : 'unknown error';
+      return { summary: `Logging failed: ${message}`, display: 'error' };
     }
 
     return {

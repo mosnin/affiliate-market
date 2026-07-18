@@ -18,55 +18,51 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
-// ── Supabase mock ─────────────────────────────────────────────────────────────
+// ── Convex mock ───────────────────────────────────────────────────────────────
 //
-// We hoist the call-count and responder controls so the vi.mock factory can
-// capture them before any module imports are resolved.
+// kill-switch.ts was migrated from Supabase to Convex: isSpaceDisabled now calls
+// `convex().query(api.workspace.disabled.isDisabled, { spaceId })`, which returns
+// a boolean directly (the old `.maybeSingle()` returned a row/null and the lib
+// derived the boolean; now the boolean is the function's return value). We mock
+// `@/lib/convex-server` and drive the query mock with a per-test "responder" so
+// each test fully controls what the DB returns (true / false / throw).
+//
+// The call counter increments on every isDisabled query — that's the DB hit the
+// cache tests assert on (one per uncached lookup). Tracked on globalThis so the
+// hoisted factory and the test body share the same counter across module loads.
 
-const { getMaybeSingleResponder, setMaybeSingleResponder, getCallCount, resetCallCount } =
-  vi.hoisted(() => {
-    let callCount = 0;
-    // Default: space not disabled
-    let responder: () => Promise<{ data: unknown; error: unknown }> = async () => ({
-      data: null,
-      error: null,
-    });
-    return {
-      getMaybeSingleResponder: () => responder,
-      setMaybeSingleResponder: (fn: typeof responder) => {
-        responder = fn;
-      },
-      getCallCount: () => callCount,
-      resetCallCount: () => {
-        callCount = 0;
-      },
-    };
-  });
-
-vi.mock('@/lib/supabase', () => {
-  function makeChain(): Record<string, unknown> {
-    const chain: Record<string, unknown> = {};
-    for (const method of ['select', 'eq', 'limit', 'is', 'not', 'order']) {
-      chain[method] = vi.fn(() => chain);
-    }
-    chain.maybeSingle = vi.fn(() => {
-      // Increment call counter each time maybeSingle is called
-      // (that is when the DB is actually queried)
-      const current = (globalThis as Record<string, unknown>).__killSwitchCallCount__ as number ?? 0;
-      (globalThis as Record<string, unknown>).__killSwitchCallCount__ = current + 1;
-      return getMaybeSingleResponder()();
-    });
-    return chain;
-  }
-
+const { getResponder, setResponder } = vi.hoisted(() => {
+  // Default: space not disabled → isDisabled returns false.
+  let responder: () => Promise<boolean> = async () => false;
   return {
-    supabase: {
-      from: vi.fn(() => makeChain()),
+    getResponder: () => responder,
+    setResponder: (fn: typeof responder) => {
+      responder = fn;
     },
   };
 });
 
-// Import AFTER mocks so kill-switch picks up the mocked supabase.
+const { convexQueryMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => {
+    const current =
+      ((globalThis as Record<string, unknown>).__killSwitchCallCount__ as number) ?? 0;
+    (globalThis as Record<string, unknown>).__killSwitchCallCount__ = current + 1;
+    return getResponder()();
+  }),
+}));
+
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: vi.fn(), action: vi.fn() }),
+  };
+});
+
+// Import AFTER mocks so kill-switch picks up the mocked convex client.
 import { isSpaceDisabled, assertSpaceEnabled } from '../kill-switch';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -95,7 +91,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetDbCallCount();
   // Default: space is not disabled
-  setMaybeSingleResponder(async () => ({ data: null, error: null }));
+  setResponder(async () => false);
 });
 
 afterEach(() => {
@@ -105,22 +101,22 @@ afterEach(() => {
 // ── isSpaceDisabled ───────────────────────────────────────────────────────────
 
 describe('isSpaceDisabled()', () => {
-  it('returns false when the DB returns null (space not in DisabledSpace table)', async () => {
-    setMaybeSingleResponder(async () => ({ data: null, error: null }));
+  it('returns false when the DB reports the space is not disabled', async () => {
+    setResponder(async () => false);
     const spaceId = uniqueSpaceId();
     const result = await isSpaceDisabled(spaceId);
     expect(result).toBe(false);
   });
 
-  it('returns true when the DB returns a row (space is disabled)', async () => {
-    setMaybeSingleResponder(async () => ({ data: { id: 'row_1' }, error: null }));
+  it('returns true when the DB reports the space is disabled', async () => {
+    setResponder(async () => true);
     const spaceId = uniqueSpaceId();
     const result = await isSpaceDisabled(spaceId);
     expect(result).toBe(true);
   });
 
   it('queries the DB on first call for a spaceId', async () => {
-    setMaybeSingleResponder(async () => ({ data: null, error: null }));
+    setResponder(async () => false);
     const spaceId = uniqueSpaceId();
     resetDbCallCount();
     await isSpaceDisabled(spaceId);
@@ -129,7 +125,7 @@ describe('isSpaceDisabled()', () => {
 
   describe('cache hit', () => {
     it('serves the second call from cache — DB queried only once', async () => {
-      setMaybeSingleResponder(async () => ({ data: null, error: null }));
+      setResponder(async () => false);
       const spaceId = uniqueSpaceId();
       resetDbCallCount();
 
@@ -140,12 +136,12 @@ describe('isSpaceDisabled()', () => {
     });
 
     it('cached value matches the original DB result', async () => {
-      setMaybeSingleResponder(async () => ({ data: { id: 'row_1' }, error: null }));
+      setResponder(async () => true);
       const spaceId = uniqueSpaceId();
 
       const first = await isSpaceDisabled(spaceId);
-      // Change the mock to return null — cache should still serve true
-      setMaybeSingleResponder(async () => ({ data: null, error: null }));
+      // Change the mock to return false — cache should still serve true
+      setResponder(async () => false);
       const second = await isSpaceDisabled(spaceId);
 
       expect(first).toBe(true);
@@ -160,7 +156,7 @@ describe('isSpaceDisabled()', () => {
 
       // First call at t=0
       const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(realNow);
-      setMaybeSingleResponder(async () => ({ data: null, error: null }));
+      setResponder(async () => false);
       await isSpaceDisabled(spaceId);
 
       // Advance clock past 30s TTL
@@ -177,7 +173,7 @@ describe('isSpaceDisabled()', () => {
       const realNow = Date.now();
 
       const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(realNow);
-      setMaybeSingleResponder(async () => ({ data: null, error: null }));
+      setResponder(async () => false);
       await isSpaceDisabled(spaceId);
 
       // Advance only 15s — cache still valid
@@ -190,15 +186,16 @@ describe('isSpaceDisabled()', () => {
   });
 
   describe('DB error', () => {
-    it('throws when the DB returns an error (kill-switch propagates DB errors)', async () => {
-      setMaybeSingleResponder(async () => ({
-        data: null,
-        error: { message: 'connection refused' },
-      }));
+    it('throws when the Convex query fails (kill-switch propagates DB errors)', async () => {
+      // The migrated lib no longer wraps the error in its own message — it lets
+      // the Convex query throw propagate to the caller (see kill-switch.ts:
+      // "Convex throws on failure ... let it propagate"). Intent preserved: a
+      // failed lookup throws rather than silently returning false.
+      setResponder(async () => {
+        throw new Error('connection refused');
+      });
       const spaceId = uniqueSpaceId();
-      await expect(isSpaceDisabled(spaceId)).rejects.toThrow(
-        'kill-switch: failed to query DisabledSpace: connection refused',
-      );
+      await expect(isSpaceDisabled(spaceId)).rejects.toThrow('connection refused');
     });
   });
 });
@@ -207,13 +204,13 @@ describe('isSpaceDisabled()', () => {
 
 describe('assertSpaceEnabled()', () => {
   it('resolves without throwing when the space is enabled (not disabled)', async () => {
-    setMaybeSingleResponder(async () => ({ data: null, error: null }));
+    setResponder(async () => false);
     const spaceId = uniqueSpaceId();
     await expect(assertSpaceEnabled(spaceId)).resolves.toBeUndefined();
   });
 
   it('throws an Error with message starting "space_disabled:" when the space is disabled', async () => {
-    setMaybeSingleResponder(async () => ({ data: { id: 'row_42' }, error: null }));
+    setResponder(async () => true);
     const spaceId = uniqueSpaceId();
     await expect(assertSpaceEnabled(spaceId)).rejects.toThrow(
       `space_disabled:${spaceId}`,
@@ -221,7 +218,7 @@ describe('assertSpaceEnabled()', () => {
   });
 
   it('thrown error message starts with "space_disabled:"', async () => {
-    setMaybeSingleResponder(async () => ({ data: { id: 'row_1' }, error: null }));
+    setResponder(async () => true);
     const spaceId = uniqueSpaceId();
     let thrown: Error | null = null;
     try {
@@ -234,9 +231,8 @@ describe('assertSpaceEnabled()', () => {
   });
 
   it('thrown error contains the spaceId', async () => {
-    setMaybeSingleResponder(async () => ({ data: { id: 'row_1' }, error: null }));
+    setResponder(async () => true);
     const spaceId = 'space_important_tenant_xyz';
-    setMaybeSingleResponder(async () => ({ data: { id: 'row_1' }, error: null }));
     let thrown: Error | null = null;
     try {
       await assertSpaceEnabled(spaceId);

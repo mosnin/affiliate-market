@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   DollarSign,
@@ -29,10 +29,10 @@ const stripeSubscriptionUrl = (id: string) => `https://dashboard.stripe.com/subs
 
 
 const statusBarColors: Record<SubscriptionStatus, string> = {
-  active: 'bg-emerald-500',
-  trialing: 'bg-blue-500',
-  past_due: 'bg-amber-500',
-  canceled: 'bg-red-500',
+  active: 'bg-positive-subtle0',
+  trialing: 'bg-brand-subtle0',
+  past_due: 'bg-muted0',
+  canceled: 'bg-negative-subtle0',
   unpaid: 'bg-red-400',
   inactive: 'bg-muted-foreground/40',
 };
@@ -63,7 +63,7 @@ export default async function AdminBillingPage() {
     stripeCustomerId: string | null;
     stripeSubscriptionId: string | null;
   }[] = [];
-  let brokerageSubscriptions: {
+  let companySubscriptions: {
     id: string;
     name: string;
     plan: string;
@@ -82,38 +82,37 @@ export default async function AdminBillingPage() {
   }[] = [];
 
   try {
-    const [allSpacesRes, recentRes, trialExpiringRes, brokerageRes] = await Promise.all([
-      // All spaces for status counts
-      supabase
-        .from('Space')
-        .select('stripeSubscriptionStatus'),
-      // Recent subscriptions (non-inactive, ordered by period end)
-      supabase
-        .from('Space')
-        .select('id, name, ownerId, stripeSubscriptionStatus, stripePeriodEnd, stripeCustomerId, stripeSubscriptionId, User!inner(email)')
-        .neq('stripeSubscriptionStatus', 'inactive')
-        .order('stripePeriodEnd', { ascending: false, nullsFirst: false })
-        .limit(50),
-      // Trials expiring within 7 days
-      supabase
-        .from('Space')
-        .select('id, name, ownerId, stripePeriodEnd, User!inner(email)')
-        .eq('stripeSubscriptionStatus', 'trialing')
-        .lte('stripePeriodEnd', sevenDaysFromNow)
-        .gte('stripePeriodEnd', now.toISOString())
-        .order('stripePeriodEnd', { ascending: true }),
-      // Brokerage-scoped subscriptions (the brokerage checkout writes these to
-      // the Brokerage row, not a Space — previously invisible on this page)
-      supabase
-        .from('Brokerage')
-        .select('id, name, plan, stripeSubscriptionStatus, stripePeriodEnd, stripeCustomerId, stripeSubscriptionId')
-        .neq('stripeSubscriptionStatus', 'inactive')
-        .order('stripePeriodEnd', { ascending: false, nullsFirst: false })
-        .limit(50),
+    // All Space rows (the unfiltered list) + the company-scoped subs. Space's
+    // recent/trial slices are derived in JS below, then their owner emails are
+    // resolved via listByIds (the old `User!inner(email)` embed — inner join, so
+    // rows whose owner can't be resolved are dropped). companySubscriptions maps
+    // 1:1 to listBillingActive (!inactive, periodEnd desc nulls-last, limit 50).
+    const [allSpaces, companyRows] = await Promise.all([
+      convex().query(api.workspace.spaces.listBySubscriptionStatus, {}) as Promise<
+        Array<{
+          id: string;
+          name: string;
+          ownerId: string;
+          stripeSubscriptionStatus: SubscriptionStatus;
+          stripePeriodEnd: string | null;
+          stripeCustomerId: string | null;
+          stripeSubscriptionId: string | null;
+        }>
+      >,
+      convex().query(api.org.companies.listBillingActive, { limit: 50 }) as Promise<
+        Array<{
+          id: string;
+          name: string;
+          plan: string | null;
+          stripeSubscriptionStatus: SubscriptionStatus;
+          stripePeriodEnd: string | null;
+          stripeCustomerId: string | null;
+          stripeSubscriptionId: string | null;
+        }>
+      >,
     ]);
 
     // Count by status
-    const allSpaces = (allSpacesRes.data ?? []) as { stripeSubscriptionStatus: SubscriptionStatus }[];
     totalSpaces = allSpaces.length;
     for (const space of allSpaces) {
       const status = space.stripeSubscriptionStatus as SubscriptionStatus;
@@ -122,41 +121,81 @@ export default async function AdminBillingPage() {
       }
     }
 
-    // Map recent subscriptions
-    recentSubscriptions = ((recentRes.data ?? []) as any[]).map((row) => ({
-      id: row.id,
-      name: row.name,
-      ownerId: row.ownerId,
-      ownerEmail: row.User?.email ?? '',
-      stripeSubscriptionStatus: row.stripeSubscriptionStatus as SubscriptionStatus,
-      stripePeriodEnd: row.stripePeriodEnd,
-      stripeCustomerId: row.stripeCustomerId,
-      stripeSubscriptionId: row.stripeSubscriptionId,
-    }));
+    // Owner emails for every Space we might surface (recent + trial slices).
+    const ownerIds = Array.from(new Set(allSpaces.map((s) => s.ownerId).filter(Boolean)));
+    const owners =
+      ownerIds.length > 0
+        ? ((await convex().query(api.org.users.listByIds, { ids: ownerIds })) as Array<{
+            id: string;
+            email: string;
+          }>)
+        : [];
+    const emailByOwner = new Map(owners.map((o) => [o.id, o.email]));
 
-    brokerageSubscriptions = ((brokerageRes.data ?? []) as any[]).map((row) => ({
-      id: row.id,
-      name: row.name,
-      plan: row.plan ?? '—',
-      stripeSubscriptionStatus: row.stripeSubscriptionStatus as SubscriptionStatus,
-      stripePeriodEnd: row.stripePeriodEnd,
-      stripeCustomerId: row.stripeCustomerId,
-      stripeSubscriptionId: row.stripeSubscriptionId,
-    }));
+    // periodEnd desc, nulls last — matches `.order(stripePeriodEnd, desc, nullsLast)`.
+    const periodEndDescNullsLast = (
+      a: { stripePeriodEnd: string | null },
+      b: { stripePeriodEnd: string | null },
+    ) => {
+      const ap = a.stripePeriodEnd;
+      const bp = b.stripePeriodEnd;
+      if (ap === null && bp === null) return 0;
+      if (ap === null) return 1;
+      if (bp === null) return -1;
+      return ap < bp ? 1 : ap > bp ? -1 : 0;
+    };
 
-    // Map trial expiring soon
-    trialExpiringSoon = ((trialExpiringRes.data ?? []) as any[]).map((row) => {
-      const periodEnd = new Date(row.stripePeriodEnd);
-      const daysLeft = Math.max(0, Math.ceil((periodEnd.getTime() - now.getTime()) / 86_400_000));
-      return {
+    // Recent subscriptions: non-inactive, owner must resolve (inner join), top 50.
+    recentSubscriptions = allSpaces
+      .filter((s) => s.stripeSubscriptionStatus !== 'inactive' && emailByOwner.has(s.ownerId))
+      .sort(periodEndDescNullsLast)
+      .slice(0, 50)
+      .map((row) => ({
         id: row.id,
         name: row.name,
         ownerId: row.ownerId,
-        ownerEmail: row.User?.email ?? '',
+        ownerEmail: emailByOwner.get(row.ownerId) ?? '',
+        stripeSubscriptionStatus: row.stripeSubscriptionStatus,
         stripePeriodEnd: row.stripePeriodEnd,
-        daysLeft,
-      };
-    });
+        stripeCustomerId: row.stripeCustomerId,
+        stripeSubscriptionId: row.stripeSubscriptionId,
+      }));
+
+    companySubscriptions = companyRows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      plan: row.plan ?? '—',
+      stripeSubscriptionStatus: row.stripeSubscriptionStatus,
+      stripePeriodEnd: row.stripePeriodEnd,
+      stripeCustomerId: row.stripeCustomerId,
+      stripeSubscriptionId: row.stripeSubscriptionId,
+    }));
+
+    // Trials expiring within 7 days: trialing, periodEnd in [now, +7d], owner
+    // resolves (inner join), ordered periodEnd asc.
+    const nowIso = now.toISOString();
+    trialExpiringSoon = allSpaces
+      .filter(
+        (s) =>
+          s.stripeSubscriptionStatus === 'trialing' &&
+          s.stripePeriodEnd != null &&
+          s.stripePeriodEnd <= sevenDaysFromNow &&
+          s.stripePeriodEnd >= nowIso &&
+          emailByOwner.has(s.ownerId),
+      )
+      .sort((a, b) => (a.stripePeriodEnd! < b.stripePeriodEnd! ? -1 : a.stripePeriodEnd! > b.stripePeriodEnd! ? 1 : 0))
+      .map((row) => {
+        const periodEnd = new Date(row.stripePeriodEnd!);
+        const daysLeft = Math.max(0, Math.ceil((periodEnd.getTime() - now.getTime()) / 86_400_000));
+        return {
+          id: row.id,
+          name: row.name,
+          ownerId: row.ownerId,
+          ownerEmail: emailByOwner.get(row.ownerId) ?? '',
+          stripePeriodEnd: row.stripePeriodEnd!,
+          daysLeft,
+        };
+      });
   } catch (err) {
     console.error('[admin/billing] DB queries failed', { error: err });
     return (
@@ -237,7 +276,7 @@ export default async function AdminBillingPage() {
             </p>
             <p
               className={`text-[25px] leading-tight tracking-tight tabular-nums ${
-                alert ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'
+                alert ? 'text-muted-foreground dark:text-muted-foreground' : 'text-foreground'
               }`}
             >
               {value}
@@ -301,10 +340,10 @@ export default async function AdminBillingPage() {
 
       {/* ── Trial Expiring Soon ─────────────────────────────────── */}
       {trialExpiringSoon.length > 0 && (
-        <Card className="border-amber-300/50 bg-amber-50/30 dark:border-amber-500/20 dark:bg-amber-500/5">
+        <Card className="border-border bg-muted/30 dark:border-border dark:bg-muted0/5">
           <CardContent className="px-5 py-4">
             <div className="flex items-center gap-2 mb-3">
-              <Clock size={15} className="text-amber-500" />
+              <Clock size={15} className="text-muted-foreground" />
               <p className="text-sm font-semibold">Trial expiring soon</p>
               <span className="text-[11px] text-muted-foreground">({trialExpiringSoon.length} within 7 days)</span>
             </div>
@@ -320,8 +359,8 @@ export default async function AdminBillingPage() {
                       <div className="flex-shrink-0 text-right">
                         <span className={`inline-flex text-[11px] font-semibold rounded-full px-2 py-0.5 ${
                           space.daysLeft <= 2
-                            ? 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15'
-                            : 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15'
+                            ? 'text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15'
+                            : 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15'
                         }`}>
                           {space.daysLeft === 0 ? 'Expires today' : `${space.daysLeft}d left`}
                         </span>
@@ -421,16 +460,16 @@ export default async function AdminBillingPage() {
         )}
       </div>
 
-      {/* ── Brokerage subscriptions ─────────────────────────────── */}
-      {/* Brokerage-scoped subs live on the Brokerage row (written by the
-          brokerage checkout + webhook) and were invisible on this page, which
+      {/* ── Company subscriptions ─────────────────────────────── */}
+      {/* Company-scoped subs live on the Company row (written by the
+          company checkout + webhook) and were invisible on this page, which
           only listed Space subs. Same Stripe deep links for one-click control. */}
       <div>
-        <p className={`${H3} mb-3`}>Brokerage subscriptions</p>
-        {brokerageSubscriptions.length === 0 ? (
+        <p className={`${H3} mb-3`}>Company subscriptions</p>
+        {companySubscriptions.length === 0 ? (
           <Card>
             <CardContent className="px-5 py-8 text-center">
-              <p className="text-sm text-muted-foreground">No brokerage subscriptions yet.</p>
+              <p className="text-sm text-muted-foreground">No company subscriptions yet.</p>
             </CardContent>
           </Card>
         ) : (
@@ -439,7 +478,7 @@ export default async function AdminBillingPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Brokerage</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Company</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Plan</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Status</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Period End</th>
@@ -447,7 +486,7 @@ export default async function AdminBillingPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {brokerageSubscriptions.map((b) => (
+                  {companySubscriptions.map((b) => (
                     <tr key={b.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="py-3 px-4 font-medium">{b.name}</td>
                       <td className="py-3 px-4 text-muted-foreground">{b.plan}</td>

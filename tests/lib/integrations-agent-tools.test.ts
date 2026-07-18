@@ -1,9 +1,9 @@
 /**
  * Tests for `lib/integrations/agent-tools.ts` — the module that turns a
- * realtor's connected Composio toolkits into callable agent tools.
+ * seller's connected Composio toolkits into callable agent tools.
  *
  * The safety-critical surface here is `actionNeedsApproval`: it decides
- * whether a Composio action fires silently or pauses for the realtor's
+ * whether a Composio action fires silently or pauses for the seller's
  * yes. A false negative posts to their LinkedIn without consent, so the
  * discovery rule is covered hard. `buildComposioAgentTools` orchestration
  * (empty connections → empty list, per-toolkit isolation) is covered too.
@@ -52,7 +52,7 @@ beforeEach(() => {
   activeToolkitsMock.mockResolvedValue([]);
 });
 
-describe('actionNeedsApproval — the gate that protects the realtor', () => {
+describe('actionNeedsApproval — the gate that protects the seller', () => {
   it('gates EVERY action in a social toolkit, even reads', () => {
     // linkedin is category 'social' in the catalog — a read still gets
     // gated because the surface itself is public-facing.
@@ -94,7 +94,7 @@ describe('buildToolkitAgentTools — one toolkit → SDK tools', () => {
         description: 'Send an email from the connected Gmail account.',
         inputParameters: {
           type: 'object',
-          properties: { to: { type: 'string' }, body: { type: 'string' } },
+          products: { to: { type: 'string' }, body: { type: 'string' } },
           required: ['to'],
         },
       },
@@ -126,7 +126,7 @@ describe('buildToolkitAgentTools — one toolkit → SDK tools', () => {
 });
 
 describe('buildComposioAgentTools — orchestration', () => {
-  it('returns [] when the realtor has no connected toolkits', async () => {
+  it('returns [] when the seller has no connected toolkits', async () => {
     activeToolkitsMock.mockResolvedValue([]);
     const tools = await buildComposioAgentTools('s_1', 'u_1');
     expect(tools).toEqual([]);

@@ -2,9 +2,9 @@
  * `merge_persons` — collapse two Contact rows into one.
  *
  * DESTRUCTIVE. The mergeId Contact row is deleted after its
- * ContactActivity, Tour, and DealContact rows are re-pointed at keepId.
+ * ContactActivity, Demo, and DealContact rows are re-pointed at keepId.
  *
- * Approval-gated with an explicit summariseCall — the realtor sees
+ * Approval-gated with an explicit summariseCall — the seller sees
  * "Merge Sam Chen → keep Jane Chen (deletes Sam Chen)" before any
  * row moves. Without a Postgres function we can't run this in a real
  * transaction; if a step fails midway we surface the failure plainly
@@ -14,6 +14,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { deleteContactVector, syncContact } from '@/lib/vectorize';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
@@ -25,14 +26,14 @@ const parameters = z
     mergeId: z.string().min(1).describe('The Contact.id to merge into keepId, then delete.'),
   })
   .refine((v) => v.keepId !== v.mergeId, { message: 'keepId and mergeId must differ.' })
-  .describe('Merge two contacts: move all activity/tours/deal links onto keepId, then delete mergeId.');
+  .describe('Merge two contacts: move all activity/demos/deal links onto keepId, then delete mergeId.');
 
 interface MergePersonsResult {
   keepId: string;
   mergedId: string;
   movedCounts: {
     activities: number;
-    tours: number;
+    demos: number;
     dealLinks: number;
   };
 }
@@ -50,21 +51,21 @@ export const mergePersonsTool = defineTool<typeof parameters, MergePersonsResult
   },
 
   async handler(args, ctx) {
-    // Both contacts must exist in this space and not be brokerage rows.
+    // Both contacts must exist in this space and not be company rows.
     const [keepRes, mergeRes] = await Promise.all([
       supabase
         .from('Contact')
         .select('id, name')
         .eq('id', args.keepId)
         .eq('spaceId', ctx.space.id)
-        .is('brokerageId', null)
+        .is('companyId', null)
         .maybeSingle(),
       supabase
         .from('Contact')
         .select('id, name')
         .eq('id', args.mergeId)
         .eq('spaceId', ctx.space.id)
-        .is('brokerageId', null)
+        .is('companyId', null)
         .maybeSingle(),
     ]);
     if (keepRes.error) {
@@ -84,24 +85,22 @@ export const mergePersonsTool = defineTool<typeof parameters, MergePersonsResult
     const mergeName = mergeRes.data.name as string;
 
     // Count rows for the summary BEFORE moving.
-    const [actCountRes, tourCountRes, dcCountRes] = await Promise.all([
+    const [actCountRes, demosCount, dcCountRes] = await Promise.all([
       supabase
         .from('ContactActivity')
         .select('id', { count: 'exact', head: true })
         .eq('contactId', args.mergeId)
         .eq('spaceId', ctx.space.id),
-      supabase
-        .from('Tour')
-        .select('id', { count: 'exact', head: true })
-        .eq('contactId', args.mergeId)
-        .eq('spaceId', ctx.space.id),
+      convex().query(api.demos.demos.countByContact, {
+        contactId: args.mergeId,
+        spaceId: ctx.space.id,
+      }),
       supabase
         .from('DealContact')
         .select('dealId', { count: 'exact', head: true })
         .eq('contactId', args.mergeId),
     ]);
     const activitiesCount = (actCountRes as unknown as { count: number | null }).count ?? 0;
-    const toursCount = (tourCountRes as unknown as { count: number | null }).count ?? 0;
     const dealLinksCount = (dcCountRes as unknown as { count: number | null }).count ?? 0;
 
     // Step 1: ContactActivity → keepId
@@ -118,16 +117,18 @@ export const mergePersonsTool = defineTool<typeof parameters, MergePersonsResult
       };
     }
 
-    // Step 2: Tour → keepId
-    const { error: tourErr } = await supabase
-      .from('Tour')
-      .update({ contactId: args.keepId })
-      .eq('contactId', args.mergeId)
-      .eq('spaceId', ctx.space.id);
-    if (tourErr) {
-      logger.error('[tools.merge_persons] tour move failed (PARTIAL MERGE)', { keep: args.keepId, merge: args.mergeId }, tourErr);
+    // Step 2: Demo → keepId
+    try {
+      await convex().mutation(api.demos.demos.reassignContact, {
+        fromContactId: args.mergeId,
+        toContactId: args.keepId,
+        spaceId: ctx.space.id,
+      });
+    } catch (demoErr) {
+      const message = demoErr instanceof Error ? demoErr.message : 'unknown error';
+      logger.error('[tools.merge_persons] demo move failed (PARTIAL MERGE)', { keep: args.keepId, merge: args.mergeId }, demoErr);
       return {
-        summary: `Partial merge — activities moved, tours failed: ${tourErr.message}. Please reconcile manually.`,
+        summary: `Partial merge — activities moved, demos failed: ${message}. Please reconcile manually.`,
         display: 'error',
       };
     }
@@ -142,7 +143,7 @@ export const mergePersonsTool = defineTool<typeof parameters, MergePersonsResult
     if (dcReadErr) {
       logger.error('[tools.merge_persons] deal-contact read failed (PARTIAL MERGE)', { merge: args.mergeId }, dcReadErr);
       return {
-        summary: `Partial merge — activity/tours moved, deal links failed: ${dcReadErr.message}.`,
+        summary: `Partial merge — activity/demos moved, deal links failed: ${dcReadErr.message}.`,
         display: 'error',
       };
     }
@@ -164,7 +165,7 @@ export const mergePersonsTool = defineTool<typeof parameters, MergePersonsResult
         if (dcInsertErr) {
           logger.error('[tools.merge_persons] deal-contact insert failed (PARTIAL MERGE)', { keep: args.keepId }, dcInsertErr);
           return {
-            summary: `Partial merge — activity/tours moved, deal-link insert failed: ${dcInsertErr.message}.`,
+            summary: `Partial merge — activity/demos moved, deal-link insert failed: ${dcInsertErr.message}.`,
             display: 'error',
           };
         }
@@ -194,7 +195,7 @@ export const mergePersonsTool = defineTool<typeof parameters, MergePersonsResult
       metadata: {
         mergedContactId: args.mergeId,
         movedActivities: activitiesCount,
-        movedTours: toursCount,
+        movedDemos: demosCount,
         movedDealLinks: dealLinksCount,
         via: 'on_demand_agent',
       },
@@ -233,13 +234,13 @@ export const mergePersonsTool = defineTool<typeof parameters, MergePersonsResult
     }
 
     return {
-      summary: `Merged "${mergeName}" into "${keepName}". Moved ${activitiesCount} activit${activitiesCount === 1 ? 'y' : 'ies'}, ${toursCount} tour${toursCount === 1 ? '' : 's'}, ${dealLinksCount} deal link${dealLinksCount === 1 ? '' : 's'}.`,
+      summary: `Merged "${mergeName}" into "${keepName}". Moved ${activitiesCount} activit${activitiesCount === 1 ? 'y' : 'ies'}, ${demosCount} demo${demosCount === 1 ? '' : 's'}, ${dealLinksCount} deal link${dealLinksCount === 1 ? '' : 's'}.`,
       data: {
         keepId: args.keepId,
         mergedId: args.mergeId,
         movedCounts: {
           activities: activitiesCount,
-          tours: toursCount,
+          demos: demosCount,
           dealLinks: dealLinksCount,
         },
       },

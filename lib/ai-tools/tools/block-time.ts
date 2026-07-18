@@ -2,17 +2,17 @@
  * `block_time` — drop a "Blocked" entry on the calendar.
  *
  * Approval-gated: anything that lands on the calendar gets the same prompt
- * as schedule_tour.
+ * as schedule_demo.
  *
  * CalendarEvent's schema is (date, time) not (startsAt, endsAt). We split
  * the requested ISO range to date + HH:MM. Multi-day blocks land as a single
  * row keyed to the start date — that mirrors the existing manual UI; if the
- * realtor needs a multi-day block they create one per day. Honest with the
+ * seller needs a multi-day block they create one per day. Honest with the
  * model: returns the persisted shape so it knows what landed.
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { defineTool } from '../types';
 
@@ -25,7 +25,7 @@ const parameters = z
   .refine((v) => new Date(v.to) > new Date(v.from), {
     message: '`to` must be after `from`.',
   })
-  .describe('Block a window on the realtor\'s calendar.');
+  .describe('Block a window on the seller\'s calendar.');
 
 interface BlockTimeResult {
   eventId: string;
@@ -38,7 +38,7 @@ export const blockTimeTool = defineTool<typeof parameters, BlockTimeResult>({
   name: 'block_time',
   riskLevel: 'high',
   description:
-    'Block a window on the realtor\'s calendar with a CalendarEvent. Prompts for approval.',
+    'Block a window on the seller\'s calendar with a CalendarEvent. Prompts for approval.',
   parameters,
   requiresApproval: true,
   rateLimit: { max: 60, windowSeconds: 3600 },
@@ -55,25 +55,22 @@ export const blockTimeTool = defineTool<typeof parameters, BlockTimeResult>({
     const title = `Blocked: ${args.reason.trim()}`;
     const description = `Through ${new Date(args.to).toISOString()}`;
 
-    const { data: inserted, error } = await supabase
-      .from('CalendarEvent')
-      .insert({
+    let row: { id: string; date: string; time: string | null; title: string };
+    try {
+      row = await convex().mutation(api.calendar.events.create, {
         spaceId: ctx.space.id,
         title,
         date,
         time,
         description,
         color: 'gray',
-      })
-      .select('id, date, time, title')
-      .single();
-
-    if (error || !inserted) {
+      });
+    } catch (error) {
       logger.error('[tools.block_time] insert failed', { spaceId: ctx.space.id }, error);
-      return { summary: `Failed to block time: ${error?.message ?? 'unknown error'}`, display: 'error' };
+      const message = error instanceof Error ? error.message : 'unknown error';
+      return { summary: `Failed to block time: ${message}`, display: 'error' };
     }
 
-    const row = inserted as { id: string; date: string; time: string | null; title: string };
     return {
       summary: `Blocked ${row.date}${row.time ? ` at ${row.time}` : ''} — ${args.reason.trim()}.`,
       data: { eventId: row.id, date: row.date, time: row.time, title: row.title },

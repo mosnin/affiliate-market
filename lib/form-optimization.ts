@@ -10,7 +10,7 @@
  */
 
 import type { IntakeFormConfig, FormSection, FormQuestion } from '@/lib/types';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,17 +93,16 @@ export async function analyzeFormPerformance(
 ): Promise<FormPerformance> {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
 
-  // Fetch contacts with formConfigSnapshot from last 30 days
-  const { data: contacts, error } = await supabase
-    .from('Contact')
-    .select('id, applicationData, formConfigSnapshot, leadScore, scoreLabel, createdAt')
-    .eq('spaceId', spaceId)
-    .not('formConfigSnapshot', 'is', null)
-    .gte('createdAt', thirtyDaysAgo)
-    .order('createdAt', { ascending: false })
-    .limit(100);
-
-  if (error) {
+  // Fetch contacts with formConfigSnapshot from last 30 days, newest-first.
+  let contacts: any[];
+  try {
+    contacts = await convex().query(api.contacts.contacts.scanForAnalytics, {
+      spaceId,
+      requireFormConfigSnapshotNotNull: true,
+      createdGte: thirtyDaysAgo,
+      limit: 100,
+    });
+  } catch (error) {
     console.error('[form-optimization] fetch contacts failed', error);
     throw new Error('Failed to fetch submission data');
   }

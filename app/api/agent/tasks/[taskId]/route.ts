@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { transitionTask } from '@/lib/agent/task-state-machine';
@@ -32,14 +32,10 @@ export async function GET(
   }
 
   // Fetch the task and verify it belongs to the calling user's space.
-  const { data: task, error: taskError } = await supabase
-    .from('AgentTask')
-    .select('*')
-    .eq('id', taskId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  if (taskError) {
+  let task;
+  try {
+    task = await convex().query(api.agent.tasks.getByIdForSpace, { id: taskId, spaceId: space.id });
+  } catch (taskError) {
     console.error('[agent/tasks/[taskId]/GET] task fetch error:', taskError);
     return NextResponse.json({ error: 'Failed to fetch task' }, { status: 500 });
   }
@@ -48,13 +44,10 @@ export async function GET(
   }
 
   // Fetch execution steps ordered by step index.
-  const { data: steps, error: stepsError } = await supabase
-    .from('ExecutionStep')
-    .select('*')
-    .eq('taskId', taskId)
-    .order('stepIndex', { ascending: true });
-
-  if (stepsError) {
+  let steps;
+  try {
+    steps = await convex().query(api.agent.steps.listByTask, { taskId });
+  } catch (stepsError) {
     console.error('[agent/tasks/[taskId]/GET] steps fetch error:', stepsError);
     return NextResponse.json({ error: 'Failed to fetch execution steps' }, { status: 500 });
   }
@@ -89,14 +82,10 @@ export async function DELETE(
   }
 
   // Verify the task belongs to the calling user's space before mutating.
-  const { data: task, error: fetchError } = await supabase
-    .from('AgentTask')
-    .select('id')
-    .eq('id', taskId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  if (fetchError) {
+  let task;
+  try {
+    task = await convex().query(api.agent.tasks.getByIdForSpace, { id: taskId, spaceId: space.id });
+  } catch (fetchError) {
     console.error('[agent/tasks/[taskId]/DELETE] fetch error:', fetchError);
     return NextResponse.json({ error: 'Failed to fetch task' }, { status: 500 });
   }

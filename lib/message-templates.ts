@@ -1,7 +1,7 @@
 /**
  * Message-template types + simple {{placeholder}} interpolation.
  *
- * We intentionally keep the variable language dead-simple — a realtor should
+ * We intentionally keep the variable language dead-simple — a seller should
  * be able to read a template and know what it'll do. No loops, no filters.
  * Variables not found in context render as empty strings so a template with
  * an optional field doesn't produce "{{price}}" in the final message.
@@ -25,11 +25,11 @@ export type TemplateContext = Partial<{
   contactName: string;
   contactFirstName: string;
   dealTitle: string;
-  propertyAddress: string;
-  tourDate: string;
-  tourTime: string;
+  productAddress: string;
+  demoDate: string;
+  demoTime: string;
   closeDate: string;
-  realtorName: string;
+  sellerName: string;
   businessName: string;
   nextAction: string;
 }>;
@@ -39,11 +39,11 @@ export const TEMPLATE_VARIABLES: { key: keyof TemplateContext; description: stri
   { key: 'contactName',      description: 'Full name of the contact' },
   { key: 'contactFirstName', description: 'First name only' },
   { key: 'dealTitle',        description: 'Deal title' },
-  { key: 'propertyAddress',  description: 'Deal / tour property address' },
-  { key: 'tourDate',         description: 'Tour date, e.g. "Sat Apr 20"' },
-  { key: 'tourTime',         description: 'Tour time, e.g. "2:00 PM"' },
+  { key: 'productAddress',  description: 'Deal / demo meeting link or product name' },
+  { key: 'demoDate',         description: 'Demo date, e.g. "Sat Apr 20"' },
+  { key: 'demoTime',         description: 'Demo time, e.g. "2:00 PM"' },
   { key: 'closeDate',        description: 'Expected close date' },
-  { key: 'realtorName',      description: 'Your name' },
+  { key: 'sellerName',      description: 'Your name' },
   { key: 'businessName',     description: 'Your workspace business name' },
   { key: 'nextAction',       description: 'The deal\'s next-action text' },
 ];

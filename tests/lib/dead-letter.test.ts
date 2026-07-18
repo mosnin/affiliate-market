@@ -1,27 +1,37 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { insertMock, fromMock } = vi.hoisted(() => {
-  const insertMock = vi.fn(async (_row?: Record<string, unknown>) => ({ error: null }));
-  const fromMock = vi.fn((_table?: string) => ({ insert: insertMock }));
-  return { insertMock, fromMock };
+// recordDeadLetter now writes via Convex (convex().mutation(api.infra.deadLetter.record, …)).
+const { mutationMock } = vi.hoisted(() => ({
+  mutationMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (p: string): unknown =>
+    new Proxy(() => p, { get: (_t, k) => (typeof k === 'string' ? makePath(`${p}.${k}`) : p) });
+  return {
+    api: new Proxy({}, { get: (_t, k) => (typeof k === 'string' ? makePath(k) : undefined) }),
+    convex: () => ({ mutation: mutationMock, query: vi.fn() }),
+  };
 });
-vi.mock('@/lib/supabase', () => ({ supabase: { from: fromMock } }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() } }));
 
 import { recordDeadLetter, originalEventData } from '@/lib/inngest/dead-letter';
 
+/** The args object passed to the record mutation (2nd arg of convex().mutation). */
+function recordArgs(call = 0): Record<string, unknown> {
+  return mutationMock.mock.calls[call][1] as Record<string, unknown>;
+}
+
 describe('recordDeadLetter', () => {
   beforeEach(() => {
-    insertMock.mockClear();
-    insertMock.mockResolvedValue({ error: null });
-    fromMock.mockClear();
+    mutationMock.mockClear();
+    mutationMock.mockResolvedValue(null);
   });
 
   it('inserts a pending DeadLetterEvent with the error message and stack', async () => {
     const err = new Error('boom');
     await recordDeadLetter({ spaceId: 'sp1', eventType: 'studio/post.scheduled', eventPayload: { postId: 'p1' }, error: err });
-    expect(fromMock).toHaveBeenCalledWith('DeadLetterEvent');
-    const row = insertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(mutationMock).toHaveBeenCalledTimes(1);
+    const row = recordArgs();
     expect(row.spaceId).toBe('sp1');
     expect(row.eventType).toBe('studio/post.scheduled');
     expect(row.eventPayload).toEqual({ postId: 'p1' });
@@ -32,11 +42,11 @@ describe('recordDeadLetter', () => {
 
   it('defaults a missing spaceId to "unknown" (column is NOT NULL)', async () => {
     await recordDeadLetter({ spaceId: '', eventType: 'x', error: 'oops' });
-    expect((insertMock.mock.calls[0][0] as Record<string, unknown>).spaceId).toBe('unknown');
+    expect(recordArgs().spaceId).toBe('unknown');
   });
 
   it('never throws even if the insert rejects (a DLQ write must not cascade)', async () => {
-    insertMock.mockRejectedValueOnce(new Error('db down'));
+    mutationMock.mockRejectedValueOnce(new Error('db down'));
     await expect(
       recordDeadLetter({ spaceId: 'sp1', eventType: 'x', error: new Error('e') }),
     ).resolves.toBeUndefined();
@@ -44,8 +54,7 @@ describe('recordDeadLetter', () => {
 
   it('truncates an enormous error message', async () => {
     await recordDeadLetter({ spaceId: 'sp1', eventType: 'x', error: new Error('y'.repeat(5000)) });
-    const row = insertMock.mock.calls[0][0] as Record<string, string>;
-    expect(row.errorMessage.length).toBe(2000);
+    expect((recordArgs().errorMessage as string).length).toBe(2000);
   });
 });
 

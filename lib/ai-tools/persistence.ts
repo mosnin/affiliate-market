@@ -15,8 +15,7 @@
  * something sensible.
  */
 
-import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { coalesceTextBlocks, type MessageBlock } from './blocks';
 
@@ -27,20 +26,19 @@ export interface SaveUserMessageInput {
 }
 
 export async function saveUserMessage(input: SaveUserMessageInput): Promise<{ messageId: string }> {
-  const id = crypto.randomUUID();
-  const { error } = await supabase.from('Message').insert({
-    id,
-    spaceId: input.spaceId,
-    conversationId: input.conversationId,
-    role: 'user',
-    content: input.content,
-    // User messages don't need blocks — they're always plain text.
-  });
-  if (error) {
+  try {
+    return await convex().mutation(api.conversations.messages.saveUserMessage, {
+      spaceId: input.spaceId,
+      conversationId: input.conversationId,
+      content: input.content,
+      // User messages don't need blocks — they're always plain text.
+    });
+  } catch (error) {
     logger.error('[tools.persistence] saveUserMessage failed', { spaceId: input.spaceId }, error);
-    throw new Error(`Failed to save user message: ${error.message}`);
+    throw new Error(
+      `Failed to save user message: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
-  return { messageId: id };
 }
 
 export interface SaveAssistantMessageInput {
@@ -69,22 +67,21 @@ export async function saveAssistantMessage(
     .join('\n')
     .trim();
 
-  const id = crypto.randomUUID();
-  const { error } = await supabase.from('Message').insert({
-    id,
-    spaceId: input.spaceId,
-    conversationId: input.conversationId,
-    role: 'assistant',
-    // Content is required-NOT-NULL in the legacy schema; at minimum we
-    // store something. An empty-text assistant message (pure tool calls)
-    // falls back to a short placeholder so legacy readers don't render a
-    // blank row.
-    content: content || '(tool-only turn)',
-    blocks: merged as unknown as Record<string, unknown>[],
-  });
-  if (error) {
+  try {
+    return await convex().mutation(api.conversations.messages.saveAssistantMessage, {
+      spaceId: input.spaceId,
+      conversationId: input.conversationId,
+      // Content is required-NOT-NULL in the legacy schema; at minimum we
+      // store something. An empty-text assistant message (pure tool calls)
+      // falls back to a short placeholder so legacy readers don't render a
+      // blank row.
+      content: content || '(tool-only turn)',
+      blocks: merged as unknown as Record<string, unknown>[],
+    });
+  } catch (error) {
     logger.error('[tools.persistence] saveAssistantMessage failed', { spaceId: input.spaceId }, error);
-    throw new Error(`Failed to save assistant message: ${error.message}`);
+    throw new Error(
+      `Failed to save assistant message: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
-  return { messageId: id };
 }

@@ -16,7 +16,7 @@ import { CollapsedTooltip } from '@/components/dashboard/sidebar-collapse';
 //
 // Behaviour contract:
 //   - Parents WITH children: the row's label + icon link to the parent
-//     route (Chippi → /chippi, Properties → /properties); a separate
+//     route (Cola → /cola, Products → /products); a separate
 //     chevron button at the right edge toggles expansion. Tap the label
 //     to navigate (auto-expands on first navigate). Tap the chevron to
 //     collapse without leaving the page.
@@ -83,8 +83,8 @@ export function SidebarNavItem({
           className={cn(
             'flex-shrink-0 transition-colors',
             isActive
-              ? 'text-foreground'
-              : 'text-foreground/55 group-hover:text-foreground',
+              ? 'text-primary'
+              : 'text-muted-foreground group-hover:text-foreground',
           )}
         />
       )}
@@ -97,24 +97,18 @@ export function SidebarNavItem({
   // Full row content for the no-children case (Link wraps everything).
   const rowContent = (
     <>
-      {isActive && (
-        <span
-          aria-hidden
-          className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-foreground"
-        />
-      )}
       {linkContent}
     </>
   );
 
   const rowClasses = cn(
-    'group relative rounded-md text-[13px] transition-colors duration-150',
+    'group relative text-sm transition-colors duration-150',
     collapsed
-      ? 'flex items-center justify-center w-10 h-10 mx-auto'
-      : 'flex items-center gap-2.5 h-9 pl-3 pr-2.5',
+      ? 'flex items-center justify-center rounded-xl w-10 h-10 mx-auto'
+      : 'flex items-center gap-2.5 rounded-xl h-9 px-3',
     isActive
-      ? 'bg-foreground/[0.045] text-foreground font-medium'
-      : 'text-foreground/65 hover:bg-foreground/[0.025] hover:text-foreground',
+      ? 'bg-card border border-border shadow-xs text-foreground font-medium'
+      : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
   );
 
   return (
@@ -126,19 +120,13 @@ export function SidebarNavItem({
           // toggles expansion without navigating. Two affordances, one row.
           <div
             className={cn(
-              'group relative rounded-md text-[13px] transition-colors duration-150',
-              'flex items-center h-9 pl-3 pr-1',
+              'group relative text-sm transition-colors duration-150',
+              'flex items-center rounded-xl h-9 px-3 pr-1',
               isActive
-                ? 'bg-foreground/[0.045] text-foreground font-medium'
-                : 'text-foreground/65 hover:bg-foreground/[0.025] hover:text-foreground',
+                ? 'bg-card border border-border shadow-xs text-foreground font-medium'
+                : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
             )}
           >
-            {isActive && (
-              <span
-                aria-hidden
-                className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-foreground"
-              />
-            )}
             <Link
               href={href}
               onClick={() => {
@@ -172,7 +160,7 @@ export function SidebarNavItem({
           // Parent without children (or collapsed rail) → plain navigation.
           // Rail-mode parents with children also fall here: the icon links
           // to the parent route so a single click from the rail still gets
-          // the realtor somewhere useful (children can't render in the rail).
+          // the seller somewhere useful (children can't render in the rail).
           <Link href={href} onClick={onNavigate} className={rowClasses}>
             {rowContent}
           </Link>

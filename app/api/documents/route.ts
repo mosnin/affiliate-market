@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
@@ -29,7 +29,7 @@ const ALLOWED_TYPES = [
  * Two auth paths:
  * - uploadedBy === 'guest': restricted to public-intake contacts
  *   created in the last 5 minutes (applicant uploading during apply flow).
- * - otherwise: requireContactAccess (authenticated realtor).
+ * - otherwise: requireContactAccess (authenticated seller).
  */
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -74,14 +74,15 @@ export async function POST(req: NextRequest) {
   let rateLimitKey: string;
   if (uploadedBy === 'guest') {
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: guestContact } = await supabase
-      .from('Contact')
-      .select('spaceId')
-      .eq('id', contactId)
-      .contains('tags', ['application-link'])
-      .gte('createdAt', fiveMinAgo)
-      .maybeSingle();
-    if (!guestContact) {
+    // Public-intake contact created in the last 5 minutes (tag-gated). Resolve
+    // the row by id, then apply the same tag + recency predicates in JS.
+    const guestContact = await convex().query(api.contacts.contacts.getById, { id: contactId });
+    const isGuestEligible =
+      !!guestContact &&
+      Array.isArray(guestContact.tags) &&
+      guestContact.tags.includes('application-link') &&
+      guestContact.createdAt >= fiveMinAgo;
+    if (!guestContact || !isGuestEligible) {
       return NextResponse.json({ error: 'Contact not found or upload window expired' }, { status: 404 });
     }
     resolvedSpaceId = guestContact.spaceId;
@@ -92,11 +93,7 @@ export async function POST(req: NextRequest) {
     const auth = await requireContactAccess(contactId);
     if (auth instanceof NextResponse) return auth;
 
-    const { data: authedContact } = await supabase
-      .from('Contact')
-      .select('spaceId')
-      .eq('id', contactId)
-      .single();
+    const authedContact = await convex().query(api.contacts.contacts.getById, { id: contactId });
     if (!authedContact) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
@@ -136,9 +133,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
   }
 
-  const { data: doc, error } = await supabase
-    .from('ContactDocument')
-    .insert({
+  let doc;
+  try {
+    doc = await convex().mutation(api.contacts.documents.create, {
       contactId,
       spaceId: resolvedSpaceId,
       fileName: file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 255),
@@ -146,18 +143,24 @@ export async function POST(req: NextRequest) {
       fileSize: file.size,
       storageKey: storagePath,
       uploadedBy: resolvedUploadedBy,
-    })
-    .select('id, fileName, fileType, fileSize, createdAt')
-    .single();
-
-  if (error) {
+    });
+  } catch (error) {
     // Best-effort rollback so we don't leak storage objects on failed inserts.
     await deleteObject(storagePath).catch(() => undefined);
-    logger.error('[documents] insert failed', { contactId }, error);
+    logger.error('[documents] insert failed', { contactId }, error as Error);
     return NextResponse.json({ error: 'Failed to save document' }, { status: 500 });
   }
 
-  return NextResponse.json(doc, { status: 201 });
+  return NextResponse.json(
+    {
+      id: doc.id,
+      fileName: doc.fileName,
+      fileType: doc.fileType,
+      fileSize: doc.fileSize,
+      createdAt: doc.createdAt,
+    },
+    { status: 201 },
+  );
 }
 
 /**
@@ -171,11 +174,18 @@ export async function GET(req: NextRequest) {
   const auth = await requireContactAccess(contactId);
   if (auth instanceof NextResponse) return auth;
 
-  const { data: docs } = await supabase
-    .from('ContactDocument')
-    .select('id, fileName, fileType, fileSize, uploadedBy, createdAt')
-    .eq('contactId', contactId)
-    .order('createdAt', { ascending: false });
+  const docs = await convex()
+    .query(api.contacts.documents.listForContact, { contactId })
+    .catch(() => []);
 
-  return NextResponse.json(docs ?? []);
+  return NextResponse.json(
+    docs.map((d) => ({
+      id: d.id,
+      fileName: d.fileName,
+      fileType: d.fileType,
+      fileSize: d.fileSize,
+      uploadedBy: d.uploadedBy,
+      createdAt: d.createdAt,
+    })),
+  );
 }

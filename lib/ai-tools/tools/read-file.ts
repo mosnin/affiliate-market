@@ -3,19 +3,19 @@
  * File row. Read-only.
  *
  * Companion to `list_files`. The model uses list_files to find a file by
- * name, then calls read_file with the id to surface the URL to the realtor
+ * name, then calls read_file with the id to surface the URL to the seller
  * (e.g. "here's the link to your closing disclosure") or to pass to
  * downstream tools like send_email (attachmentFileIds) or
- * attach_file_to_property (fileId).
+ * attach_file_to_product (fileId).
  *
  * The returned signedUrl is private and expires in 5 minutes. Don't paste
  * it into anything that might persist — the model is told this in the tool
- * description so it doesn't quote the URL back to the realtor as
+ * description so it doesn't quote the URL back to the seller as
  * shareable.
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSignedDownloadUrl } from '@/lib/storage';
 import { defineTool } from '../types';
 
@@ -40,19 +40,22 @@ export const readFileTool = defineTool<typeof parameters, ReadFileResult>({
   name: 'read_file',
   riskLevel: 'safe',
   description:
-    'Return a 5-min signed download URL + metadata for an uploaded file. URL is private — pass to other tools (send_email attachments, attach_file_to_property) or download in this turn; do not quote as shareable.',
+    'Return a 5-min signed download URL + metadata for an uploaded file. URL is private — pass to other tools (send_email attachments, attach_file_to_product) or download in this turn; do not quote as shareable.',
   parameters,
   requiresApproval: false,
 
   async handler(args, ctx) {
-    const { data: row, error } = await supabase
-      .from('File')
-      .select('id, name, mimeType, category, sizeBytes, storageKey')
-      .eq('id', args.fileId)
-      .eq('spaceId', ctx.space.id)
-      .maybeSingle();
-    if (error) {
-      return { summary: `File lookup failed: ${error.message}`, display: 'error' };
+    let row;
+    try {
+      row = await convex().query(api.infra.files.getByIdForSpace, {
+        id: args.fileId,
+        spaceId: ctx.space.id,
+      });
+    } catch (err) {
+      return {
+        summary: `File lookup failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+        display: 'error',
+      };
     }
     if (!row) {
       return {

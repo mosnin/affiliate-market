@@ -3,7 +3,7 @@
  * Returns the active goal type and most recent agent action for a contact.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -21,40 +21,32 @@ export async function GET(
   const { contactId } = await params;
 
   // Validate contact belongs to this space
-  const { data: contact } = await supabase
-    .from('Contact')
-    .select('id')
-    .eq('id', contactId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const contact = await convex()
+    .query(api.contacts.contacts.getById, { id: contactId, spaceId: space.id })
+    .catch(() => null);
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const [goalRes, activityRes] = await Promise.all([
-    supabase
-      .from('AgentGoal')
-      .select('goalType')
-      .eq('spaceId', space.id)
-      .eq('contactId', contactId)
-      .eq('status', 'active')
-      .order('priority', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+  const [goalType, activityRows] = await Promise.all([
+    // Highest-priority active goal's goalType for this contact (Convex).
+    convex().query(api.agent.goals.activeGoalTypeForContact, {
+      spaceId: space.id,
+      contactId,
+    }),
 
-    supabase
-      .from('ContactActivity')
-      .select('content, createdAt')
-      .eq('spaceId', space.id)
-      .eq('contactId', contactId)
-      .or('content.like.[Agent]%,content.like.[Outcome]%')
-      .order('createdAt', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    // Most recent [Agent]%/[Outcome]% timeline entry — the PG
+    // `.or(content.like.[Agent]%,content.like.[Outcome]%)` becomes the
+    // contentPrefixAny filter; newest-first, capped at 1.
+    convex().query(api.contacts.activity.listForContact, {
+      contactId,
+      spaceId: space.id,
+      contentPrefixAny: ['[Agent]', '[Outcome]'],
+      limit: 1,
+    }),
   ]);
-
-  const goalType = goalRes.data?.goalType ?? null;
   let lastAction: string | null = null;
-  if (activityRes.data?.content) {
-    lastAction = activityRes.data.content
+  const lastActivity = activityRows[0];
+  if (lastActivity?.content) {
+    lastAction = lastActivity.content
       .replace(/^\[Agent\]\s*/, '')
       .replace(/^\[Outcome\]\s*/, '')
       .slice(0, 80);

@@ -35,7 +35,7 @@ interface Props {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 // Relative time using Intl.RelativeTimeFormat. Copied verbatim from
-// app/broker/reviews/reviews-client.tsx (formatRelative) to keep styling
+// app/manager/reviews/reviews-client.tsx (formatRelative) to keep styling
 // consistent — over-abstracting a 30-line helper would cost more than
 // duplicating it once.
 export function formatRelative(iso: string): string {
@@ -75,9 +75,9 @@ export function formatRelative(iso: string): string {
 const statusBadgeClass = (status: ReviewStatus): string => {
   switch (status) {
     case 'open':
-      return 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15';
+      return 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15';
     case 'approved':
-      return 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15';
+      return 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15';
     case 'closed':
     default:
       return 'text-muted-foreground bg-muted';
@@ -110,7 +110,7 @@ export function ReviewsClient({ slug, initialReviews }: Props) {
 
   const emptyCopy = (t: Tab): string => {
     if (t === 'open') {
-      return 'No reviews in flight. Flag a deal for broker review from the deal page when you want a second set of eyes.';
+      return 'No reviews in flight. Flag a deal for manager review from the deal page when you want a second set of eyes.';
     }
     if (t === 'resolved') {
       return 'Nothing resolved yet.';
@@ -120,7 +120,7 @@ export function ReviewsClient({ slug, initialReviews }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Tabs — visual pattern mirrors app/broker/reviews/reviews-client.tsx */}
+      {/* Tabs — visual pattern mirrors app/manager/reviews/reviews-client.tsx */}
       <div className="flex items-center gap-1 border-b border-border pb-0">
         {tabs.map((t) => (
           <button

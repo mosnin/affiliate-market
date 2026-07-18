@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 /**
@@ -65,14 +65,13 @@ export async function POST(req: NextRequest) {
   }
 
   // Validate token + ref match
-  const { data: contact, error: contactError } = await supabase
-    .from('Contact')
-    .select('id, spaceId, name, email')
-    .eq('applicationRef', applicationRef)
-    .eq('statusPortalToken', token)
-    .maybeSingle();
-
-  if (contactError) {
+  let contact;
+  try {
+    contact = await convex().query(api.contacts.contacts.findByApplicationRef, {
+      applicationRef,
+      statusPortalToken: token,
+    });
+  } catch (contactError) {
     console.error('[portal/message] Contact lookup error:', contactError);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
@@ -92,57 +91,46 @@ export async function POST(req: NextRequest) {
     .replace(/[^\w\s.,!?;:'"@#$%&*()\-/+=\[\]{}~`^\n\r\t]/g, '');
 
   // Create the message
-  const { data: message, error: insertError } = await supabase
-    .from('ApplicationMessage')
-    .insert({
+  let message;
+  try {
+    message = await convex().mutation(api.portal.applicationMessages.create, {
       contactId: contact.id,
       spaceId: contact.spaceId,
       senderType: 'applicant',
       content: sanitized,
-    })
-    .select('id, senderType, content, createdAt')
-    .single();
-
-  if (insertError) {
+    });
+  } catch (insertError) {
     console.error('[portal/message] Insert error:', insertError);
     return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
   }
 
-  // Notify realtor via email (fire and forget)
-  notifyRealtorOfMessage(contact.spaceId, contact.name, sanitized).catch((err) =>
-    console.error('[portal/message] Realtor notification failed:', err),
+  // Notify seller via email (fire and forget)
+  notifySellerOfMessage(contact.spaceId, contact.name, sanitized).catch((err) =>
+    console.error('[portal/message] Seller notification failed:', err),
   );
 
   return NextResponse.json({ message }, { status: 201 });
 }
 
 /**
- * Send email notification to realtor about new applicant message.
+ * Send email notification to seller about new applicant message.
  */
-async function notifyRealtorOfMessage(
+async function notifySellerOfMessage(
   spaceId: string,
   applicantName: string,
   messageContent: string,
 ): Promise<void> {
   if (!process.env.RESEND_API_KEY) return;
 
-  const [{ data: space }, { data: settings }] = await Promise.all([
-    supabase.from('Space').select('ownerId, name, slug').eq('id', spaceId).maybeSingle(),
-    supabase
-      .from('SpaceSetting')
-      .select('notifications, businessName')
-      .eq('spaceId', spaceId)
-      .maybeSingle(),
+  const [space, settings] = await Promise.all([
+    convex().query(api.workspace.spaces.getById, { id: spaceId }),
+    convex().query(api.workspace.settings.getBySpace, { spaceId }),
   ]);
 
   if (!space) return;
   if (settings && !settings.notifications) return;
 
-  const { data: owner } = await supabase
-    .from('User')
-    .select('email')
-    .eq('id', space.ownerId)
-    .maybeSingle();
+  const owner = await convex().query(api.org.users.getById, { id: space.ownerId });
 
   if (!owner?.email) return;
 
@@ -151,9 +139,9 @@ async function notifyRealtorOfMessage(
   const FROM =
     process.env.RESEND_FROM_EMAIL?.includes('@')
       ? process.env.RESEND_FROM_EMAIL
-      : `notifications@${process.env.RESEND_FROM_EMAIL ?? 'alerts.usechippi.com'}`;
+      : `notifications@${process.env.RESEND_FROM_EMAIL ?? 'alerts.usecola.com'}`;
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usechippi.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com';
   const safeName = applicantName.replace(/[\r\n\t]/g, ' ').slice(0, 100);
   const safeContent = messageContent.replace(/</g, '&lt;').replace(/>/g, '&gt;').slice(0, 500);
 

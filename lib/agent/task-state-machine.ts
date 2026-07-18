@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 // ── Status types ──────────────────────────────────────────────────────────────
 
@@ -46,58 +46,40 @@ export async function transitionTask(
   },
 ): Promise<{ ok: boolean; error?: string }> {
   // 1. Read current status.
-  const { data: row, error: fetchError } = await supabase
-    .from('AgentTask')
-    .select('status')
-    .eq('id', taskId)
-    .single();
+  const task = await convex().query(api.agent.tasks.getById, { id: taskId });
 
-  if (fetchError || !row) {
+  if (!task) {
     return { ok: false, error: 'not_found' };
   }
 
-  const current = row.status as TaskStatus;
+  const current = task.status as TaskStatus;
 
   // 2. Validate transition.
   if (!canTransition(current, to)) {
     return { ok: false, error: 'invalid_transition' };
   }
 
-  // 3. Build update object.
-  const now = new Date().toISOString();
-
-  const update: Record<string, unknown> = {
-    status: to,
-    updatedAt: now,
-  };
-
-  if (meta?.startedAt !== undefined)   update.startedAt   = meta.startedAt;
-  if (meta?.completedAt !== undefined) update.completedAt = meta.completedAt;
-  if (meta?.cancelledAt !== undefined) update.cancelledAt = meta.cancelledAt;
-
-  // pausedReason has no dedicated column; park it in metadata so it survives.
-  if (meta?.pausedReason !== undefined) {
-    update.metadata = { pausedReason: meta.pausedReason };
+  // 3. Apply the transition with a compare-and-swap on `current`. If a
+  // concurrent transition already moved the task, the CAS fails and reports
+  // the lost race (invalid_transition) instead of overwriting it. The
+  // pausedReason -> metadata parking happens inside the mutation.
+  try {
+    const result = await convex().mutation(api.agent.tasks.transition, {
+      taskId,
+      to,
+      expectedFrom: current,
+      ...(meta?.startedAt !== undefined ? { startedAt: meta.startedAt } : {}),
+      ...(meta?.completedAt !== undefined ? { completedAt: meta.completedAt } : {}),
+      ...(meta?.cancelledAt !== undefined ? { cancelledAt: meta.cancelledAt } : {}),
+      ...(meta?.pausedReason !== undefined ? { pausedReason: meta.pausedReason } : {}),
+    });
+    if (!result.ok) {
+      return { ok: false, error: result.error ?? 'invalid_transition' };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'transition_failed' };
   }
-
-  // 4. Write to AgentTask — compare-and-swap on the status read in step 1.
-  // If a concurrent transition already moved the task, the status filter
-  // matches no rows and we report the lost race instead of overwriting it.
-  const { data: updated, error: updateError } = await supabase
-    .from('AgentTask')
-    .update(update)
-    .eq('id', taskId)
-    .eq('status', current)
-    .select('id');
-
-  if (updateError) {
-    return { ok: false, error: updateError.message };
-  }
-  if (!updated || updated.length === 0) {
-    return { ok: false, error: 'invalid_transition' };
-  }
-
-  return { ok: true };
 }
 
 // ── Enqueue ───────────────────────────────────────────────────────────────────
@@ -117,28 +99,17 @@ export async function enqueueTask(
     totalSteps?: number;
   },
 ): Promise<string> {
-  const now = new Date().toISOString();
-
-  const { data, error } = await supabase
-    .from('AgentTask')
-    .insert({
+  try {
+    return await convex().mutation(api.agent.tasks.enqueue, {
       spaceId,
       title:           input.title,
       description:     input.description     ?? null,
-      triggerSource:   input.triggerSource   ?? 'manual',
+      ...(input.triggerSource !== undefined ? { triggerSource: input.triggerSource } : {}),
       goalDescription: input.goalDescription ?? null,
       parentTaskId:    input.parentTaskId    ?? null,
-      totalSteps:      input.totalSteps      ?? 0,
-      status:          'queued' satisfies TaskStatus,
-      createdAt:       now,
-      updatedAt:       now,
-    })
-    .select('id')
-    .single();
-
-  if (error || !data) {
-    throw new Error(error?.message ?? 'Failed to enqueue AgentTask');
+      ...(input.totalSteps !== undefined ? { totalSteps: input.totalSteps } : {}),
+    });
+  } catch (err) {
+    throw new Error(err instanceof Error ? err.message : 'Failed to enqueue AgentTask');
   }
-
-  return data.id as string;
 }

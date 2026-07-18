@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requirePlatformAdmin } from '@/lib/permissions';
 import { logAdminAction } from '@/lib/admin';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import {
   getCreditBalance,
   getRecentTxns,
@@ -15,21 +15,23 @@ import { CREDIT_ROLLOVER_DAYS } from '@/lib/plans';
 /**
  * Platform-admin billing tools — view an account's plan + credit balance +
  * recent ledger, grant credits ("add usage"), and refund a debit. All gated by
- * requirePlatformAdmin(). The account is { space | brokerage, id }; credit ops
+ * requirePlatformAdmin(). The account is { space | company, id }; credit ops
  * route through the same atomic ledger functions the rest of the app uses.
  */
 
 function parseAccount(type: unknown, id: unknown): BillingAccount | null {
-  if ((type === 'space' || type === 'brokerage') && typeof id === 'string' && id) {
+  if ((type === 'space' || type === 'company') && typeof id === 'string' && id) {
     return { type, id };
   }
   return null;
 }
 
 async function lookupPlan(acc: BillingAccount): Promise<string | null> {
-  const table = acc.type === 'space' ? 'Space' : 'Brokerage';
-  const { data } = await supabase.from(table).select('plan').eq('id', acc.id).maybeSingle();
-  return (data?.plan as string) ?? null;
+  const row =
+    acc.type === 'space'
+      ? await convex().query(api.workspace.spaces.getById, { id: acc.id })
+      : await convex().query(api.org.companies.getById, { id: acc.id });
+  return (row?.plan as string) ?? null;
 }
 
 export async function GET(req: Request) {
@@ -41,7 +43,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const account = parseAccount(url.searchParams.get('accountType'), url.searchParams.get('accountId'));
   if (!account) {
-    return NextResponse.json({ error: 'accountType (space|brokerage) and accountId are required' }, { status: 400 });
+    return NextResponse.json({ error: 'accountType (space|company) and accountId are required' }, { status: 400 });
   }
   try {
     const [plan, balance, txns] = await Promise.all([
@@ -111,11 +113,7 @@ export async function POST(req: Request) {
       // Bind the refund to the account in context — refundCredits(txnId) would
       // otherwise reverse ANY transaction in the system by id, so a stale/wrong
       // txnId could silently refund an unrelated account's debit.
-      const { data: txn } = await supabase
-        .from('CreditTxn')
-        .select('accountType, accountId')
-        .eq('id', txnId)
-        .maybeSingle();
+      const txn = await convex().query(api.credits.txns.txnAccountById, { id: txnId });
       if (!txn) return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
       if (txn.accountType !== account.type || txn.accountId !== account.id) {
         return NextResponse.json({ error: 'Transaction does not belong to this account' }, { status: 400 });

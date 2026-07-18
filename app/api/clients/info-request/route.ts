@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getClientUser } from '@/lib/client-auth';
 import { clientOwnsContact } from '@/lib/client-portal-data';
 import { sendClientNotification } from '@/lib/client-email';
@@ -24,19 +24,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const { data } = await supabase
-    .from('ClientInfoRequest')
-    .select('id, message, status, response, createdAt, fulfilledAt')
-    .eq('contactId', contactId)
-    .neq('status', 'dismissed')
-    .order('createdAt', { ascending: false });
+  const requests = await convex().query(api.portal.clientInfoRequests.listForContact, {
+    contactId,
+  });
 
-  return NextResponse.json({ requests: data ?? [] });
+  return NextResponse.json({ requests });
 }
 
 /**
  * POST /api/clients/info-request — client responds to a pending request. Sets
- * the response + status='fulfilled' and notifies the realtor.
+ * the response + status='fulfilled' and notifies the seller.
  */
 export async function POST(req: NextRequest) {
   const user = await getClientUser();
@@ -56,13 +53,8 @@ export async function POST(req: NextRequest) {
   if (!allowed) return NextResponse.json({ error: 'Too many requests.' }, { status: 429 });
 
   // Load the request + verify ownership via its contact.
-  const { data: reqRow } = await supabase
-    .from('ClientInfoRequest')
-    .select('id, contactId, status, spaceId')
-    .eq('id', id)
-    .maybeSingle();
-  if (!reqRow) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const row = reqRow as { id: string; contactId: string; status: string; spaceId: string };
+  const row = await convex().query(api.portal.clientInfoRequests.getGuardFields, { id });
+  if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   if (!(await clientOwnsContact(user.email, row.contactId))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -71,25 +63,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Already answered.' }, { status: 409 });
   }
 
-  const { error } = await supabase
-    .from('ClientInfoRequest')
-    .update({ response, status: 'fulfilled', fulfilledAt: new Date().toISOString() })
-    .eq('id', id);
-  if (error) {
-    logger.error('[clients/info-request] update failed', { id }, error);
+  try {
+    await convex().mutation(api.portal.clientInfoRequests.fulfill, { id, response });
+  } catch (error) {
+    logger.error('[clients/info-request] update failed', { id }, error as Error);
     return NextResponse.json({ error: 'Failed to save.' }, { status: 500 });
   }
 
-  // Notify the realtor (best-effort).
-  const { data: space } = await supabase
-    .from('Space')
-    .select('ownerId')
-    .eq('id', row.spaceId)
-    .maybeSingle();
-  const ownerId = (space as { ownerId?: string | null } | null)?.ownerId;
+  // Notify the seller (best-effort).
+  const space = await convex().query(api.workspace.spaces.getById, { id: row.spaceId });
+  const ownerId = space?.ownerId;
   if (ownerId) {
-    const { data: owner } = await supabase.from('User').select('email').eq('id', ownerId).maybeSingle();
-    const ownerEmail = (owner as { email?: string | null } | null)?.email;
+    const owner = await convex().query(api.org.users.getById, { id: ownerId });
+    const ownerEmail = owner?.email;
     if (ownerEmail) {
       void sendClientNotification({
         to: ownerEmail,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { getSignedDownloadUrl } from '@/lib/storage';
 
@@ -14,11 +15,7 @@ export async function GET(
 ) {
   const { token, docId } = await params;
 
-  const { data: packet } = await supabase
-    .from('PropertyPacket')
-    .select('includeDocumentIds, spaceId, expiresAt, revokedAt')
-    .eq('token', token)
-    .maybeSingle();
+  const packet = await convex().query(api.marketplace.packets.getByToken, { token });
 
   if (!packet) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (packet.revokedAt) return NextResponse.json({ error: 'Link revoked' }, { status: 410 });

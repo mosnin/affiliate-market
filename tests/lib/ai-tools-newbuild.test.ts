@@ -1,7 +1,7 @@
 /**
  * NEW_BUILD — the 5 chat-cutover tools that closed the gap doc:
- *   add_property, update_deal_probability, request_deal_review,
- *   send_property_packet, read_attachment.
+ *   add_product, update_deal_probability, request_deal_review,
+ *   send_product_packet, read_attachment.
  *
  * Two cases per tool: happy path + a representative failure mode.
  * Mock pattern mirrors phase14.
@@ -49,10 +49,30 @@ vi.mock('@/lib/supabase', () => {
   return { supabase: { from: vi.fn((table: string) => makeChain(table)) } };
 });
 
-import { addPropertyTool } from '@/lib/ai-tools/tools/add-property';
+// ── Convex mock — Product reads/writes (add_product, send_product_packet's
+// product lookup) moved off Supabase. `api` is a path proxy; steer the
+// product mutations/queries via convexMutationMock/convexQueryMock. Deal /
+// Space / Contact / Attachment stay on Supabase (above) — these tools are
+// hybrid.
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
+import { addProductTool } from '@/lib/ai-tools/tools/add-product';
 import { updateDealProbabilityTool } from '@/lib/ai-tools/tools/update-deal-probability';
 import { requestDealReviewTool } from '@/lib/ai-tools/tools/request-deal-review';
-import { sendPropertyPacketTool } from '@/lib/ai-tools/tools/send-property-packet';
+import { sendProductPacketTool } from '@/lib/ai-tools/tools/send-product-packet';
 import { readAttachmentTool } from '@/lib/ai-tools/tools/read-attachment';
 import type { ToolContext } from '@/lib/ai-tools/types';
 
@@ -66,22 +86,29 @@ function makeCtx(): ToolContext {
 
 beforeEach(() => {
   mockByTable = {};
+  convexQueryMock.mockReset();
+  convexMutationMock.mockReset();
 });
 
-// ── add_property ─────────────────────────────────────────────────────────
-describe('addPropertyTool', () => {
+// ── add_product ─────────────────────────────────────────────────────────
+describe('addProductTool', () => {
   it('requires approval', () => {
-    expect(addPropertyTool.requiresApproval).toBe(true);
+    expect(addProductTool.requiresApproval).toBe(true);
   });
 
   it('summariseCall mentions the address', () => {
-    const out = addPropertyTool.summariseCall!({ address: '412 Elm St' } as never);
+    const out = addProductTool.summariseCall!({ address: '412 Elm St' } as never);
     expect(out).toMatch(/412 Elm St/);
   });
 
   it('inserts with defaults and echoes the address', async () => {
-    mockByTable = { Property: { rows: [], error: null } };
-    const result = await addPropertyTool.handler(
+    // add_product writes via api.marketplace.products.create, which returns
+    // { ok, product } on success.
+    convexMutationMock.mockResolvedValueOnce({
+      ok: true,
+      product: { id: 'p_new', address: '412 Elm St', listingStatus: 'active' },
+    });
+    const result = await addProductTool.handler(
       { address: '412 Elm St', listPrice: 850_000 },
       makeCtx(),
     );
@@ -91,9 +118,11 @@ describe('addPropertyTool', () => {
     expect(data.listingStatus).toBe('active');
   });
 
-  it('returns error when Property insert fails', async () => {
-    mockByTable = { Property: { error: { message: 'unique violation' } } };
-    const result = await addPropertyTool.handler(
+  it('returns error when Product insert fails', async () => {
+    // products.create reports failures as { ok: false, error } — the tool
+    // surfaces res.error in the summary.
+    convexMutationMock.mockResolvedValueOnce({ ok: false, error: 'unique violation' });
+    const result = await addProductTool.handler(
       { address: '412 Elm St' },
       makeCtx(),
     );
@@ -158,10 +187,10 @@ describe('requestDealReviewTool', () => {
     ).toThrow();
   });
 
-  it('refuses when the workspace has no brokerage', async () => {
+  it('refuses when the workspace has no company', async () => {
     mockByTable = {
       Deal: { single: { id: 'd_1', title: 'Big deal' } },
-      Space: { single: { id: 'space_1', ownerId: 'u_owner', brokerageId: null } },
+      Space: { single: { id: 'space_1', ownerId: 'u_owner', companyId: null } },
     };
     const result = await requestDealReviewTool.handler(
       { dealId: 'd_1', reason: 'Unusual commission split needs sign-off' },
@@ -172,24 +201,24 @@ describe('requestDealReviewTool', () => {
   });
 });
 
-// ── send_property_packet ─────────────────────────────────────────────────
-describe('sendPropertyPacketTool', () => {
+// ── send_product_packet ─────────────────────────────────────────────────
+describe('sendProductPacketTool', () => {
   it('requires approval', () => {
-    expect(sendPropertyPacketTool.requiresApproval).toBe(true);
+    expect(sendProductPacketTool.requiresApproval).toBe(true);
   });
 
   it('summariseCall mentions both halves of the action', () => {
-    const out = sendPropertyPacketTool.summariseCall!({
+    const out = sendProductPacketTool.summariseCall!({
       contactId: 'c_abcd1234',
-      propertyId: 'p_wxyz5678',
+      productId: 'p_wxyz5678',
     } as never);
     expect(out.toLowerCase()).toContain('packet');
   });
 
   it('errors when the contact is missing', async () => {
     mockByTable = { Contact: { single: null } };
-    const result = await sendPropertyPacketTool.handler(
-      { contactId: 'missing', propertyId: 'p_1' },
+    const result = await sendProductPacketTool.handler(
+      { contactId: 'missing', productId: 'p_1' },
       makeCtx(),
     );
     expect(result.display).toBe('error');
@@ -204,18 +233,14 @@ describe('readAttachmentTool', () => {
   });
 
   it('returns metadata without leaking blob content', async () => {
-    mockByTable = {
-      Attachment: {
-        single: {
-          id: 'a_1',
-          filename: 'disclosure.pdf',
-          mimeType: 'application/pdf',
-          sizeBytes: 250_000,
-          extractionStatus: 'done',
-          extractedText: 'Property disclosure for 412 Elm St.\nLine two.',
-        },
-      },
-    };
+    convexQueryMock.mockResolvedValueOnce({
+      id: 'a_1',
+      filename: 'disclosure.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 250_000,
+      extractionStatus: 'done',
+      extractedText: 'Product disclosure for 412 Elm St.\nLine two.',
+    });
     const result = await readAttachmentTool.handler({ attachmentId: 'a_1' }, makeCtx());
     expect(result.display).toBe('plain');
     expect(result.summary).toMatch(/disclosure\.pdf/);
@@ -229,12 +254,12 @@ describe('readAttachmentTool', () => {
     expect(data.mimeType).toBe('application/pdf');
     expect(data.hasExtractedText).toBe(true);
     // Description is the FIRST line only — never the full body.
-    expect(data.description).toMatch(/Property disclosure/);
+    expect(data.description).toMatch(/Product disclosure/);
     expect(data.description).not.toMatch(/Line two/);
   });
 
   it('errors when the attachment is missing in this workspace', async () => {
-    mockByTable = { Attachment: { single: null } };
+    convexQueryMock.mockResolvedValueOnce(null);
     const result = await readAttachmentTool.handler({ attachmentId: 'missing' }, makeCtx());
     expect(result.display).toBe('error');
     expect(result.summary).toMatch(/No attachment/);

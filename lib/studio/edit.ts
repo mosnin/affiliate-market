@@ -1,11 +1,11 @@
 /**
- * Studio image editing — the shared core used by the realtor-facing route
- * (/api/studio/edit) and the internal route the Chippi agent calls. It takes
+ * Studio image editing — the shared core used by the seller-facing route
+ * (/api/studio/edit) and the internal route the Cola agent calls. It takes
  * a source File that already exists and produces a new edited File.
  */
 
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
   uploadObject,
@@ -48,12 +48,10 @@ export async function runStudioEdit(args: {
   // fit under fal's input ceiling. Skipping the category check sends fal a
   // PDF or a 4K video and bills the failed call.
   const MAX_EDIT_BYTES = 20 * 1024 * 1024;
-  const { data: source } = await supabase
-    .from('File')
-    .select('storageKey, category, sizeBytes')
-    .eq('id', args.sourceFileId)
-    .eq('spaceId', args.spaceId)
-    .maybeSingle();
+  const source = await convex().query(api.infra.files.getByIdForSpace, {
+    id: args.sourceFileId,
+    spaceId: args.spaceId,
+  });
   if (!source?.storageKey) {
     throw new StudioGenerationError('The image to edit was not found.', 404);
   }
@@ -66,34 +64,31 @@ export async function runStudioEdit(args: {
   const sourceUrl = await getSignedDownloadUrl(source.storageKey as string, 3600);
 
   const generationId = crypto.randomUUID();
-  const { error: genErr } = await supabase.from('StudioGeneration').insert({
-    id: generationId,
-    spaceId: args.spaceId,
-    userId: args.userId,
-    kind: 'image',
-    model: tool.id,
-    prompt: prompt || null,
-    sourceFileId: args.sourceFileId,
-    status: 'running',
-    costUsd: 0,
-  });
-  if (genErr) {
-    logger.error('[studio.edit] log insert failed', { spaceId: args.spaceId }, genErr);
+  try {
+    await convex().mutation(api.studio.generations.insertRunning, {
+      id: generationId,
+      spaceId: args.spaceId,
+      userId: args.userId,
+      kind: 'image',
+      model: tool.id,
+      // PG stored `prompt || null`; Convex omits absent optionals, so pass
+      // undefined (== SQL NULL) when there's no prompt.
+      prompt: prompt || undefined,
+      sourceFileId: args.sourceFileId,
+    });
+  } catch (genErr) {
+    logger.error('[studio.edit] log insert failed', { spaceId: args.spaceId }, genErr as Error);
     throw new StudioGenerationError(
-      `Could not start the edit: ${genErr.message ?? 'unknown DB error'}`,
+      `Could not start the edit: ${(genErr as Error)?.message ?? 'unknown DB error'}`,
       500,
     );
   }
 
   const markFailed = async (message: string): Promise<void> => {
-    await supabase
-      .from('StudioGeneration')
-      .update({
-        status: 'failed',
-        errorMessage: message,
-        completedAt: new Date().toISOString(),
-      })
-      .eq('id', generationId);
+    await convex().mutation(api.studio.generations.markFailed, {
+      id: generationId,
+      errorMessage: message,
+    });
   };
 
   let out: GeneratedAsset;
@@ -139,33 +134,30 @@ export async function runStudioEdit(args: {
     throw new StudioGenerationError("Edit didn't go through — usually temporary.", 500);
   }
 
-  const { error: fileErr } = await supabase.from('File').insert({
-    id: fileId,
-    spaceId: args.spaceId,
-    userId: args.userId,
-    storageKey,
-    name,
-    mimeType: contentType,
-    category: 'image',
-    sizeBytes: buffer.length,
-    isPublic: false,
-  });
-  if (fileErr) {
+  try {
+    await convex().mutation(api.infra.files.create, {
+      id: fileId,
+      spaceId: args.spaceId,
+      userId: args.userId,
+      storageKey,
+      name,
+      mimeType: contentType,
+      category: 'image',
+      sizeBytes: buffer.length,
+      isPublic: false,
+    });
+  } catch (fileErr) {
     await deleteObject(storageKey).catch(() => undefined);
-    logger.error('[studio.edit] file insert failed', { spaceId: args.spaceId }, fileErr);
+    logger.error('[studio.edit] file insert failed', { spaceId: args.spaceId }, fileErr as Error);
     await markFailed('Could not record the edited image.');
     throw new StudioGenerationError("Edit didn't go through — usually temporary.", 500);
   }
 
-  await supabase
-    .from('StudioGeneration')
-    .update({
-      status: 'completed',
-      fileId,
-      costUsd: tool.costUsd,
-      completedAt: new Date().toISOString(),
-    })
-    .eq('id', generationId);
+  await convex().mutation(api.studio.generations.markCompleted, {
+    id: generationId,
+    fileId,
+    costUsd: tool.costUsd,
+  });
 
   const url = await getSignedDownloadUrl(storageKey);
   return { generationId, fileId, url, kind: 'image', model: tool.id, costUsd: tool.costUsd };

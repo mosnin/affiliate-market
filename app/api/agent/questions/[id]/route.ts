@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -25,37 +25,24 @@ export async function PATCH(
     );
   }
 
-  // Verify the question belongs to this space
-  const { data: existing } = await supabase
-    .from('AgentQuestion')
-    .select('id, status')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  // Verify ownership + flip pending→answered in one mutation. The pending guard
+  // (409) and the not-in-space check (404) are enforced inside `answer`.
+  const result = await convex().mutation(api.agent.questions.answer, {
+    id,
+    spaceId: space.id,
+    answer,
+  });
 
-  if (!existing) {
+  if (result.outcome === 'not_found') {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  if (existing.status !== 'pending') {
+  if (result.outcome === 'conflict') {
     return NextResponse.json(
-      { error: `Question is already ${existing.status}` },
+      { error: `Question is already ${result.question?.status}` },
       { status: 409 },
     );
   }
 
-  const { data: updated, error: updateError } = await supabase
-    .from('AgentQuestion')
-    .update({
-      status: 'answered',
-      answer,
-      answeredAt: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .select()
-    .single();
-
-  if (updateError) throw updateError;
-  return NextResponse.json(updated);
+  return NextResponse.json(result.question);
 }

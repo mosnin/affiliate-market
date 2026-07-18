@@ -38,13 +38,40 @@ vi.mock('@/lib/logger', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-// ── Supabase mock — table-aware queue ───────────────────────────────────────
-// Each call to supabase.from('Table') consumes one terminal result from the
-// table's queue. select/eq/in/maybeSingle/single all return the chain itself
-// (or resolve with the terminal). Updates are recorded for assertion.
+// ── Convex mock — AgentDraft reads + writes ─────────────────────────────────
+// The per-draft ownership read and the status flip moved off Supabase:
+//   - getByIdForSpace → the draft row keyed on the draftId arg (or null when
+//     not in scope, e.g. a foreign-space id).
+//   - updateForSpace  → records {id, spaceId, patch}; returns the patched row.
+// `draftsById` is set per-test; an absent id resolves to null (the scoping
+// guard). `updateImpl` lets a test make the update reject (the update_failed
+// branch). `api` is a path proxy so the fn ref stringifies to its dotted path.
+type DraftRow = { id: string; status: string; contactId: string | null; channel: string; subject: string | null; content: string };
+let draftsById: Record<string, DraftRow | null> = {};
+let updateImpl: ((args: Record<string, unknown>) => Promise<unknown>) | null = null;
+const updateCalls: Array<{ id: string; spaceId: string; patch: Record<string, unknown> }> = [];
+
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
+  convexMutationMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
+// ── Supabase mock (Contact reads only now) ──────────────────────────────────
+// Each call to supabase.from('Table') consumes one terminal from the table's
+// queue. select/eq/maybeSingle/single return the chain (or resolve the
+// terminal). AgentDraft no longer flows through here.
 type Terminal = { data?: unknown; error?: unknown };
 const queues: Record<string, Terminal[]> = {};
-const updateCalls: Array<{ table: string; values: unknown; eq: Array<[string, unknown]> }> = [];
 
 function queueFor(table: string) {
   if (!queues[table]) queues[table] = [];
@@ -55,28 +82,13 @@ vi.mock('@/lib/supabase', () => {
   function makeChain(table: string): Record<string, unknown> {
     const q = queueFor(table);
     const terminal = q.shift() ?? { data: null, error: null };
-    let isUpdate = false;
-    let updateValues: unknown = undefined;
-    const eqs: Array<[string, unknown]> = [];
 
     const chain: Record<string, unknown> = {};
     chain.select = vi.fn(() => chain);
-    chain.eq = vi.fn((col: string, val: unknown) => {
-      eqs.push([col, val]);
-      return chain;
-    });
-    chain.update = vi.fn((values: unknown) => {
-      isUpdate = true;
-      updateValues = values;
-      return chain;
-    });
+    chain.eq = vi.fn(() => chain);
     chain.maybeSingle = vi.fn(() => Promise.resolve(terminal));
     chain.single = vi.fn(() => Promise.resolve(terminal));
-    // Update returns a chain that's awaitable on `.eq(...).eq(...)`.
     chain.then = (resolve: (v: Terminal) => unknown, reject?: (e: unknown) => unknown) => {
-      if (isUpdate) {
-        updateCalls.push({ table, values: updateValues, eq: eqs });
-      }
       try {
         return Promise.resolve(terminal).then(resolve, reject);
       } catch (e) {
@@ -114,9 +126,34 @@ beforeEach(() => {
   vi.clearAllMocks();
   for (const k of Object.keys(queues)) delete queues[k];
   updateCalls.length = 0;
+  draftsById = {};
+  updateImpl = null;
   mockRequireAuth.mockResolvedValue({ userId: 'user_1' });
   mockGetSpaceForUser.mockResolvedValue(SPACE as never);
   mockCheckRateLimit.mockResolvedValue({ allowed: true });
+
+  // getByIdForSpace → draftsById[id] (or null when absent / not in scope).
+  convexQueryMock.mockImplementation(async (ref: unknown, args: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    const a = (args ?? {}) as { id?: string };
+    if (p.includes('agent.drafts.getByIdForSpace')) {
+      return (a.id && a.id in draftsById ? draftsById[a.id] : null) ?? null;
+    }
+    return null;
+  });
+  // updateForSpace → record the call; return the patched row (or run updateImpl,
+  // which a test can point at a rejection to exercise the update_failed branch).
+  convexMutationMock.mockImplementation(async (ref: unknown, args: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    const a = (args ?? {}) as { id: string; spaceId: string; patch: Record<string, unknown> };
+    if (p.includes('agent.drafts.updateForSpace')) {
+      updateCalls.push({ id: a.id, spaceId: a.spaceId, patch: a.patch });
+      if (updateImpl) return updateImpl(a as unknown as Record<string, unknown>);
+      const base = draftsById[a.id];
+      return { id: a.id, ...(base ?? {}), ...a.patch };
+    }
+    return null;
+  });
 });
 
 describe('POST /api/agent/drafts/batch-approve', () => {
@@ -160,9 +197,9 @@ describe('POST /api/agent/drafts/batch-approve', () => {
   });
 
   it('returns not_found for a draftId in another space (the scoping guard)', async () => {
-    // Single draftId. The supabase mock returns null data for AgentDraft,
-    // emulating .eq('spaceId', space.id) filtering out the foreign-space row.
-    queueFor('AgentDraft').push({ data: null, error: null });
+    // Single draftId. getByIdForSpace returns null (the Convex query applies the
+    // spaceId scope), emulating a foreign-space row filtered out.
+    draftsById = {}; // 'foreign_draft' is absent → null
 
     const res = await POST(makeReq({ draftIds: ['foreign_draft'] }));
     expect(res.status).toBe(200);
@@ -175,10 +212,9 @@ describe('POST /api/agent/drafts/batch-approve', () => {
   });
 
   it('returns already_<status> for a non-pending draft (skipped, not failed)', async () => {
-    queueFor('AgentDraft').push({
-      data: { id: 'd1', status: 'sent', contactId: 'c1', channel: 'email', subject: 's', content: 'hi' },
-      error: null,
-    });
+    draftsById = {
+      d1: { id: 'd1', status: 'sent', contactId: 'c1', channel: 'email', subject: 's', content: 'hi' },
+    };
 
     const res = await POST(makeReq({ draftIds: ['d1'] }));
     expect(res.status).toBe(200);
@@ -188,17 +224,14 @@ describe('POST /api/agent/drafts/batch-approve', () => {
   });
 
   it('sends all drafts on happy path and returns ok=true per item', async () => {
-    // Two drafts. For each: one AgentDraft read, one Contact read, one update.
-    queueFor('AgentDraft').push(
-      { data: { id: 'd1', status: 'pending', contactId: 'c1', channel: 'email', subject: 's1', content: 'hello 1' }, error: null },
-      { data: null, error: null }, // update terminal for d1
-    );
+    // Two drafts. Each: one Convex read (getByIdForSpace), one Contact read
+    // (Supabase), one Convex write (updateForSpace).
+    draftsById = {
+      d1: { id: 'd1', status: 'pending', contactId: 'c1', channel: 'email', subject: 's1', content: 'hello 1' },
+      d2: { id: 'd2', status: 'pending', contactId: 'c2', channel: 'sms', subject: null, content: 'hello 2' },
+    };
+    // Contact reads are consumed in draft order (d1 → c1, d2 → c2).
     queueFor('Contact').push({ data: { name: 'Alice', email: 'a@x.test', phone: null }, error: null });
-
-    queueFor('AgentDraft').push(
-      { data: { id: 'd2', status: 'pending', contactId: 'c2', channel: 'sms', subject: null, content: 'hello 2' }, error: null },
-      { data: null, error: null }, // update terminal for d2
-    );
     queueFor('Contact').push({ data: { name: 'Bob', email: null, phone: '+15551234' }, error: null });
 
     mockSendDraft.mockResolvedValueOnce({ sent: true, method: 'email' });
@@ -214,25 +247,21 @@ describe('POST /api/agent/drafts/batch-approve', () => {
     expect(json.results[1]).toMatchObject({ draftId: 'd2', ok: true, status: 'sent' });
     expect(mockSendDraft).toHaveBeenCalledTimes(2);
 
-    // Each draft generated one update with status='sent'.
-    const updates = updateCalls.filter((u) => u.table === 'AgentDraft');
-    expect(updates).toHaveLength(2);
-    for (const u of updates) {
-      expect((u.values as { status: string }).status).toBe('sent');
+    // Each draft generated one updateForSpace with patch.status='sent', scoped
+    // to the space.
+    expect(updateCalls).toHaveLength(2);
+    for (const u of updateCalls) {
+      expect(u.spaceId).toBe(SPACE.id);
+      expect((u.patch as { status: string }).status).toBe('sent');
     }
   });
 
   it('keeps other items running when one delivery fails', async () => {
-    queueFor('AgentDraft').push(
-      { data: { id: 'd1', status: 'pending', contactId: 'c1', channel: 'email', subject: 's1', content: 'hi' }, error: null },
-      { data: null, error: null }, // update terminal for d1
-    );
+    draftsById = {
+      d1: { id: 'd1', status: 'pending', contactId: 'c1', channel: 'email', subject: 's1', content: 'hi' },
+      d2: { id: 'd2', status: 'pending', contactId: 'c2', channel: 'email', subject: 's2', content: 'hi' },
+    };
     queueFor('Contact').push({ data: { name: 'Alice', email: 'a@x.test', phone: null }, error: null });
-
-    queueFor('AgentDraft').push(
-      { data: { id: 'd2', status: 'pending', contactId: 'c2', channel: 'email', subject: 's2', content: 'hi' }, error: null },
-      { data: null, error: null }, // update terminal for d2
-    );
     queueFor('Contact').push({ data: { name: 'Bob', email: 'b@x.test', phone: null }, error: null });
 
     // d1 fails delivery (stale recipient), d2 succeeds.
@@ -253,10 +282,9 @@ describe('POST /api/agent/drafts/batch-approve', () => {
   });
 
   it('de-dupes repeated draftIds in the input', async () => {
-    queueFor('AgentDraft').push(
-      { data: { id: 'd1', status: 'pending', contactId: 'c1', channel: 'note', subject: null, content: 'note' }, error: null },
-      { data: null, error: null }, // update terminal
-    );
+    draftsById = {
+      d1: { id: 'd1', status: 'pending', contactId: 'c1', channel: 'note', subject: null, content: 'note' },
+    };
     queueFor('Contact').push({ data: { name: 'Alice', email: null, phone: null }, error: null });
 
     mockSendDraft.mockResolvedValueOnce({ sent: true, method: 'note' });

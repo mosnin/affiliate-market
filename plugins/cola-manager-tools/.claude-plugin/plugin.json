@@ -1,0 +1,8 @@
+{
+  "name": "cola-manager-tools",
+  "description": "Company management tools for Cola. View team performance, manage unassigned leads, and track agent activity.",
+  "version": "1.0.0",
+  "author": { "name": "Cola", "url": "https://usecola.com" },
+  "homepage": "https://usecola.com",
+  "keywords": ["crm", "company", "team", "real-estate", "cola"]
+}

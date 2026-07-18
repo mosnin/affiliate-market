@@ -1,9 +1,9 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 import { BroadcastClient, type SegmentKey, type PastBroadcast } from './broadcast-client';
 
-export const metadata = { title: 'Broadcast — Admin — Chippi' };
+export const metadata = { title: 'Broadcast — Admin — Cola' };
 
 const SUBSCRIPTION_SEGMENTS: Record<string, string> = {
   trial: 'trialing',
@@ -14,31 +14,25 @@ const SUBSCRIPTION_SEGMENTS: Record<string, string> = {
 
 async function countSegment(segment: SegmentKey): Promise<number> {
   if (segment === 'all') {
-    const { count } = await supabase
-      .from('User')
-      .select('*', { count: 'exact', head: true });
-    return count ?? 0;
+    const { total } = await convex().query(api.org.users.counts, {});
+    return total;
   }
   if (segment === 'onboarded' || segment === 'not_onboarded') {
-    const { count } = await supabase
-      .from('User')
-      .select('*', { count: 'exact', head: true })
-      .eq('onboard', segment === 'onboarded');
-    return count ?? 0;
+    const { total, onboarded } = await convex().query(api.org.users.counts, {});
+    return segment === 'onboarded' ? onboarded : Math.max(0, total - onboarded);
   }
   if (segment in SUBSCRIPTION_SEGMENTS) {
-    const { count } = await supabase
-      .from('Space')
-      .select('*', { count: 'exact', head: true })
-      .eq('stripeSubscriptionStatus', SUBSCRIPTION_SEGMENTS[segment]);
-    return count ?? 0;
+    return convex().query(api.workspace.spaces.countBySubscriptionStatus, {
+      status: SUBSCRIPTION_SEGMENTS[segment],
+    });
   }
   if (segment === 'no_workspace') {
-    const [{ count: totalUsers }, { count: totalSpaces }] = await Promise.all([
-      supabase.from('User').select('*', { count: 'exact', head: true }),
-      supabase.from('Space').select('*', { count: 'exact', head: true }),
+    const [{ total: totalUsers }, allSpaces] = await Promise.all([
+      convex().query(api.org.users.counts, {}),
+      // No "count all spaces" fn — the unfiltered list's length is the total.
+      convex().query(api.workspace.spaces.listBySubscriptionStatus, {}),
     ]);
-    return Math.max(0, (totalUsers ?? 0) - (totalSpaces ?? 0));
+    return Math.max(0, totalUsers - allSpaces.length);
   }
   return 0;
 }
@@ -58,13 +52,11 @@ export default async function AdminBroadcastPage() {
     'no_workspace',
   ];
 
-  const [countsArr, pastRes] = await Promise.all([
+  // EmailBroadcast moved to Convex; the per-segment counts (User/Space) stay on
+  // Supabase — this page is a hybrid read during the cutover.
+  const [countsArr, pastRows] = await Promise.all([
     Promise.all(segmentKeys.map((k) => countSegment(k))),
-    supabase
-      .from('EmailBroadcast')
-      .select('id, subject, segment, recipientCount, sentCount, failedCount, sentBy, createdAt')
-      .order('createdAt', { ascending: false })
-      .limit(20),
+    convex().query(api.support.broadcasts.listRecent, { limit: 20 }),
   ]);
 
   const counts: Record<SegmentKey, number> = segmentKeys.reduce(
@@ -75,7 +67,7 @@ export default async function AdminBroadcastPage() {
     {} as Record<SegmentKey, number>,
   );
 
-  const pastBroadcasts = ((pastRes.data ?? []) as PastBroadcast[]).map((b) => ({
+  const pastBroadcasts = (pastRows as PastBroadcast[]).map((b) => ({
     id: b.id,
     subject: b.subject,
     segment: b.segment,

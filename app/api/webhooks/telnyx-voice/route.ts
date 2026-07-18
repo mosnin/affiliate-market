@@ -7,7 +7,7 @@
  *   - call.answered         → (agent leg) bridge to the contact + start recording
  *   - call.bridged          → mark answered
  *   - call.hangup           → mark completed/failed/no_answer + duration
- *   - call.recording.saved  → download, transcribe, Chippi-summarize, persist
+ *   - call.recording.saved  → download, transcribe, Cola-summarize, persist
  *
  * Auth: this is a machine-to-machine webhook, so there's no Clerk session. We
  * gate on a shared secret query param (?secret=TELNYX_WEBHOOK_SECRET) when one
@@ -20,7 +20,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
   bridgeAndRecord,
@@ -123,15 +123,39 @@ export async function POST(req: NextRequest) {
 
 async function updateByCallId(
   callControlId: string | undefined,
-  fields: Record<string, unknown>,
+  fields: {
+    status?: string;
+    durationSec?: number;
+    recordingUrl?: string;
+    transcript?: string;
+    summary?: string;
+  },
 ): Promise<void> {
   if (!callControlId) return;
-  const { error } = await supabase
-    .from('CallLog')
-    .update({ ...fields, updatedAt: new Date().toISOString() })
-    .eq('telnyxCallId', callControlId);
-  if (error) {
-    logger.error('[telnyx-voice] update failed', { err: error.message });
+  try {
+    // The Convex mutation owns updatedAt and patches every row matching this
+    // telnyxCallId (parity with the old `.eq('telnyxCallId')` update). `status`
+    // is a free string at the call sites but the mutation validates it against
+    // the CallLog status union; the values passed here are all valid members.
+    await convex().mutation(api.support.calls.updateByTelnyxId, {
+      telnyxCallId: callControlId,
+      status: fields.status as
+        | 'initiated'
+        | 'ringing'
+        | 'answered'
+        | 'completed'
+        | 'failed'
+        | 'no_answer'
+        | undefined,
+      durationSec: fields.durationSec,
+      recordingUrl: fields.recordingUrl,
+      transcript: fields.transcript,
+      summary: fields.summary,
+    });
+  } catch (err) {
+    logger.error('[telnyx-voice] update failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -146,7 +170,7 @@ function parseDuration(payload: any): number | null {
   return typeof direct === 'number' ? direct : null;
 }
 
-// ── Recording → transcript → Chippi summary ─────────────────────────────────
+// ── Recording → transcript → Cola summary ─────────────────────────────────
 
 async function handleRecordingSaved(
   callControlId: string | undefined,
@@ -194,7 +218,7 @@ async function handleRecordingSaved(
     return;
   }
 
-  // Chippi summary — 2-3 sentences. Gate on any LLM key being present.
+  // Cola summary — 2-3 sentences. Gate on any LLM key being present.
   let summary: string | null = null;
   try {
     const client = getLLMClient();
@@ -206,7 +230,7 @@ async function handleRecordingSaved(
         {
           role: 'system',
           content:
-            'You are Chippi, a real-estate CRM assistant. Summarize this phone-call ' +
+            'You are Cola, a real-estate CRM assistant. Summarize this phone-call ' +
             'transcript for the agent in 2-3 plain sentences: what was discussed, any ' +
             'commitments, and the next step. Be specific and factual. No preamble.',
         },

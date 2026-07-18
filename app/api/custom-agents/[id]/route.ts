@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -18,14 +18,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const { data: agent, error } = await supabase
-    .from('CustomAgent')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
-
-  if (error) {
-    console.error('[custom-agents/[id]/GET] fetch error:', error);
+  let agent;
+  try {
+    agent = await convex().query(api.agent.customAgents.getById, { id });
+  } catch (err) {
+    console.error('[custom-agents/[id]/GET] fetch error:', err);
     return NextResponse.json({ error: 'Failed to fetch agent' }, { status: 500 });
   }
   if (!agent) {
@@ -53,13 +50,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const { id } = await params;
 
   // Fetch the agent and verify ownership before mutating.
-  const { data: existing, error: fetchError } = await supabase
-    .from('CustomAgent')
-    .select('id, spaceId')
-    .eq('id', id)
-    .maybeSingle();
-
-  if (fetchError) {
+  let existing;
+  try {
+    existing = await convex().query(api.agent.customAgents.getById, { id });
+  } catch (fetchError) {
     console.error('[custom-agents/[id]/PUT] fetch error:', fetchError);
     return NextResponse.json({ error: 'Failed to fetch agent' }, { status: 500 });
   }
@@ -112,25 +106,26 @@ export async function PUT(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'capabilities must be an array' }, { status: 400 });
   }
 
-  // Build the update object from validated fields.
-  const updates: Record<string, unknown> = {};
-  if (name !== undefined) updates.name = name.trim();
-  if (description !== undefined) updates.description = description;
-  if (systemPrompt !== undefined) updates.systemPrompt = systemPrompt.trim();
-  if (model !== undefined) updates.model = model;
-  if (capabilities !== undefined) updates.capabilities = capabilities;
-  updates.updatedAt = new Date().toISOString();
-
-  const { data: agent, error: updateError } = await supabase
-    .from('CustomAgent')
-    .update(updates)
-    .eq('id', id)
-    .select('*')
-    .single();
-
-  if (updateError) {
+  // Build the update args from validated fields. updatedAt is set inside the
+  // mutation. The mutation re-checks (id, spaceId) scope on the write.
+  let agent;
+  try {
+    agent = await convex().mutation(api.agent.customAgents.update, {
+      id,
+      spaceId: space.id,
+      ...(name !== undefined && { name: name.trim() }),
+      ...(description !== undefined && { description: description as string }),
+      ...(systemPrompt !== undefined && { systemPrompt: systemPrompt.trim() }),
+      ...(model !== undefined && { model: model as string }),
+      ...(capabilities !== undefined && { capabilities }),
+    });
+  } catch (updateError) {
     console.error('[custom-agents/[id]/PUT] update error:', updateError);
     return NextResponse.json({ error: 'Failed to update agent' }, { status: 500 });
+  }
+  if (!agent) {
+    // Lost the row between the ownership read and the write.
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
   return NextResponse.json({ agent });
@@ -150,13 +145,10 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
 
   // Fetch the agent and verify ownership before mutating.
-  const { data: existing, error: fetchError } = await supabase
-    .from('CustomAgent')
-    .select('id, spaceId')
-    .eq('id', id)
-    .maybeSingle();
-
-  if (fetchError) {
+  let existing;
+  try {
+    existing = await convex().query(api.agent.customAgents.getById, { id });
+  } catch (fetchError) {
     console.error('[custom-agents/[id]/DELETE] fetch error:', fetchError);
     return NextResponse.json({ error: 'Failed to fetch agent' }, { status: 500 });
   }
@@ -167,12 +159,9 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { error: updateError } = await supabase
-    .from('CustomAgent')
-    .update({ isActive: false, updatedAt: new Date().toISOString() })
-    .eq('id', id);
-
-  if (updateError) {
+  try {
+    await convex().mutation(api.agent.customAgents.deactivate, { id, spaceId: space.id });
+  } catch (updateError) {
     console.error('[custom-agents/[id]/DELETE] soft-delete error:', updateError);
     return NextResponse.json({ error: 'Failed to delete agent' }, { status: 500 });
   }

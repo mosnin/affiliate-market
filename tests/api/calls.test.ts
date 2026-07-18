@@ -97,7 +97,8 @@ vi.mock('@/lib/rate-limit', () => ({
   checkRateLimit: vi.fn(async () => ({ allowed: true })),
 }));
 
-// In-memory Supabase stub: insert returns a fake row; update is a no-op.
+// The CallLog row a freshly-created (pre-dial) call looks like — what
+// api.support.calls.create resolves to.
 const insertedRow = {
   id: 'call_1',
   spaceId: 'space_1',
@@ -114,6 +115,29 @@ const insertedRow = {
   createdAt: '2026-06-02T00:00:00.000Z',
   updatedAt: '2026-06-02T00:00:00.000Z',
 };
+
+// CallLog reads/writes moved from Supabase to Convex: the route creates the row
+// via convex().mutation(api.support.calls.create) and patches it via
+// api.support.calls.updateById. Contact + SpaceSetting validation stays on
+// Supabase (below). `api` is a path proxy so any api.<domain>.<module>.<fn>
+// access yields a callable whose dotted path the mutation mock branches on.
+const { convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(),
+  convexMutationMock: vi.fn(),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
+
+// Supabase stays only for the Contact + SpaceSetting lookups the route keeps.
+// maybeSingle → null (no Contact match needed here; SpaceSetting has no phone).
 vi.mock('@/lib/supabase', () => {
   const builder: any = {
     insert: vi.fn(() => builder),
@@ -123,7 +147,7 @@ vi.mock('@/lib/supabase', () => {
     order: vi.fn(() => builder),
     limit: vi.fn(async () => ({ data: [], error: null })),
     maybeSingle: vi.fn(async () => ({ data: null, error: null })),
-    single: vi.fn(async () => ({ data: insertedRow, error: null })),
+    single: vi.fn(async () => ({ data: null, error: null })),
   };
   return { supabase: { from: vi.fn(() => builder) } };
 });
@@ -150,6 +174,16 @@ describe('POST /api/calls', () => {
     delete process.env.TELNYX_VOICE_CONNECTION_ID;
     delete process.env.TELNYX_FROM_NUMBER;
     delete process.env.TELNYX_AGENT_NUMBER;
+    // create → the initiated row; updateById → that row flipped to 'failed'.
+    // Branch on the proxy's dotted path (yielded when CALLED, not via String()).
+    convexMutationMock.mockImplementation(async (ref: unknown, args: Record<string, unknown>) => {
+      const p = typeof ref === 'function' ? String((ref as () => string)()) : String(ref);
+      if (p.includes('updateById')) {
+        return { ...insertedRow, ...args, status: (args.status as string) ?? insertedRow.status };
+      }
+      // create
+      return insertedRow;
+    });
   });
 
   it('returns 400 when slug is missing', async () => {

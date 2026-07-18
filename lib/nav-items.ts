@@ -7,9 +7,12 @@ import {
   Settings,
   Calendar,
   ClipboardList,
-  Building2,
+  Package,
   FolderOpen,
   Aperture,
+  ShoppingCart,
+  Network,
+  Video,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -34,28 +37,28 @@ export interface NavItem {
   badgeKey?: string;
 }
 
-// ── Realtor sidebar nav ──────────────────────────────────────────────────────
+// ── Seller sidebar nav ──────────────────────────────────────────────────────
 //
-// Chippi is the home — the chat surface IS the OS. The Chippi entry expands
+// Cola is the home — the chat surface IS the OS. The Cola entry expands
 // into the agent's sub-surfaces (Full day, Drafts, Activity, Memory,
 // Integrations), so the chat root stays a clean chat-first hero and the
-// realtor reaches the dashboards via the dropdown rather than scrolling
-// past them every time they want to talk to Chippi.
+// seller reaches the dashboards via the dropdown rather than scrolling
+// past them every time they want to talk to Cola.
 //
-// Everything else in the sidebar is the realtor-facing substrate they still
-// expect from a CRM: People, Deals, Calendar, Properties, Intake.
+// Everything else in the sidebar is the seller-facing substrate they still
+// expect from a CRM: People, Deals, Calendar, Products, Intake.
 
-export const realtorNavItems: NavItem[] = [
+export const sellerNavItems: NavItem[] = [
   {
-    href: '/chippi',
-    label: 'Chippi',
+    href: '/cola',
+    label: 'Cola',
     icon: MessageCircle,
     isAI: true,
     badgeKey: 'pendingDrafts',
     children: [
-      { href: '/chippi/brief', label: 'Brief' },
-      { href: '/chippi/inbox', label: 'Inbox' },
-      { href: '/chippi/history', label: 'History' },
+      { href: '/cola/brief', label: 'Brief' },
+      { href: '/cola/inbox', label: 'Inbox' },
+      { href: '/cola/history', label: 'History' },
     ],
   },
   {
@@ -83,15 +86,29 @@ export const realtorNavItems: NavItem[] = [
     icon: Inbox,
   },
   {
-    href: '/properties',
-    label: 'Properties',
-    icon: Building2,
-    badgeKey: 'properties',
+    href: '/products',
+    label: 'Products',
+    icon: Package,
+    badgeKey: 'products',
     children: [
-      { href: '/properties/new', label: 'Add property' },
-      { href: '/properties/commissions', label: 'Commissions' },
-      { href: '/cma', label: 'CMA' },
+      { href: '/products/new', label: 'Add product' },
+      { href: '/products/commissions', label: 'Commissions' },
     ],
+  },
+  {
+    href: '/demos',
+    label: 'Demos',
+    icon: Video,
+  },
+  {
+    href: '/orders',
+    label: 'Orders',
+    icon: ShoppingCart,
+  },
+  {
+    href: '/affiliates',
+    label: 'Affiliates',
+    icon: Network,
   },
   {
     href: '/studio',
@@ -133,19 +150,19 @@ export const realtorNavItems: NavItem[] = [
 
 /**
  * Secondary "More" section — intentionally empty. The sidebar checks
- * `realtorMoreNavItems.length > 0` and hides the section when it is.
+ * `sellerMoreNavItems.length > 0` and hides the section when it is.
  *
  * Routes that used to live here are reachable two ways:
  *   - Settings → Integrations (was: /integrations)
- *   - Settings → Chippi → Build your own agents (was: /agents)
+ *   - Settings → Cola → Build your own agents (was: /agents)
  *   - Per-surface stats tabs (was: /analytics)
  * Anything else is reachable by direct URL but doesn't earn nav weight.
  */
-export const realtorMoreNavItems: NavItem[] = [];
+export const sellerMoreNavItems: NavItem[] = [];
 
 // ── Header right-side menu ───────────────────────────────────────────────────
 //
-// Intentionally empty. Settings already lives in `realtorNavItems` as a
+// Intentionally empty. Settings already lives in `sellerNavItems` as a
 // primary nav row; surfacing it again in a separate "Account" section in
 // the mobile drawer was a duplicate. Kept as an extension point — add
 // Billing, Profile, or other account-level routes here when they earn it.
@@ -153,7 +170,7 @@ export const secondaryNavItems: { href: string; label: string; icon: LucideIcon 
 
 /** Primary items with shorter labels for the mobile bottom bar. */
 export const mobileNavItems = [
-  { href: '/chippi', label: 'Chippi', icon: MessageCircle },
+  { href: '/cola', label: 'Cola', icon: MessageCircle },
   { href: '/contacts', label: 'People', icon: Users },
   { href: '/deals', label: 'Deals', icon: Briefcase },
   { href: '/calendar', label: 'Calendar', icon: Calendar },

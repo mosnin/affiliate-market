@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import {
@@ -11,11 +11,11 @@ import {
 /**
  * GET /api/agent/draft-stats
  *
- * Tells the realtor (and the agent itself) how its drafts have actually been
+ * Tells the seller (and the agent itself) how its drafts have actually been
  * landing. Two layers of signal:
  *
  *   - Input quality (Phase 12): `feedback_action`, `edit_distance`, `decision_ms`
- *     — did the realtor approve / edit / reject the draft. Lives in the
+ *     — did the seller approve / edit / reject the draft. Lives in the
  *     `approved`/`editedAndApproved`/`rejected`/`held` counts and the rates
  *     derived from them.
  *   - Outcome attribution (Phase 13): `outcome_signal`, `outcome_checked_at`
@@ -29,7 +29,7 @@ import {
  *
  * Window: rolling 30 days, fixed.
  *
- * Math lives in `lib/draft-stats.ts` so the broker dashboard's "Draft impact"
+ * Math lives in `lib/draft-stats.ts` so the manager dashboard's "Draft impact"
  * card reports identical numbers from the same shape.
  *
  * Read-only. No DB writes. No outbound side effects.
@@ -43,14 +43,12 @@ export async function GET() {
   const space = await getSpaceForUser(userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data, error } = await supabase
-    .from('AgentDraft')
-    .select('feedback_action, edit_distance, decision_ms, outcome_signal')
-    .eq('spaceId', space.id)
-    .not('feedback_action', 'is', null)
-    .gte('createdAt', draftStatsWindowStart());
-
-  if (error) throw error;
+  // Decided drafts (feedback_action not null) in the 30-day window (Convex) —
+  // returns exactly the DraftStatsRow projection the lib aggregates.
+  const data = await convex().query(api.agent.drafts.decidedStatsForSpace, {
+    spaceId: space.id,
+    since: draftStatsWindowStart(),
+  });
 
   const stats = aggregateDraftStats((data ?? []) as DraftStatsRow[]);
   return NextResponse.json(stats);

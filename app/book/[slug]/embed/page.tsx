@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { BookingForm } from '../booking-form';
 import { FormUnavailable } from '@/components/form-unavailable';
 
@@ -17,14 +17,12 @@ export default async function EmbedBookingPage({
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
-  const { data: settingsData } = await supabase
-    .from('SpaceSetting')
-    .select('businessName, tourDuration, timezone')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const settingsData = await convex().query(api.workspace.settings.getBySpace, {
+    spaceId: space.id,
+  });
 
   const businessName = (settingsData as any)?.businessName || space.name;
-  const duration = (settingsData as any)?.tourDuration || 30;
+  const duration = (settingsData as any)?.demoDuration || 30;
   const timezone = (settingsData as any)?.timezone || 'America/New_York';
 
   // Gate on subscription status — only pause forms for explicitly failed billing

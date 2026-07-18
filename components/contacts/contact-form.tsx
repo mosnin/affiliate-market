@@ -32,7 +32,7 @@ const schema = z.object({
   preferences: z.string().optional(),
   address: z.string().optional(),
   notes: z.string().optional(),
-  type: z.enum(['QUALIFICATION', 'TOUR', 'APPLICATION']),
+  type: z.enum(['QUALIFICATION', 'DEMO', 'APPLICATION']),
   tags: z.string().optional(),
 });
 
@@ -40,7 +40,7 @@ type FormData = z.infer<typeof schema>;
 
 type SubmitData = Omit<FormData, 'tags' | 'budget'> & {
   tags: string[];
-  properties: string[];
+  products: string[];
   budget?: number;
 };
 
@@ -48,7 +48,7 @@ interface ContactFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: SubmitData) => Promise<void>;
-  defaultValues?: Partial<FormData & { properties?: string }>;
+  defaultValues?: Partial<FormData & { products?: string }>;
   /** When set, overrides the default "Add a person" / "Edit person" title. */
   title?: string;
   /** Distinguishes add vs. edit so we can label the submit button correctly. */
@@ -79,7 +79,7 @@ function FieldRow({
         )}
       </Label>
       {children}
-      {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+      {error && <p className="text-xs text-negative dark:text-negative">{error}</p>}
     </div>
   );
 }
@@ -180,9 +180,9 @@ type ParsedContact = {
   email: string | null;
   phone: string | null;
   type: 'rental' | 'buyer' | 'seller' | null;
-  stage: 'Qualifying' | 'Tour' | 'Application' | null;
+  stage: 'Qualifying' | 'Demo' | 'Application' | null;
   monthlyBudget: number | null;
-  properties: string[];
+  products: string[];
   preferences: string | null;
   confidence: 'high' | 'medium' | 'low';
 };
@@ -194,9 +194,9 @@ type ParseErrorCode =
   | 'parse_failed'
   | 'invalid_input';
 
-/** Map the parser's "Qualifying"/"Tour"/"Application" string to the DB enum. */
+/** Map the parser's "Qualifying"/"Demo"/"Application" string to the DB enum. */
 function stageToType(stage: ParsedContact['stage']): FormData['type'] {
-  if (stage === 'Tour') return 'TOUR';
+  if (stage === 'Demo') return 'DEMO';
   if (stage === 'Application') return 'APPLICATION';
   return 'QUALIFICATION';
 }
@@ -222,13 +222,13 @@ export function ContactForm({
     defaultValues: { type: CONTACT_STAGES[0].key, ...defaultValues },
   });
 
-  // Properties live outside react-hook-form so the chip input owns them.
-  const initialProperties = (() => {
-    const raw = defaultValues?.properties;
+  // Products live outside react-hook-form so the chip input owns them.
+  const initialProducts = (() => {
+    const raw = defaultValues?.products;
     if (!raw) return [];
     return raw.split(',').map((p) => p.trim()).filter(Boolean);
   })();
-  const [properties, setProperties] = useState<string[]>(initialProperties);
+  const [products, setProducts] = useState<string[]>(initialProducts);
 
   // ── Type it mode state ────────────────────────────────────────────────────
   // Default to "type" for add; edit mode is always the form (no parsing needed).
@@ -239,7 +239,7 @@ export function ContactForm({
   const [parseError, setParseError] = useState<string | null>(null);
   const [pendingPreview, setPendingPreview] = useState<ParsedContact | null>(null);
 
-  // Reset every time the modal opens so the realtor chooses fresh each time.
+  // Reset every time the modal opens so the seller chooses fresh each time.
   useEffect(() => {
     if (!open) return;
     setTab(canType ? 'type' : 'fill');
@@ -254,7 +254,7 @@ export function ContactForm({
 
   function resetAll() {
     reset();
-    setProperties([]);
+    setProducts([]);
     setTypedText('');
     setParseError(null);
     setPendingPreview(null);
@@ -271,7 +271,7 @@ export function ContactForm({
         address: '',
         notes: '',
         type: stageToType(parsed.stage),
-        properties: parsed.properties,
+        products: parsed.products,
         tags: [],
       });
       toast.success(`Added ${parsed.name}.`);
@@ -295,7 +295,7 @@ export function ContactForm({
     );
     setValue('preferences', parsed.preferences ?? '', { shouldDirty: true });
     setValue('type', stageToType(parsed.stage), { shouldDirty: true });
-    setProperties(parsed.properties);
+    setProducts(parsed.products);
     setPendingPreview(null);
     setTab('fill');
   }
@@ -370,7 +370,7 @@ export function ContactForm({
     const budget = data.budget ? parseFloat(data.budget) : undefined;
     const { tags: _rawTags, ...rest } = data;
     try {
-      await onSubmit({ ...rest, budget, properties, tags });
+      await onSubmit({ ...rest, budget, products, tags });
       toast.success(mode === 'edit' ? 'Saved.' : 'Added.');
     } catch {
       toast.error("Couldn't save that. Try again.");
@@ -533,11 +533,11 @@ export function ContactForm({
                 />
               </FieldRow>
 
-              <FieldRow id="properties" label="Interested in" optional>
+              <FieldRow id="products" label="Interested in" optional>
                 <ChipInput
-                  id="properties"
-                  values={properties}
-                  onChange={setProperties}
+                  id="products"
+                  values={products}
+                  onChange={setProducts}
                   placeholder="Type an address, press Enter"
                 />
               </FieldRow>
@@ -628,7 +628,7 @@ function TypeItBody({
             <p className="text-xs text-muted-foreground">
               I&apos;ll figure out their stage, contact info, and what they&apos;re looking for.
             </p>
-            {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+            {error && <p className="text-xs text-negative dark:text-negative">{error}</p>}
           </>
         ) : (
           <ParsedPreviewCard parsed={preview} />
@@ -700,8 +700,8 @@ function ParsedPreviewCard({ parsed }: { parsed: ParsedContact }) {
       value: parsed.preferences ?? '—',
     },
     {
-      label: 'Properties',
-      value: parsed.properties.length > 0 ? parsed.properties.join(', ') : '—',
+      label: 'Products',
+      value: parsed.products.length > 0 ? parsed.products.join(', ') : '—',
     },
   ];
 

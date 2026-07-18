@@ -91,8 +91,8 @@ function SuspendButton({
         className={cn(
           'inline-flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-md border transition-colors',
           isSuspended
-            ? 'text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-500/15 dark:border-emerald-500/30'
-            : 'text-red-600 bg-red-50 border-red-200 hover:bg-red-100 dark:text-red-400 dark:bg-red-500/15 dark:border-red-500/30',
+            ? 'text-positive bg-positive-subtle border-positive/20 hover:bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15 dark:border-positive/20'
+            : 'text-negative bg-negative-subtle border-negative/20 hover:bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15 dark:border-red-500/30',
         )}
       >
         {isSuspended ? <ShieldCheck size={11} /> : <ShieldBan size={11} />}
@@ -336,14 +336,14 @@ export function UserListClient({
                             className={cn(
                               'inline-flex text-[10px] font-semibold rounded-full px-2 py-0.5',
                               user.onboard
-                                ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15'
-                                : 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+                                ? 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15'
+                                : 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
                             )}
                           >
                             {user.onboard ? 'Onboarded' : `Step ${user.onboardingCurrentStep}`}
                           </span>
                           {isSuspended && (
-                            <span className="inline-flex text-[10px] font-semibold rounded-full px-2 py-0.5 text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15">
+                            <span className="inline-flex text-[10px] font-semibold rounded-full px-2 py-0.5 text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15">
                               Suspended
                             </span>
                           )}

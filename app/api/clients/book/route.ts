@@ -6,10 +6,10 @@ import { checkRateLimit } from '@/lib/rate-limit';
 export const runtime = 'nodejs';
 
 /**
- * POST /api/clients/book — portal tour booking. A thin proxy over the existing
- * public /api/tours/book endpoint: it forces guestEmail/guestName/guestPhone
+ * POST /api/clients/book — portal demo booking. A thin proxy over the existing
+ * public /api/demos/book endpoint: it forces guestEmail/guestName/guestPhone
  * from the verified session (so a client can only book under their own email)
- * and restricts the realtor to one the client is already engaged with. The
+ * and restricts the seller to one the client is already engaged with. The
  * underlying booking logic is untouched — we just call it.
  */
 export async function POST(req: NextRequest) {
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     slug?: string;
     startsAt?: string;
-    propertyAddress?: string;
+    productAddress?: string;
     notes?: string;
   };
   const slug = (body.slug ?? '').trim();
@@ -28,11 +28,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'slug and startsAt are required' }, { status: 400 });
   }
 
-  // Only let the client book with a realtor they already have a relationship
-  // with (an application or tour on their verified email).
-  const { applications, tours } = await getClientPortalData(user.email);
+  // Only let the client book with a seller they already have a relationship
+  // with (an application or demo on their verified email).
+  const { applications, demos } = await getClientPortalData(user.email);
   const engagedSlugs = new Set(
-    [...applications.map((a) => a.realtorSlug), ...tours.map((t) => t.realtorSlug)].filter(
+    [...applications.map((a) => a.sellerSlug), ...demos.map((t) => t.sellerSlug)].filter(
       (s): s is string => Boolean(s),
     ),
   );
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
   // Call the existing public booking endpoint with the session identity forced.
   const origin = req.nextUrl.origin;
-  const res = await fetch(`${origin}/api/tours/book`, {
+  const res = await fetch(`${origin}/api/demos/book`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       guestName: user.name ?? user.email,
       guestEmail: user.email,
       guestPhone: user.phone ?? undefined,
-      propertyAddress: body.propertyAddress?.slice(0, 500) || undefined,
+      productAddress: body.productAddress?.slice(0, 500) || undefined,
       notes: body.notes?.slice(0, 2000) || undefined,
       startsAt,
     }),

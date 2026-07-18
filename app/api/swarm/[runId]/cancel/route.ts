@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
 // ── POST /api/swarm/[runId]/cancel ────────────────────────────────────────────
 // Cancel a swarm run that is currently queued, planning, running, or auditing.
-
-const CANCELLABLE_STATUSES = new Set(['queued', 'planning', 'running', 'auditing']);
 
 export async function POST(
   _req: NextRequest,
@@ -23,46 +21,38 @@ export async function POST(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Fetch the run and verify it belongs to the calling user's space.
-  const { data: run, error: runError } = await supabase
-    .from('SwarmRun')
-    .select('id, spaceId, status')
-    .eq('id', runId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  if (runError) {
-    console.error('[swarm/[runId]/cancel/POST] run fetch error:', runError);
-    return NextResponse.json({ error: 'Failed to fetch run' }, { status: 500 });
-  }
-  if (!run) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  // Atomic compare-and-set: verify the run is in this space, confirm it's still
+  // cancellable, and flip it to 'cancelled' in one mutation. The reason string
+  // maps the two failure modes back onto the original 404 / 400 responses.
+  let result;
+  try {
+    result = await convex().mutation(api.swarmvector.swarmRuns.cancel, {
+      id: runId,
+      spaceId: space.id,
+    });
+  } catch (updateError) {
+    console.error('[swarm/[runId]/cancel/POST] cancel error:', updateError);
+    return NextResponse.json({ error: 'Failed to cancel run' }, { status: 500 });
   }
 
-  if (!CANCELLABLE_STATUSES.has(run.status as string)) {
+  if (!result.ok) {
+    if (result.reason === 'not_found') {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     return NextResponse.json(
       { error: 'Run cannot be cancelled in its current state' },
       { status: 400 },
     );
   }
 
-  // Mark the run as cancelled.
-  const { error: updateError } = await supabase
-    .from('SwarmRun')
-    .update({ status: 'cancelled', completedAt: new Date().toISOString() })
-    .eq('id', runId);
-
-  if (updateError) {
-    console.error('[swarm/[runId]/cancel/POST] update error:', updateError);
-    return NextResponse.json({ error: 'Failed to cancel run' }, { status: 500 });
-  }
-
   // Append a cancellation event to the event log.
-  const { error: eventError } = await supabase
-    .from('SwarmEvent')
-    .insert({ swarmRunId: runId, type: 'swarm_cancelled', data: { reason: 'user_cancelled' } });
-
-  if (eventError) {
+  try {
+    await convex().mutation(api.swarmvector.swarmEvents.append, {
+      swarmRunId: runId,
+      type: 'swarm_cancelled',
+      data: { reason: 'user_cancelled' },
+    });
+  } catch (eventError) {
     console.error('[swarm/[runId]/cancel/POST] event insert error:', eventError);
     // Run is already cancelled — don't fail the request over a missing event row.
   }

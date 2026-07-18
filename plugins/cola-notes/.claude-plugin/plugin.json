@@ -1,0 +1,8 @@
+{
+  "name": "cola-notes",
+  "description": "Access and create Cola CRM notes from Claude. Search notes, create meeting notes, and reference your workspace data.",
+  "version": "1.0.0",
+  "author": { "name": "Cola", "url": "https://usecola.com" },
+  "homepage": "https://usecola.com",
+  "keywords": ["crm", "notes", "meetings", "real-estate", "cola"]
+}

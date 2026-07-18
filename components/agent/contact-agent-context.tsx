@@ -15,7 +15,7 @@ interface AgentContext {
 
 const GOAL_LABELS: Record<string, string> = {
   follow_up_sequence: 'Follow-up',
-  tour_booking: 'Tour booking',
+  demo_booking: 'Demo booking',
   offer_progress: 'Offer',
   deal_close: 'Closing',
   reengagement: 'Re-engage',
@@ -39,7 +39,7 @@ export function ContactAgentContext({ contactId }: ContactAgentContextProps) {
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
       {ctx.goalType && (
-        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-900/50 rounded-full px-1.5 py-0.5">
+        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-primary dark:text-primary bg-brand-subtle dark:bg-brand-subtle border border-primary/20 dark:border-primary/40 rounded-full px-1.5 py-0.5">
           <Target size={8} />
           {GOAL_LABELS[ctx.goalType] ?? ctx.goalType}
         </span>

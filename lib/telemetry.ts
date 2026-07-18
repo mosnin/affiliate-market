@@ -2,7 +2,7 @@
  * Fire-and-forget telemetry emitter.
  *
  * Phase 2 product analytics: we need first-value events
- * (`signup_completed`, `chippi_first_message`, `agent_first_action_completed`)
+ * (`signup_completed`, `cola_first_message`, `agent_first_action_completed`)
  * so the team can measure time-from-signup-to-first-useful-agent-action.
  * Until those land every conversion hypothesis is fiction.
  *
@@ -18,12 +18,12 @@
  *   - hasEmitted() returns false on error so we re-fire rather than silently
  *     skipping a real first-time event when Supabase blips.
  */
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 
 export type TelemetryEventName =
   | 'signup_completed'
-  | 'chippi_first_message'
+  | 'cola_first_message'
   | 'agent_first_action_completed'
   // Per-tool-call observability for the chat agent. Payload carries the
   // tool name + reasoning sentence (the assistant text immediately
@@ -45,16 +45,12 @@ export interface EmitArgs {
  */
 export async function emit(args: EmitArgs): Promise<void> {
   try {
-    const { error } = await supabase.from('TelemetryEvent').insert({
-      id: crypto.randomUUID(),
+    await convex().mutation(api.infra.telemetry.emit, {
       spaceId: args.spaceId ?? null,
       userId: args.userId ?? null,
       event: args.event,
       payload: args.payload ?? {},
     });
-    if (error) {
-      logger.warn('[telemetry] emit failed', { event: args.event }, error);
-    }
   } catch (err) {
     logger.warn('[telemetry] emit threw', { event: args.event }, err);
   }
@@ -62,7 +58,7 @@ export async function emit(args: EmitArgs): Promise<void> {
 
 /**
  * Has this space already recorded a given first-time event? Used to gate
- * `chippi_first_message` and `agent_first_action_completed` so they fire
+ * `cola_first_message` and `agent_first_action_completed` so they fire
  * exactly once per space. Errors are swallowed and treated as "not emitted"
  * — a duplicate emit is cheaper than a missed first-value signal.
  */
@@ -71,17 +67,7 @@ export async function hasEmitted(
   event: TelemetryEventName,
 ): Promise<boolean> {
   try {
-    const { count, error } = await supabase
-      .from('TelemetryEvent')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', spaceId)
-      .eq('event', event)
-      .limit(1);
-    if (error) {
-      logger.warn('[telemetry] hasEmitted failed', { event, spaceId }, error);
-      return false;
-    }
-    return (count ?? 0) > 0;
+    return await convex().query(api.infra.telemetry.hasEmitted, { spaceId, event });
   } catch (err) {
     logger.warn('[telemetry] hasEmitted threw', { event, spaceId }, err);
     return false;
@@ -98,17 +84,12 @@ export async function getFirstEmittedAt(
   event: TelemetryEventName,
 ): Promise<Date | null> {
   try {
-    const { data, error } = await supabase
-      .from('TelemetryEvent')
-      .select('createdAt')
-      .eq('spaceId', spaceId)
-      .eq('event', event)
-      .order('createdAt', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (error || !data) return null;
-    const row = data as { createdAt: string };
-    const t = new Date(row.createdAt);
+    const createdAt = await convex().query(api.infra.telemetry.firstEmittedAt, {
+      spaceId,
+      event,
+    });
+    if (!createdAt) return null;
+    const t = new Date(createdAt);
     return Number.isNaN(t.getTime()) ? null : t;
   } catch {
     return null;
@@ -122,7 +103,7 @@ export function secondsBetween(from: Date | null, to: Date): number | null {
 }
 
 /**
- * Tool names that produce a real side effect on the realtor's behalf —
+ * Tool names that produce a real side effect on the seller's behalf —
  * a row was written, a message dispatched, a follow-up scheduled. A
  * successful call to one of these is what we count as the agent's "first
  * useful action" in the activation funnel.
@@ -141,12 +122,12 @@ export const SIDE_EFFECTING_TOOLS: ReadonlySet<string> = new Set([
   'advance_deal_stage',
   'move_deal_stage',
   'create_deal',
-  'schedule_tour',
+  'schedule_demo',
   'send_email',
   'send_sms',
   'update_contact',
   // Modal sandbox tools (agent/tools/*)
-  'add_property',
+  'add_product',
   'create_draft_message',
   'send_or_draft',
   'update_contact_type',
@@ -182,7 +163,7 @@ export async function maybeEmitFirstAction(input: {
     if (await hasEmitted(spaceId, 'agent_first_action_completed')) return;
     const [signupAt, firstMsgAt] = await Promise.all([
       getFirstEmittedAt(spaceId, 'signup_completed'),
-      getFirstEmittedAt(spaceId, 'chippi_first_message'),
+      getFirstEmittedAt(spaceId, 'cola_first_message'),
     ]);
     const now = new Date();
     await emit({

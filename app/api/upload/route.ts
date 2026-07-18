@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import crypto from 'crypto';
 import { uploadObject, getPublicUrl, buildKey, deleteObject, publicUrlToKey } from '@/lib/storage';
@@ -22,10 +22,10 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File;
-    const type = formData.get('type') as string; // 'logo' | 'photo' | 'favicon' | 'link-thumb' | 'property-photo'
+    const type = formData.get('type') as string; // 'logo' | 'photo' | 'favicon' | 'link-thumb' | 'product-photo'
 
     if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-    if (!['logo', 'photo', 'favicon', 'link-thumb', 'property-photo'].includes(type)) {
+    if (!['logo', 'photo', 'favicon', 'link-thumb', 'product-photo'].includes(type)) {
       return NextResponse.json({ error: 'Invalid upload type' }, { status: 400 });
     }
 
@@ -35,13 +35,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Only PNG, JPEG, and WebP images are allowed' }, { status: 400 });
     }
 
-    // Property photos can be a hair larger than profile assets (5 MB) so the
-    // realtor doesn't have to compress every MLS-quality JPEG before upload.
+    // Product photos can be a hair larger than profile assets (5 MB) so the
+    // seller doesn't have to compress every MLS-quality JPEG before upload.
     // Other types stay capped at 2 MB.
-    const sizeCap = type === 'property-photo' ? 5 * 1024 * 1024 : 2 * 1024 * 1024;
+    const sizeCap = type === 'product-photo' ? 5 * 1024 * 1024 : 2 * 1024 * 1024;
     if (file.size > sizeCap) {
       return NextResponse.json(
-        { error: type === 'property-photo' ? 'File must be under 5MB' : 'File must be under 2MB' },
+        { error: type === 'product-photo' ? 'File must be under 5MB' : 'File must be under 2MB' },
         { status: 400 },
       );
     }
@@ -66,15 +66,15 @@ export async function POST(req: NextRequest) {
     }
 
     const ext = detectedExt;
-    // Property photos go under the `property-photos/` prefix the storage-gc
-    // sweeper already knows how to scan (it intersects Property.photos URLs
+    // Product photos go under the `product-photos/` prefix the storage-gc
+    // sweeper already knows how to scan (it intersects Product.photos URLs
     // against listed keys). Branding assets (logo / photo / favicon /
     // link-thumb) stay under `onboarding/` — same key space as space-level
     // profile uploads. Both are public-read because they're embedded on
-    // /apply, the property packet share page, and the public profile.
-    const key = type === 'property-photo'
+    // /apply, the product packet share page, and the public profile.
+    const key = type === 'product-photo'
       ? buildKey(
-          'propertyPhotos',
+          'productPhotos',
           space.id,
           `${crypto.randomUUID().slice(0, 8)}.${ext}`,
         )
@@ -109,21 +109,20 @@ export async function POST(req: NextRequest) {
     // them, which is out of scope for this fix.
     const fieldMap: Record<string, string> = {
       logo: 'logoUrl',
-      photo: 'realtorPhotoUrl',
+      photo: 'sellerPhotoUrl',
       favicon: 'intakeFaviconUrl',
     };
     const field = fieldMap[type];
     if (field) {
-      const { data: existing } = await supabase
-        .from('SpaceSetting')
-        .select(field)
-        .eq('spaceId', space.id)
-        .maybeSingle();
+      const existing = await convex().query(api.workspace.settings.getBySpace, {
+        spaceId: space.id,
+      });
       const previousValue = (existing as Record<string, string | null> | null)?.[field] ?? null;
 
-      await supabase
-        .from('SpaceSetting')
-        .upsert({ spaceId: space.id, [field]: publicUrl }, { onConflict: 'spaceId' });
+      await convex().mutation(api.workspace.settings.upsertBySpace, {
+        spaceId: space.id,
+        fields: { [field]: publicUrl },
+      });
 
       // Fire-and-forget the previous object cleanup. publicUrlToKey
       // returns null for URLs that don't match our bucket shape (e.g.

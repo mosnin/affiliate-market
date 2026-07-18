@@ -1,0 +1,8 @@
+{
+  "name": "cola-deal-tracker",
+  "description": "Track your rental deal pipeline from Claude. View deals by stage, check pipeline value, and monitor deal progress.",
+  "version": "1.0.0",
+  "author": { "name": "Cola", "url": "https://usecola.com" },
+  "homepage": "https://usecola.com",
+  "keywords": ["crm", "deals", "pipeline", "real-estate", "cola"]
+}

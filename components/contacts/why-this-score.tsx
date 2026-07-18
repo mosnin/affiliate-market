@@ -81,20 +81,20 @@ export function WhyThisScore({ details }: Props) {
               )}
               {details?.strengths && details.strengths.length > 0 && (
                 <div>
-                  <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 mb-1.5 inline-flex items-center gap-1.5">
+                  <p className="text-[11px] font-medium text-positive dark:text-positive mb-1.5 inline-flex items-center gap-1.5">
                     <CheckCircle2 size={11} /> Strengths
                   </p>
-                  <ul className="space-y-1 ml-4 list-disc text-muted-foreground leading-relaxed marker:text-emerald-500/70">
+                  <ul className="space-y-1 ml-4 list-disc text-muted-foreground leading-relaxed marker:text-positive/70">
                     {details.strengths.map((s) => <li key={s}>{s}</li>)}
                   </ul>
                 </div>
               )}
               {details?.weaknesses && details.weaknesses.length > 0 && (
                 <div>
-                  <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400 mb-1.5 inline-flex items-center gap-1.5">
+                  <p className="text-[11px] font-medium text-muted-foreground dark:text-muted-foreground mb-1.5 inline-flex items-center gap-1.5">
                     <XCircle size={11} /> Weaknesses
                   </p>
-                  <ul className="space-y-1 ml-4 list-disc text-muted-foreground leading-relaxed marker:text-amber-500/70">
+                  <ul className="space-y-1 ml-4 list-disc text-muted-foreground leading-relaxed marker:text-muted-foreground/70">
                     {details.weaknesses.map((w) => <li key={w}>{w}</li>)}
                   </ul>
                 </div>

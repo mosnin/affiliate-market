@@ -163,7 +163,7 @@ export function WizardStepContacts({ slug, selectedContacts, onSelectionChange }
                   result.leadType === 'buyer'
                     ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-400'
                     : result.leadType === 'seller'
-                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
+                    ? 'bg-muted text-muted-foreground dark:bg-muted0/20 dark:text-muted-foreground'
                     : 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400'
                 )}>
                   {result.leadType === 'buyer' ? 'Buyer' : result.leadType === 'seller' ? 'Seller' : 'Rental'}
@@ -189,7 +189,7 @@ export function WizardStepContacts({ slug, selectedContacts, onSelectionChange }
         </div>
       )}
       {hasSeller && !hasBuyer && (
-        <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 px-3 py-2 text-xs font-medium">
+        <div className="flex items-center gap-2 rounded-md bg-muted dark:bg-muted0/10 text-muted-foreground dark:text-muted-foreground px-3 py-2 text-xs font-medium">
           <Info size={13} className="flex-shrink-0" />
           Seller pipeline will be suggested
         </div>

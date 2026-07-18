@@ -2,16 +2,16 @@
 
 /**
  * Marketing nav: fortitudo's floating pill with mega-menu dropdowns, retooled
- * for Chippi's information architecture and made theme-aware (the original was
+ * for Cola's information architecture and made theme-aware (the original was
  * charcoal-only; this leans on the semantic card/border tokens so the pill is
  * a frosted white card in light mode and a frosted near-black in dark).
  *
- * Chippi routes only. Auth links go to Chippi's Clerk flows:
- *   Log in  → /login/realtor
- *   Start free → /login/realtor?intent=signup
+ * Cola routes only. Auth links go to Cola's Clerk flows:
+ *   Log in  → /login/seller
+ *   Start free → /login/seller?intent=signup
  *
- * The mega-menu groups surface the real anchor sections on the Realtors and
- * Brokerages pages plus the flat routes (Integrations, Pricing, Company).
+ * The mega-menu groups surface the real anchor sections on the Sellers and
+ * Companies pages plus the flat routes (Integrations, Pricing, Company).
  */
 
 import { useState, useRef, useEffect } from 'react';
@@ -47,30 +47,30 @@ interface MegaMenuItem {
   description: string;
 }
 
-const realtorItems: MegaMenuItem[] = [
-  { label: 'Drafts in your voice', href: '/realtors#the-reply', icon: PenLine, description: 'Replies written before you open the thread' },
-  { label: 'Know who to call first', href: '/realtors#first-call', icon: Target, description: 'Every lead scored against your deals' },
-  { label: 'Book the tour', href: '/realtors#in-the-field', icon: CalendarCheck, description: 'Reply with a time; Chippi handles the rest' },
-  { label: 'A pipeline that does not lie', href: '/realtors#one-workspace', icon: KanbanSquare, description: 'One workspace, not six tabs' },
+const sellerItems: MegaMenuItem[] = [
+  { label: 'Drafts in your voice', href: '/sellers#the-reply', icon: PenLine, description: 'Replies written before you open the thread' },
+  { label: 'Know who to call first', href: '/sellers#first-call', icon: Target, description: 'Every lead scored against your deals' },
+  { label: 'Book the demo', href: '/sellers#in-the-field', icon: CalendarCheck, description: 'Reply with a time; Cola handles the rest' },
+  { label: 'A pipeline that does not lie', href: '/sellers#one-workspace', icon: KanbanSquare, description: 'One workspace, not six tabs' },
 ];
 
-const brokerageItems: MegaMenuItem[] = [
-  { label: 'For brokerages', href: '/brokerages', icon: Building2, description: 'A teammate for every agent on the floor' },
-  { label: 'Lead routing', href: '/brokerages', icon: GitBranch, description: 'The right lead to the right agent' },
-  { label: 'The whole room', href: '/brokerages', icon: BarChart3, description: 'Performance and bottlenecks at a glance' },
+const companyItems: MegaMenuItem[] = [
+  { label: 'For companies', href: '/companies', icon: Building2, description: 'A teammate for every agent on the floor' },
+  { label: 'Lead routing', href: '/companies', icon: GitBranch, description: 'The right lead to the right agent' },
+  { label: 'The whole room', href: '/companies', icon: BarChart3, description: 'Performance and bottlenecks at a glance' },
   { label: 'Book a demo', href: '/demo', icon: Briefcase, description: 'See it on your own floor' },
 ];
 
 const moreItems: MegaMenuItem[] = [
   { label: 'Integrations', href: '/integrations', icon: Plug, description: 'Connect the tools you already use' },
   { label: 'Pricing', href: '/pricing', icon: CreditCard, description: 'One plan, honest pricing' },
-  { label: 'Company', href: '/company', icon: Users, description: 'Why we built Chippi' },
+  { label: 'Company', href: '/company', icon: Users, description: 'Why we built Cola' },
   { label: 'Status', href: '/status', icon: Activity, description: 'Live system status' },
 ];
 
 const navGroups = [
-  { label: 'Realtors', items: realtorItems },
-  { label: 'Brokerages', items: brokerageItems },
+  { label: 'Sellers', items: sellerItems },
+  { label: 'Companies', items: companyItems },
   { label: 'More', items: moreItems },
 ];
 
@@ -155,8 +155,8 @@ export function FortitudoNav() {
         <div className="rounded-full border border-border/70 bg-card/80 shadow-xl shadow-black/5 ring-1 ring-inset ring-border/40 backdrop-blur-2xl dark:shadow-black/40">
           <div className="flex h-14 items-center justify-between pl-4 pr-3 sm:pl-5">
             {/* Logo. */}
-            <Link href="/" className="flex items-center gap-2" aria-label="Chippi home">
-              <BrandLogo className="h-5" alt="Chippi" />
+            <Link href="/" className="flex items-center gap-2" aria-label="Cola home">
+              <BrandLogo className="h-5" alt="Cola" />
             </Link>
 
             {/* Desktop mega-menu nav. */}
@@ -194,13 +194,13 @@ export function FortitudoNav() {
               <div className="hidden items-center gap-2 lg:flex">
                 <FortitudoThemeToggle />
                 <Link
-                  href="/login/realtor"
+                  href="/login/seller"
                   className="rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
                 >
                   Log in
                 </Link>
                 <Link
-                  href="/login/realtor?intent=signup"
+                  href="/login/seller?intent=signup"
                   className="rounded-full bg-brand px-5 py-2 text-sm font-semibold text-brand-foreground shadow-lg shadow-brand/25 transition-all hover:brightness-105 hover:shadow-brand/40"
                 >
                   Start free trial
@@ -244,7 +244,7 @@ export function FortitudoNav() {
             >
               <div className="flex items-center justify-between px-5 pt-6">
                 <Link href="/" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
-                  <BrandLogo className="h-5" alt="Chippi" />
+                  <BrandLogo className="h-5" alt="Cola" />
                 </Link>
                 <button
                   aria-label="Close menu"
@@ -288,7 +288,7 @@ export function FortitudoNav() {
 
               <div className="space-y-3 border-t border-border/60 px-5 pb-8 pt-5">
                 <Link
-                  href="/login/realtor?intent=signup"
+                  href="/login/seller?intent=signup"
                   onClick={() => setMobileOpen(false)}
                   className="flex h-12 w-full items-center justify-center gap-1.5 rounded-full bg-brand text-sm font-semibold text-brand-foreground transition-all hover:brightness-105"
                 >
@@ -296,7 +296,7 @@ export function FortitudoNav() {
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
-                  href="/login/realtor"
+                  href="/login/seller"
                   onClick={() => setMobileOpen(false)}
                   className="flex h-12 w-full items-center justify-center rounded-full border border-border/70 text-sm font-medium text-foreground/80 transition-colors hover:text-foreground"
                 >

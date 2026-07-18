@@ -14,8 +14,8 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { EASE_APPLE } from '@/lib/motion';
-import type { Property } from '@/lib/types';
-import { formatPropertyAddress, formatPropertyFacts } from '@/lib/properties';
+import type { Product } from '@/lib/types';
+import { formatProductAddress, formatProductFacts } from '@/lib/products';
 import { formatCurrency } from '@/lib/formatting';
 
 interface WizardStepDetailsProps {
@@ -34,12 +34,12 @@ interface WizardStepDetailsProps {
   onCloseDateChange: (v: string) => void;
   address: string;
   onAddressChange: (v: string) => void;
-  propertyId: string | null;
-  onPropertyChange: (property: Property | null) => void;
+  productId: string | null;
+  onProductChange: (product: Product | null) => void;
   titleError?: string;
 }
 
-type PropertyMode = 'pick' | 'new';
+type ProductMode = 'pick' | 'new';
 
 export function WizardStepDetails({
   slug,
@@ -57,18 +57,18 @@ export function WizardStepDetails({
   onCloseDateChange,
   address,
   onAddressChange,
-  propertyId,
-  onPropertyChange,
+  productId,
+  onProductChange,
   titleError,
 }: WizardStepDetailsProps) {
-  // Initial workspace check: are there any properties at all? A day-one
+  // Initial workspace check: are there any products at all? A day-one
   // workspace doesn't need a picker that can't return anything — just drop
-  // the realtor into the address field.
-  const [hasAnyProperties, setHasAnyProperties] = useState<boolean | null>(null);
-  const [mode, setMode] = useState<PropertyMode>('pick');
-  const [selected, setSelected] = useState<Property | null>(null);
+  // the seller into the address field.
+  const [hasAnyProducts, setHasAnyProducts] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<ProductMode>('pick');
+  const [selected, setSelected] = useState<Product | null>(null);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Property[]>([]);
+  const [results, setResults] = useState<Product[]>([]);
   const [searching, setSearching] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialCheckDoneRef = useRef(false);
@@ -80,24 +80,24 @@ export function WizardStepDetails({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/properties?slug=${encodeURIComponent(slug)}`);
+        const res = await fetch(`/api/products?slug=${encodeURIComponent(slug)}`);
         if (!res.ok) {
           if (!cancelled) {
-            setHasAnyProperties(false);
+            setHasAnyProducts(false);
             setMode('new');
           }
           return;
         }
-        const data = (await res.json()) as Property[];
+        const data = (await res.json()) as Product[];
         if (cancelled) return;
         const any = Array.isArray(data) && data.length > 0;
-        setHasAnyProperties(any);
+        setHasAnyProducts(any);
         if (!any) setMode('new');
-        // Seed results so the realtor sees their workspace on landing.
+        // Seed results so the seller sees their workspace on landing.
         if (any) setResults(data.slice(0, 8));
       } catch {
         if (!cancelled) {
-          setHasAnyProperties(false);
+          setHasAnyProducts(false);
           setMode('new');
         }
       }
@@ -107,16 +107,16 @@ export function WizardStepDetails({
     };
   }, [slug]);
 
-  // Debounced search against /api/properties when the realtor types.
+  // Debounced search against /api/products when the seller types.
   const search = useCallback(
     async (q: string) => {
       setSearching(true);
       try {
         const res = await fetch(
-          `/api/properties?slug=${encodeURIComponent(slug)}&search=${encodeURIComponent(q)}`,
+          `/api/products?slug=${encodeURIComponent(slug)}&search=${encodeURIComponent(q)}`,
         );
         if (res.ok) {
-          const data = (await res.json()) as Property[];
+          const data = (await res.json()) as Product[];
           setResults(Array.isArray(data) ? data.slice(0, 20) : []);
         }
       } finally {
@@ -127,7 +127,7 @@ export function WizardStepDetails({
   );
 
   useEffect(() => {
-    if (mode !== 'pick' || hasAnyProperties === false) return;
+    if (mode !== 'pick' || hasAnyProducts === false) return;
     // Empty query: don't refire — we already seeded the workspace list.
     if (!query.trim()) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -137,21 +137,21 @@ export function WizardStepDetails({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, mode, hasAnyProperties, search]);
+  }, [query, mode, hasAnyProducts, search]);
 
-  function pickProperty(p: Property) {
+  function pickProduct(p: Product) {
     setSelected(p);
-    onPropertyChange(p);
+    onProductChange(p);
   }
 
   function clearSelection() {
     setSelected(null);
-    onPropertyChange(null);
+    onProductChange(null);
   }
 
   function switchToNew() {
     setSelected(null);
-    onPropertyChange(null);
+    onProductChange(null);
     setMode('new');
   }
 
@@ -165,7 +165,7 @@ export function WizardStepDetails({
       <div>
         <h2 className="text-lg font-semibold">Deal details</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Give this deal a title and link it to a property.
+          Give this deal a title and link it to a product.
         </p>
       </div>
 
@@ -255,18 +255,18 @@ export function WizardStepDetails({
         </div>
       </div>
 
-      {/* Property — picker (default) or new-address (fallback) */}
+      {/* Product — picker (default) or new-address (fallback) */}
       <div className="space-y-2">
-        <Label>Property</Label>
+        <Label>Product</Label>
 
         {/* Wait for the workspace check before showing either UI — a day-one
             workspace would flash the picker for a frame before swapping to
             the address field. Calm silence beats a flicker. */}
-        {hasAnyProperties === null && (
+        {hasAnyProducts === null && (
           <div className="h-9" aria-hidden />
         )}
 
-        {hasAnyProperties !== null && mode === 'pick' && hasAnyProperties !== false && (
+        {hasAnyProducts !== null && mode === 'pick' && hasAnyProducts !== false && (
           <div className="space-y-3">
             {selected ? (
               <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 flex items-center gap-3">
@@ -274,10 +274,10 @@ export function WizardStepDetails({
                   <Building2 size={14} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{formatPropertyAddress(selected)}</p>
+                  <p className="text-sm font-medium truncate">{formatProductAddress(selected)}</p>
                   <p className="text-xs text-muted-foreground truncate">
                     {[
-                      formatPropertyFacts(selected),
+                      formatProductFacts(selected),
                       selected.listPrice != null ? formatCurrency(selected.listPrice) : null,
                     ]
                       .filter(Boolean)
@@ -302,7 +302,7 @@ export function WizardStepDetails({
                   <Input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Property address, city, or MLS#…"
+                    placeholder="Product address, city, or MLS#…"
                     className="pl-8 text-sm"
                   />
                 </div>
@@ -321,13 +321,13 @@ export function WizardStepDetails({
                   // Re-key on the query so every debounced search re-mounts
                   // the list and replays the row entrance. Without this the
                   // existing nodes would just swap content with no motion —
-                  // the realtor wouldn't feel that new results arrived.
+                  // the seller wouldn't feel that new results arrived.
                   <ul
                     key={`results-${query}`}
                     className="rounded-md border border-border divide-y divide-border max-h-72 overflow-y-auto"
                   >
                     {results.map((p, idx) => {
-                      const isSelected = propertyId === p.id;
+                      const isSelected = productId === p.id;
                       // Stagger first 8 rows; past that, instant — a long
                       // result list shouldn't choreograph the whole popup.
                       const delay = idx < 8 ? idx * 0.025 : 0;
@@ -340,7 +340,7 @@ export function WizardStepDetails({
                         >
                           <button
                             type="button"
-                            onClick={() => pickProperty(p)}
+                            onClick={() => pickProduct(p)}
                             className={cn(
                               'w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-150 hover:bg-muted/60',
                               isSelected && 'bg-primary/5',
@@ -351,11 +351,11 @@ export function WizardStepDetails({
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium leading-tight truncate">
-                                {formatPropertyAddress(p)}
+                                {formatProductAddress(p)}
                               </p>
                               <p className="text-xs text-muted-foreground truncate">
                                 {[
-                                  formatPropertyFacts(p),
+                                  formatProductFacts(p),
                                   p.listPrice != null ? formatCurrency(p.listPrice) : null,
                                 ]
                                   .filter(Boolean)
@@ -382,13 +382,13 @@ export function WizardStepDetails({
                 onClick={switchToNew}
                 className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
               >
-                Don&apos;t see it? Add a new property →
+                Don&apos;t see it? Add a new product →
               </button>
             )}
           </div>
         )}
 
-        {hasAnyProperties !== null && (mode === 'new' || hasAnyProperties === false) && (
+        {hasAnyProducts !== null && (mode === 'new' || hasAnyProducts === false) && (
           <div className="space-y-2">
             <Input
               id="wizard-address"
@@ -397,13 +397,13 @@ export function WizardStepDetails({
               placeholder="e.g. 456 Oak Ave, Toronto, ON"
               autoFocus={mode === 'new'}
             />
-            {hasAnyProperties !== false && (
+            {hasAnyProducts !== false && (
               <button
                 type="button"
                 onClick={switchToPick}
                 className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
               >
-                ← Pick from an existing property instead
+                ← Pick from an existing product instead
               </button>
             )}
           </div>

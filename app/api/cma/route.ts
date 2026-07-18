@@ -1,19 +1,18 @@
 /**
- * CMA reports (realtor-facing) — GET / POST
+ * CMA reports (seller-facing) — GET / POST
  *
  *   GET  ?slug=<slug>  → { reports: [...] }   the space's CMAs, newest first
- *   POST { slug, subjectPropertyId? | subject:{address,...}, title? }
+ *   POST { slug, subjectProductId? | subject:{address,...}, title? }
  *        → { report }   builds the CMA, inserts a CmaReport with a shareToken
  *
- * Auth: requireSpaceOwner(slug). Comps come from the space's own Property rows
+ * Auth: requireSpaceOwner(slug). Comps come from the space's own Product rows
  * (in-house, no MLS). The analysis is frozen into `payload` at insert time so
  * the public page stays stable even if the underlying rows later change.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { requireSpaceOwner } from '@/lib/api-auth';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { buildCma, generateShareToken, type SubjectFields } from '@/lib/cma';
@@ -21,10 +20,6 @@ import { buildCma, generateShareToken, type SubjectFields } from '@/lib/cma';
 export const runtime = 'nodejs';
 
 const TITLE_MAX = 200;
-
-// The list view never needs the (potentially large) payload — select lean.
-const LIST_COLUMNS =
-  'id, spaceId, subjectAddress, subjectPropertyId, shareToken, title, status, createdAt, updatedAt';
 
 // ── GET — the space's CMAs ────────────────────────────────────────────────────
 
@@ -36,26 +31,25 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const { space } = auth;
 
-  const { data, error } = await supabase
-    .from('CmaReport')
-    .select(LIST_COLUMNS)
-    .eq('spaceId', space.id)
-    .order('createdAt', { ascending: false })
-    .limit(100);
-
-  if (error) {
-    logger.error('[cma] list failed', { spaceId: space.id, err: error.message });
+  let reports;
+  try {
+    reports = await convex().query(api.portal.cmaReports.listForSpace, { spaceId: space.id });
+  } catch (err) {
+    logger.error('[cma] list failed', {
+      spaceId: space.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'Could not load your reports.' }, { status: 500 });
   }
 
-  return NextResponse.json({ reports: data ?? [] });
+  return NextResponse.json({ reports });
 }
 
 // ── POST — build + persist a CMA ──────────────────────────────────────────────
 
 interface PostBody {
   slug?: string;
-  subjectPropertyId?: string;
+  subjectProductId?: string;
   subject?: SubjectFields;
   title?: string;
 }
@@ -81,7 +75,7 @@ function coerceSubjectFields(raw: unknown): SubjectFields | undefined {
     beds: num(s.beds),
     baths: num(s.baths),
     squareFeet: num(s.squareFeet),
-    propertyType: str(s.propertyType, 60),
+    productType: str(s.productType, 60),
     listPrice: num(s.listPrice),
   };
 }
@@ -108,22 +102,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Too many requests. Try again shortly.' }, { status: 429 });
   }
 
-  const subjectPropertyId =
-    typeof body.subjectPropertyId === 'string' && body.subjectPropertyId.trim()
-      ? body.subjectPropertyId.trim()
+  const subjectProductId =
+    typeof body.subjectProductId === 'string' && body.subjectProductId.trim()
+      ? body.subjectProductId.trim()
       : undefined;
-  const subjectFields = subjectPropertyId ? undefined : coerceSubjectFields(body.subject);
+  const subjectFields = subjectProductId ? undefined : coerceSubjectFields(body.subject);
 
-  if (!subjectPropertyId && !subjectFields) {
+  if (!subjectProductId && !subjectFields) {
     return NextResponse.json(
-      { error: 'Pick a subject property or enter an address.' },
+      { error: 'Pick a subject product or enter an address.' },
       { status: 400 },
     );
   }
 
   let payload;
   try {
-    payload = await buildCma({ spaceId: space.id, subjectPropertyId, subjectFields });
+    payload = await buildCma({ spaceId: space.id, subjectProductId, subjectFields });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not build the analysis.';
     // A missing subject is the caller's fault (404-ish); everything else is 500.
@@ -133,27 +127,23 @@ export async function POST(req: NextRequest) {
   }
 
   const title = typeof body.title === 'string' ? body.title.trim().slice(0, TITLE_MAX) || null : null;
-  const now = new Date().toISOString();
 
-  const { data, error } = await supabase
-    .from('CmaReport')
-    .insert({
-      id: crypto.randomUUID(),
+  let data;
+  try {
+    data = await convex().mutation(api.portal.cmaReports.create, {
       spaceId: space.id,
       subjectAddress: payload.subject.address,
-      subjectPropertyId: payload.subject.propertyId,
+      subjectProductId: payload.subject.productId,
       shareToken: generateShareToken(),
       title,
       status: 'draft',
       payload,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .select(LIST_COLUMNS)
-    .single();
-
-  if (error || !data) {
-    logger.error('[cma] insert failed', { spaceId: space.id, err: error?.message });
+    });
+  } catch (err) {
+    logger.error('[cma] insert failed', {
+      spaceId: space.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'Could not save the report. Try again.' }, { status: 500 });
   }
 

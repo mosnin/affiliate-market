@@ -1,7 +1,7 @@
 /**
  * Lead Scoring — public API consumed by API routes and server actions.
  *
- * v2: Uses Chippi's proprietary deterministic scoring engine (lib/scoring/engine.ts)
+ * v2: Uses Cola's proprietary deterministic scoring engine (lib/scoring/engine.ts)
  * with optional AI enhancement for qualitative summaries (lib/scoring/enhance.ts).
  *
  * The score itself is now computed deterministically — no LLM dependency.
@@ -122,19 +122,20 @@ export async function scoreLeadApplication(input: {
 
 function deriveNextAction(result: ReturnType<typeof computeLeadScore>, leadType?: 'rental' | 'buyer'): string {
   if (leadType === 'buyer') {
-    if (result.priorityTier === 'hot') return 'Schedule showing or buyer consultation within 2 hours';
-    if (result.priorityTier === 'warm') return 'Send property listings and follow up within 24 hours';
-    if (result.missingInformation.length >= 3) return 'Request pre-approval and buyer preferences';
-    if (result.priorityTier === 'cold') return 'Add to nurture campaign with market updates';
-    return 'Review buyer profile for qualification';
+    // buyer → enterprise / self-serve purchaser path
+    if (result.priorityTier === 'hot') return 'Book a demo or discovery call within 2 hours — high-intent buyer';
+    if (result.priorityTier === 'warm') return 'Send product overview and trial link — follow up within 24 hours';
+    if (result.missingInformation.length >= 3) return 'Request team size, budget, and current tooling to qualify further';
+    if (result.priorityTier === 'cold') return 'Add to nurture sequence with product updates and case studies';
+    return 'Review quote request and verify fit with use-case criteria';
   }
 
-  // Rental (default)
-  if (result.priorityTier === 'hot') return 'Schedule tour or call within 2 hours';
-  if (result.priorityTier === 'warm') return 'Send follow-up within 24 hours';
-  if (result.missingInformation.length >= 3) return 'Request additional application details';
-  if (result.priorityTier === 'cold') return 'Add to weekly follow-up queue';
-  return 'Review application for disqualifying factors';
+  // General / subscription lead (default)
+  if (result.priorityTier === 'hot') return 'Book a demo or start a trial within 2 hours — high-intent lead';
+  if (result.priorityTier === 'warm') return 'Send a follow-up with trial link within 24 hours';
+  if (result.missingInformation.length >= 3) return 'Request additional details: team size, budget, timeline';
+  if (result.priorityTier === 'cold') return 'Add to weekly nurture sequence';
+  return 'Review quote request for disqualifying factors';
 }
 
 function failedResult(): LeadScoringResult {

@@ -22,15 +22,9 @@
  * surfaces upward.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { embed } from './embed';
 import type { MemoryEntry, MemoryEntityType, MemoryKind } from './types';
-
-// pgvector accepts string form '[0.1,0.2,...]' over the wire; the supabase-js
-// JSON encoder handles that correctly when inserting into a vector column.
-function vectorLiteral(vec: number[]): string {
-  return '[' + vec.map((x) => x.toFixed(7)).join(',') + ']';
-}
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
@@ -83,24 +77,23 @@ export async function storeMemory(input: StoreMemoryInput): Promise<{ id: string
   // Embed first. If embedding fails, throw — partial writes (a row without
   // a vector) are useless for semantic recall. Python is more permissive;
   // we're stricter so callers don't silently lose recall capability.
+  // The embedding goes to Convex as a raw number[] (v.array(v.float64())) — no
+  // pgvector string literal.
   const vec = await embed(cleaned);
 
-  const { data, error } = await supabase
-    .from('AgentMemory')
-    .insert({
+  let data: { id: string };
+  try {
+    data = await convex().mutation(api.swarmvector.agentMemory.insert, {
       spaceId: input.spaceId,
       entityType,
       entityId,
       memoryType: input.kind,
       content: cleaned,
-      embedding: vectorLiteral(vec),
+      embedding: vec,
       importance,
-    })
-    .select('id')
-    .single();
-
-  if (error) {
-    throw new Error(`storeMemory: insert failed: ${error.message}`);
+    });
+  } catch (err) {
+    throw new Error(`storeMemory: insert failed: ${err instanceof Error ? err.message : String(err)}`);
   }
   if (!data?.id) {
     throw new Error('storeMemory: insert returned no id');
@@ -155,21 +148,24 @@ export async function recallMemory(input: RecallMemoryInput): Promise<MemoryEntr
     filterEntityId = input.dealId;
   }
 
-  const { data, error } = await supabase.rpc('match_agent_memory', {
-    query_embedding: vectorLiteral(queryVec),
-    match_space_id: input.spaceId,
-    match_count: k,
-    filter_memory_type: input.kind ?? null,
-    filter_entity_type: filterEntityType,
-    filter_entity_id: filterEntityId,
-    min_similarity: input.minSimilarity ?? 0,
-  });
-
-  if (error) {
-    throw new Error(`recallMemory: rpc failed: ${error.message}`);
+  // Convex vector-search action. The query embedding goes as a raw number[]
+  // (no pgvector literal); the action returns rows in the same shape the RPC
+  // did (id, content, memoryType, entityType, entityId, importance, similarity,
+  // createdAt), already filtered by min_similarity and capped at matchCount.
+  let rows: RpcRow[];
+  try {
+    rows = (await convex().action(api.swarmvector.agentMemory.matchAgentMemory, {
+      queryEmbedding: queryVec,
+      spaceId: input.spaceId,
+      matchCount: k,
+      filterMemoryType: input.kind ?? null,
+      filterEntityType: filterEntityType,
+      filterEntityId: filterEntityId,
+      minSimilarity: input.minSimilarity ?? 0,
+    })) as RpcRow[];
+  } catch (err) {
+    throw new Error(`recallMemory: rpc failed: ${err instanceof Error ? err.message : String(err)}`);
   }
-
-  const rows = (data ?? []) as RpcRow[];
   return rows.map((r) => ({
     id: r.id,
     content: r.content,

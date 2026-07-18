@@ -186,14 +186,14 @@ function collectMissingRequired(
 
 function deriveNextAction(tier: string, leadType: string): string {
   if (leadType === 'buyer') {
-    if (tier === 'hot') return 'Schedule showing or buyer consultation within 2 hours';
-    if (tier === 'warm') return 'Send property listings and follow up within 24 hours';
-    return 'Add to nurture campaign with market updates';
+    if (tier === 'hot') return 'Book a demo or discovery call within 2 hours — high-intent buyer';
+    if (tier === 'warm') return 'Send product overview and trial link — follow up within 24 hours';
+    return 'Add to nurture campaign with product updates and case studies';
   }
-  // rental / general
-  if (tier === 'hot') return 'Schedule tour or call within 2 hours';
-  if (tier === 'warm') return 'Send follow-up within 24 hours';
-  return 'Add to weekly follow-up queue';
+  // subscription / general
+  if (tier === 'hot') return 'Book a demo or start a trial within 2 hours — high-intent lead';
+  if (tier === 'warm') return 'Send a follow-up with trial link within 24 hours';
+  return 'Add to weekly nurture sequence';
 }
 
 // ── Derive lead state ────────────────────────────────────────────────────
@@ -213,6 +213,7 @@ function deriveLeadState(
     return 'likely_unqualified';
   }
 
+  // subscription / quote-request (default)
   if (tier === 'hot') return 'high_priority_qualified_renter';
   if (tier === 'warm') return 'qualified_low_urgency';
   return 'likely_unqualified';

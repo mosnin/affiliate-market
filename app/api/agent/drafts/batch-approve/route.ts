@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { audit } from '@/lib/audit';
@@ -12,18 +12,18 @@ import { logger } from '@/lib/logger';
  *
  * Mirrors the auth + space-scoping shape of the single-draft PATCH endpoint
  * (`/api/agent/drafts/[id]`). Per-draft failure does NOT fail the batch —
- * the realtor batch-approves 5, four succeed, one returns its error, and the
+ * the seller batch-approves 5, four succeed, one returns its error, and the
  * UI surfaces per-item status from the `results[]` payload.
  *
  * Body: { draftIds: string[] }
  * Returns: { results: [{ draftId, ok, error?, status?, deliveryResult? }] }
  *
- * Server-side scoping: every draftId is verified to belong to the realtor's
+ * Server-side scoping: every draftId is verified to belong to the seller's
  * space AND status='pending'. A compromised client passing ids from another
  * space gets per-item not_found, never an accidental cross-space send.
  *
  * Rate limit: 100 batch-approves per hour per space — one chat session might
- * batch 30-50 drafts; 100 covers the heaviest realtor.
+ * batch 30-50 drafts; 100 covers the heaviest seller.
  */
 
 const MAX_BATCH_SIZE = 50;
@@ -88,14 +88,12 @@ export async function POST(req: NextRequest) {
       // Verify the draft belongs to this space AND is still pending. The
       // single-draft PATCH route does exactly this check; we repeat it
       // per-item so a stale draftId in the batch fails alone, not the batch.
-      const { data: existing, error: fetchError } = await supabase
-        .from('AgentDraft')
-        .select('id, status, contactId, channel, subject, content')
-        .eq('id', draftId)
-        .eq('spaceId', space.id)
-        .maybeSingle();
+      const existing = await convex().query(api.agent.drafts.getByIdForSpace, {
+        id: draftId,
+        spaceId: space.id,
+      });
 
-      if (fetchError || !existing) {
+      if (!existing) {
         results.push({ draftId, ok: false, error: 'not_found' });
         continue;
       }
@@ -110,13 +108,12 @@ export async function POST(req: NextRequest) {
       // draft isn't linked to a contact (e.g. an internal note).
       let contact = { name: 'Contact', email: null as string | null, phone: null as string | null };
       if (existing.contactId) {
-        const { data: contactRow } = await supabase
-          .from('Contact')
-          .select('name, email, phone')
-          .eq('id', existing.contactId)
-          .eq('spaceId', space.id)
-          .maybeSingle();
-        if (contactRow) contact = contactRow;
+        const contactRow = await convex()
+          .query(api.contacts.contacts.getById, { id: existing.contactId, spaceId: space.id })
+          .catch(() => null);
+        if (contactRow) {
+          contact = { name: contactRow.name, email: contactRow.email, phone: contactRow.phone };
+        }
       }
 
       const deliveryResult: DeliveryResult = await sendDraft(
@@ -130,24 +127,24 @@ export async function POST(req: NextRequest) {
       // delivery unconfigured/failed). Matches the single PATCH semantics.
       const finalStatus: 'sent' | 'approved' = deliveryResult.sent ? 'sent' : 'approved';
 
-      const { error: updateError } = await supabase
-        .from('AgentDraft')
-        .update({
-          status: finalStatus,
-          updatedAt: new Date().toISOString(),
-          feedback_action: 'approved',
-          edit_distance: 0,
-        })
-        .eq('id', draftId)
-        .eq('spaceId', space.id);
-
-      if (updateError) {
+      try {
+        await convex().mutation(api.agent.drafts.updateForSpace, {
+          id: draftId,
+          spaceId: space.id,
+          patch: {
+            status: finalStatus,
+            touchUpdatedAt: true, // the old patch always set updatedAt
+            feedback_action: 'approved',
+            edit_distance: 0,
+          },
+        });
+      } catch (updateError) {
         // Delivery may have already happened — surface the DB error to the
-        // realtor but mark the result as failed so they re-check.
+        // seller but mark the result as failed so they re-check.
         results.push({
           draftId,
           ok: false,
-          error: `update_failed: ${updateError.message}`,
+          error: `update_failed: ${(updateError as Error).message}`,
           deliveryResult,
         });
         continue;

@@ -356,9 +356,9 @@ async def create_deal(
     contact_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Create a new deal in a pipeline stage."""
-    # title required. stage_id optional (auto-picks first buyer/seller pipeline stage).
+    # title required. stage_id optional (auto-picks first available pipeline stage).
     # value: dollars. priority: LOW|MEDIUM|HIGH (default MEDIUM). close_date: ISO 8601.
-    # contact_ids: linked Contact.id values; buyer leads auto-route to buyer pipeline.
+    # contact_ids: linked Contact.id values; auto-routes to the appropriate pipeline stage.
     space_id = ctx.context.space_id
     db = await supabase()
     now = datetime.now(timezone.utc).isoformat()
@@ -386,7 +386,7 @@ async def create_deal(
         valid_rows = contacts_res.data or []
         valid_set = {r["id"] for r in valid_rows}
         valid_contact_ids = [cid for cid in contact_ids if cid in valid_set]
-        buyer_among_contacts = any(r.get("leadType") == "buyer" for r in valid_rows)
+        buyer_among_contacts = any(r.get("leadType") == "inbound" for r in valid_rows)
 
     # Stage resolution
     stage: dict[str, Any] | None = None
@@ -402,7 +402,7 @@ async def create_deal(
         stage = stage_res.data
 
     if not stage:
-        preferred = "buyer" if buyer_among_contacts else "seller"
+        preferred = "inbound" if buyer_among_contacts else "outbound"
         fallback_res = await (
             db.table("DealStage")
             .select("id,name,pipelineType")
@@ -429,20 +429,20 @@ async def create_deal(
     if not stage:
         return {"error": "No pipeline stages configured in this workspace — set one up before creating deals."}
 
-    # Auto-route buyer deals to buyer pipeline
+    # Auto-route inbound leads to inbound pipeline
     final_stage = stage
-    if buyer_among_contacts and stage.get("pipelineType") != "buyer":
-        buyer_res = await (
+    if buyer_among_contacts and stage.get("pipelineType") != "inbound":
+        inbound_res = await (
             db.table("DealStage")
             .select("id,name,pipelineType")
             .eq("spaceId", space_id)
-            .eq("pipelineType", "buyer")
+            .eq("pipelineType", "inbound")
             .order("position")
             .limit(1)
             .execute()
         )
-        if buyer_res.data:
-            final_stage = buyer_res.data[0]
+        if inbound_res.data:
+            final_stage = inbound_res.data[0]
 
     final_stage_id = final_stage["id"]
 
@@ -535,9 +535,9 @@ async def request_deal_review(
     deal_id: str,
     reason: str,
 ) -> dict[str, Any]:
-    """Flag a deal up to the brokerage for human review."""
-    # reason: required, 10+ chars, surfaces verbatim to the broker.
-    # Brokerage-only; solo realtors get an error.
+    """Flag a deal up to the company for human review."""
+    # reason: required, 10+ chars, surfaces verbatim to the manager.
+    # Company-only; solo sellers get an error.
     if not reason or len(reason.strip()) < 10:
         agent_err = from_supabase_error({"message": "reason must be at least 10 characters", "code": None})
         return {"error": agent_err.message, "code": agent_err.code, "retryable": agent_err.retryable}
@@ -560,13 +560,13 @@ async def request_deal_review(
 
     space_check = await (
         db.table("Space")
-        .select("id,ownerId,brokerageId")
+        .select("id,ownerId,companyId")
         .eq("id", space_id)
         .maybe_single()
         .execute()
     )
-    if not space_check.data or not space_check.data.get("brokerageId"):
-        agent_err = from_supabase_error({"message": "Space is not part of a brokerage — review requests need a broker", "code": None})
+    if not space_check.data or not space_check.data.get("companyId"):
+        agent_err = from_supabase_error({"message": "Space is not part of a company — review requests need a manager", "code": None})
         return {"error": agent_err.message, "code": agent_err.code, "retryable": agent_err.retryable}
 
     review_id = str(uuid.uuid4())
@@ -575,7 +575,7 @@ async def request_deal_review(
             "id": review_id,
             "dealId": deal_id,
             "requestingUserId": space_check.data["ownerId"],
-            "brokerageId": space_check.data["brokerageId"],
+            "companyId": space_check.data["companyId"],
             "status": "open",
             "reason": reason.strip(),
         }).execute()

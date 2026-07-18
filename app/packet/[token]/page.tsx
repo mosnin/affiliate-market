@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation';
 import { Building2, Calendar, FileText, ExternalLink, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import type { Property, PropertyPacket } from '@/lib/types';
+import { convex, api } from '@/lib/convex-server';
+import type { Product, ProductPacket } from '@/lib/types';
 import { formatCurrency } from '@/lib/formatting';
-import { formatPropertyAddress, formatPropertyFacts } from '@/lib/properties';
+import { formatProductAddress, formatProductFacts } from '@/lib/products';
 import { PacketDocumentLink } from '@/components/packet/packet-document-link';
 
 // This route is intentionally public (no Clerk gate). Access is gated by the
@@ -15,13 +16,9 @@ interface Props { params: Promise<{ token: string }> }
 export default async function PacketPage({ params }: Props) {
   const { token } = await params;
 
-  const { data: packetRow } = await supabase
-    .from('PropertyPacket')
-    .select('*')
-    .eq('token', token)
-    .maybeSingle();
+  const packetRow = await convex().query(api.marketplace.packets.getByToken, { token });
   if (!packetRow) notFound();
-  const packet = packetRow as PropertyPacket;
+  const packet = packetRow as ProductPacket;
 
   const now = new Date();
   const revoked = !!packet.revokedAt;
@@ -31,7 +28,7 @@ export default async function PacketPage({ params }: Props) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background text-foreground">
         <div className="max-w-md text-center space-y-3">
-          <AlertTriangle size={28} className="mx-auto text-amber-500" />
+          <AlertTriangle size={28} className="mx-auto text-muted-foreground" />
           <h1 className="text-xl font-semibold">This link is no longer active</h1>
           <p className="text-sm text-muted-foreground">
             {revoked ? 'The sender has revoked this packet.' : 'The packet link has expired.'} Reach out to the sender for a fresh link.
@@ -41,20 +38,15 @@ export default async function PacketPage({ params }: Props) {
     );
   }
 
-  const { data: propertyRow } = await supabase
-    .from('Property')
-    .select('*')
-    .eq('id', packet.propertyId)
-    .maybeSingle();
-  if (!propertyRow) notFound();
-  const property = propertyRow as Property;
+  const productRow = await convex().query(api.marketplace.products.getById, {
+    id: packet.productId,
+  });
+  if (!productRow) notFound();
+  const product = productRow as Product;
 
   // Best-effort view tracking. Non-blocking; a failure shouldn't take the
   // page down.
-  void supabase
-    .from('PropertyPacket')
-    .update({ viewCount: packet.viewCount + 1, lastViewedAt: now.toISOString() })
-    .eq('id', packet.id);
+  void convex().mutation(api.marketplace.packets.bumpView, { id: packet.id });
 
   const documentIds = packet.includeDocumentIds ?? [];
   const { data: docRows } = documentIds.length > 0
@@ -66,15 +58,15 @@ export default async function PacketPage({ params }: Props) {
     : { data: [] };
   const docs = (docRows ?? []) as Array<{ id: string; label: string; kind: string; sizeBytes: number | null; contentType: string | null; createdAt: string }>;
 
-  const addr = formatPropertyAddress(property);
-  const facts = formatPropertyFacts(property);
-  const cover = property.photos[0];
+  const addr = formatProductAddress(product);
+  const facts = formatProductFacts(product);
+  const cover = product.photos[0];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-3xl mx-auto p-6 space-y-6">
         <header className="space-y-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Listing packet</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Product brief</p>
           <h1 className="text-2xl font-semibold">{packet.name}</h1>
         </header>
 
@@ -88,9 +80,9 @@ export default async function PacketPage({ params }: Props) {
             </div>
           )}
 
-          {property.photos.length > 1 && (
+          {product.photos.length > 1 && (
             <div className="grid grid-cols-4 gap-1 p-1">
-              {property.photos.slice(1, 5).map((src, i) => (
+              {product.photos.slice(1, 5).map((src, i) => (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img key={i} src={src} alt="" className="w-full aspect-square object-cover rounded" />
               ))}
@@ -102,26 +94,25 @@ export default async function PacketPage({ params }: Props) {
               <h2 className="text-lg font-semibold">{addr}</h2>
               {facts && <p className="text-sm text-muted-foreground mt-0.5">{facts}</p>}
             </div>
-            {property.listPrice != null && (
-              <p className="text-2xl font-semibold tabular-nums">{formatCurrency(property.listPrice)}</p>
+            {product.listPrice != null && (
+              <p className="text-2xl font-semibold tabular-nums">{formatCurrency(product.listPrice)}</p>
             )}
 
             <dl className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm pt-3 border-t border-border">
-              {property.propertyType && <Row label="Type" value={property.propertyType.replace('_', ' ')} />}
-              {property.yearBuilt != null && <Row label="Year built" value={String(property.yearBuilt)} />}
-              {property.lotSizeSqft != null && <Row label="Lot" value={`${property.lotSizeSqft.toLocaleString()} sqft`} />}
-              {property.mlsNumber && <Row label="MLS #" value={property.mlsNumber} />}
+              {product.category && <Row label="Category" value={product.category.replace('_', ' ')} />}
+              {product.websiteUrl && <Row label="Website" value={product.websiteUrl} />}
+              {product.marketplaceSlug && <Row label="Catalog ID" value={product.marketplaceSlug} />}
             </dl>
 
-            {property.notes && (
+            {product.notes && (
               <div className="pt-3 border-t border-border">
-                <p className="text-sm text-foreground whitespace-pre-wrap">{property.notes}</p>
+                <p className="text-sm text-foreground whitespace-pre-wrap">{product.notes}</p>
               </div>
             )}
 
-            {property.listingUrl && (
-              <a href={property.listingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline">
-                View original listing <ExternalLink size={12} />
+            {product.websiteUrl && (
+              <a href={product.websiteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline">
+                View product website <ExternalLink size={12} />
               </a>
             )}
           </div>

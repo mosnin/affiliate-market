@@ -11,13 +11,14 @@
  * The per-provider breakdown comes from the last 7 days of ChatUsage
  * rows — one day is too noisy (a single big turn distorts everything),
  * 30 days hides recent regressions. Seven days is the trailing window
- * the realtor mentally lives in.
+ * the seller mentally lives in.
  */
 
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getTodayTokenUsage } from '@/lib/usage/today-token-usage';
 
 interface ProviderRollup {
@@ -38,13 +39,8 @@ export async function GET() {
 
   const { total: used } = await getTodayTokenUsage(space.id);
 
-  const { data: agentSettings } = await supabase
-    .from('AgentSettings')
-    .select('dailyTokenBudget')
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  const limit = (agentSettings?.dailyTokenBudget as number | null) ?? 50_000;
+  // Daily token budget (Convex) — already defaults to 50_000 when no row exists.
+  const limit = await convex().query(api.agent.settings.dailyTokenBudget, { spaceId: space.id });
   const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
 
   // Reset time: midnight UTC today
@@ -100,7 +96,7 @@ export async function GET() {
       : 0;
     providers.push(r);
   }
-  // Largest spend first — the realtor's eye lands on what matters.
+  // Largest spend first — the seller's eye lands on what matters.
   providers.sort((a, b) => (b.inputTokens + b.outputTokens) - (a.inputTokens + a.outputTokens));
 
   const cacheHitRate = totalInput > 0

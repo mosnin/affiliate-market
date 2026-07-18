@@ -7,10 +7,10 @@
  *
  * These TypeScript tools run in the Next.js loop (`lib/ai-tools/loop.ts`)
  * — the deprecated approval-resume path and the in-process sub-agent
- * skills. **The realtor's chat agent runs in Modal/Python** and has its
+ * skills. **The seller's chat agent runs in Modal/Python** and has its
  * OWN tool catalog at `agent/tools/*.py`.
  *
- * Adding a tool here does NOT add it to the chat the realtor uses. The
+ * Adding a tool here does NOT add it to the chat the seller uses. The
  * two lists are hand-maintained today. If you need a new verb available
  * to the chat agent, you also need a Python equivalent in `agent/tools/`.
  *
@@ -49,29 +49,29 @@ import { moveDealStageTool } from './move-deal-stage';
 import { updateDealValueTool } from './update-deal-value';
 import { updateDealCloseDateTool } from './update-deal-close-date';
 import { updateDealProbabilityTool } from './update-deal-probability';
-import { attachPropertyToDealTool } from './attach-property-to-deal';
+import { attachProductToDealTool } from './attach-product-to-deal';
 import { markDealWonTool } from './mark-deal-won';
 import { markDealLostTool } from './mark-deal-lost';
 import { noteOnDealTool } from './note-on-deal';
 import { addChecklistItemTool } from './add-checklist-item';
 
-// Tours
-import { scheduleTourTool } from './schedule-tour';
-import { rescheduleTourTool } from './reschedule-tour';
-import { cancelTourTool } from './cancel-tour';
-import { findToursTool } from './find-tours';
+// Demos
+import { scheduleDemoTool } from './schedule-demo';
+import { rescheduleDemoTool } from './reschedule-demo';
+import { cancelDemoTool } from './cancel-demo';
+import { findDemosTool } from './find-demos';
 
-// Properties
-import { findPropertyTool } from './find-property';
-import { findComparablePropertiesTool } from './find-comparable-properties';
-import { addPropertyTool } from './add-property';
-import { updatePropertyStatusTool } from './update-property-status';
-import { noteOnPropertyTool } from './note-on-property';
+// Products
+import { findProductTool } from './find-product';
+import { findComparableProductsTool } from './find-comparable-products';
+import { addProductTool } from './add-product';
+import { updateProductStatusTool } from './update-product-status';
+import { noteOnProductTool } from './note-on-product';
 
 // Calendar
 import { checkAvailabilityTool } from './check-availability';
 import { blockTimeTool } from './block-time';
-import { proposeTourTimesTool } from './propose-tour-times';
+import { proposeDemoTimesTool } from './propose-demo-times';
 
 // Pipeline aggregates
 import { pipelineSummaryTool } from './pipeline-summary';
@@ -84,14 +84,18 @@ import { draftEmailTool } from './draft-email';
 import { draftSmsTool } from './draft-sms';
 import { sendEmailTool } from './send-email';
 import { sendSmsTool } from './send-sms';
-import { sendPropertyPacketTool } from './send-property-packet';
+import { sendProductPacketTool } from './send-product-packet';
 import { logEmailSentTool } from './log-email-sent';
 import { logSmsSentTool } from './log-sms-sent';
 
-// Brokerage — broker-role gated
-import { summarizeRealtorTool } from './summarize-realtor';
-import { analyzeRealtorTool } from './analyze-realtor';
-import { assignLeadToRealtorTool } from './assign-lead-to-realtor';
+// Affiliates — recruit creators to distribute the seller's software
+import { findCreatorsTool } from './find-creators';
+import { inviteCreatorTool } from './invite-creator';
+
+// Company — manager-role gated
+import { summarizeSellerTool } from './summarize-seller';
+import { analyzeSellerTool } from './analyze-seller';
+import { assignLeadToSellerTool } from './assign-lead-to-seller';
 import { requestDealReviewTool } from './request-deal-review';
 
 // Memory
@@ -101,7 +105,7 @@ import { readAttachmentTool } from './read-attachment';
 // Files (Wasabi-backed user uploads)
 import { listFilesTool } from './list-files';
 import { readFileTool } from './read-file';
-import { attachFileToPropertyTool } from './attach-file-to-property';
+import { attachFileToProductTool } from './attach-file-to-product';
 
 // Planning
 import { createPlanTool } from './plan';
@@ -135,29 +139,29 @@ export const ALL_TOOLS: ToolDefinition[] = [
   updateDealValueTool as ToolDefinition,
   updateDealCloseDateTool as ToolDefinition,
   updateDealProbabilityTool as ToolDefinition,
-  attachPropertyToDealTool as ToolDefinition,
+  attachProductToDealTool as ToolDefinition,
   markDealWonTool as ToolDefinition,
   markDealLostTool as ToolDefinition,
   noteOnDealTool as ToolDefinition,
   addChecklistItemTool as ToolDefinition,
 
-  // ── Tours ──────────────────────────────────────────────────────────────
-  scheduleTourTool as ToolDefinition,
-  rescheduleTourTool as ToolDefinition,
-  cancelTourTool as ToolDefinition,
-  findToursTool as ToolDefinition,
+  // ── Demos ──────────────────────────────────────────────────────────────
+  scheduleDemoTool as ToolDefinition,
+  rescheduleDemoTool as ToolDefinition,
+  cancelDemoTool as ToolDefinition,
+  findDemosTool as ToolDefinition,
 
-  // ── Properties ─────────────────────────────────────────────────────────
-  findPropertyTool as ToolDefinition,
-  findComparablePropertiesTool as ToolDefinition,
-  addPropertyTool as ToolDefinition,
-  updatePropertyStatusTool as ToolDefinition,
-  noteOnPropertyTool as ToolDefinition,
+  // ── Products ─────────────────────────────────────────────────────────
+  findProductTool as ToolDefinition,
+  findComparableProductsTool as ToolDefinition,
+  addProductTool as ToolDefinition,
+  updateProductStatusTool as ToolDefinition,
+  noteOnProductTool as ToolDefinition,
 
   // ── Calendar ───────────────────────────────────────────────────────────
   checkAvailabilityTool as ToolDefinition,
   blockTimeTool as ToolDefinition,
-  proposeTourTimesTool as ToolDefinition,
+  proposeDemoTimesTool as ToolDefinition,
 
   // ── Pipeline aggregates ────────────────────────────────────────────────
   pipelineSummaryTool as ToolDefinition,
@@ -170,14 +174,18 @@ export const ALL_TOOLS: ToolDefinition[] = [
   draftSmsTool as ToolDefinition,
   sendEmailTool as ToolDefinition,
   sendSmsTool as ToolDefinition,
-  sendPropertyPacketTool as ToolDefinition,
+  sendProductPacketTool as ToolDefinition,
   logEmailSentTool as ToolDefinition,
   logSmsSentTool as ToolDefinition,
 
-  // ── Brokerage ──────────────────────────────────────────────────────────
-  summarizeRealtorTool as ToolDefinition,
-  analyzeRealtorTool as ToolDefinition,
-  assignLeadToRealtorTool as ToolDefinition,
+  // ── Affiliates ─────────────────────────────────────────────────────────
+  findCreatorsTool as ToolDefinition,
+  inviteCreatorTool as ToolDefinition,
+
+  // ── Company ──────────────────────────────────────────────────────────
+  summarizeSellerTool as ToolDefinition,
+  analyzeSellerTool as ToolDefinition,
+  assignLeadToSellerTool as ToolDefinition,
   requestDealReviewTool as ToolDefinition,
 
   // ── Memory ─────────────────────────────────────────────────────────────
@@ -185,7 +193,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
   readAttachmentTool as ToolDefinition,
   listFilesTool as ToolDefinition,
   readFileTool as ToolDefinition,
-  attachFileToPropertyTool as ToolDefinition,
+  attachFileToProductTool as ToolDefinition,
 
   // ── Planning ───────────────────────────────────────────────────────────
   createPlanTool as ToolDefinition,

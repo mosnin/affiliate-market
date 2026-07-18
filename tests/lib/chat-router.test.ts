@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   decideRoute,
-  decideBrokerRoute,
+  decideManagerRoute,
   shouldEscalate,
   ACTION_VERBS_REGEX,
 } from '@/lib/chat/router';
@@ -21,7 +21,7 @@ describe('decideRoute', () => {
     expect(decideRoute('Summarize this for me.')).toBe('direct');
   });
 
-  it('routes reads of the realtor data to agent — they need tools', () => {
+  it('routes reads of the seller data to agent — they need tools', () => {
     // These are READS, not mutations, but answering them requires the read
     // tools (pipeline_summary, find_person, find_quiet_hot_persons, …). The
     // toolless direct path can only deflect, so they must reach the agent.
@@ -36,14 +36,14 @@ describe('decideRoute', () => {
   it('routes action verbs to agent', () => {
     expect(decideRoute('Add Preston as a contact')).toBe('agent');
     expect(decideRoute('Send Preston the follow-up email')).toBe('agent');
-    expect(decideRoute('Schedule a tour for tomorrow at 3pm')).toBe('agent');
+    expect(decideRoute('Schedule a demo for tomorrow at 3pm')).toBe('agent');
     expect(decideRoute('Mark this deal as won.')).toBe('agent');
     expect(decideRoute('Draft a check-in message for Sarah')).toBe('agent');
     expect(decideRoute('Create a new deal for 123 Oak Ave')).toBe('agent');
     expect(decideRoute('Update his lead score to 80')).toBe('agent');
     expect(decideRoute('Reach out to the buyer about closing')).toBe('agent');
     expect(decideRoute('Book a showing for Saturday')).toBe('agent');
-    expect(decideRoute('Cancel the 5pm tour')).toBe('agent');
+    expect(decideRoute('Cancel the 5pm demo')).toBe('agent');
     expect(decideRoute('Reply to Sarah saying yes')).toBe('agent');
     expect(decideRoute('Text Preston the address')).toBe('agent');
   });
@@ -72,7 +72,7 @@ describe('decideRoute', () => {
   it('still routes to agent when both attachments AND action verbs present', () => {
     const att = [{ id: 'a1', mimeType: 'image/png' }];
     expect(decideRoute('Send this photo to Preston', att)).toBe('agent');
-    expect(decideRoute('Add this property to the deal', att)).toBe('agent');
+    expect(decideRoute('Add this product to the deal', att)).toBe('agent');
   });
 
   it('empty messages route direct (nothing to act on)', () => {
@@ -87,9 +87,9 @@ describe('decideRoute', () => {
   });
 
   it('routes integration reads to agent — only the agent has integration tools', () => {
-    // These were the verbatim "Chippi claims it has no tools" reports: the
+    // These were the verbatim "Cola claims it has no tools" reports: the
     // old regexes matched neither ("emails" wasn't a workspace noun, "check"
-    // isn't an action verb), so a Gmail-connected realtor's question landed
+    // isn't an action verb), so a Gmail-connected seller's question landed
     // on the toolless direct path, which can only deflect.
     expect(decideRoute('do I have any new emails?')).toBe('agent');
     expect(decideRoute('check my gmail')).toBe('agent');
@@ -101,29 +101,29 @@ describe('decideRoute', () => {
   });
 });
 
-describe('decideBrokerRoute', () => {
-  it('routes broker-domain reads to agent — the snapshot path has no broker tools', () => {
-    // The shared realtor router sent all of these to the broker direct path,
-    // whose prompt is INSTRUCTED to say it doesn't have the answer — brokers
-    // read that as "Chippi has no tools".
-    expect(decideBrokerRoute("how's team health?")).toBe('agent');
-    expect(decideBrokerRoute('audit response times')).toBe('agent');
-    expect(decideBrokerRoute('which agents are at risk?')).toBe('agent');
-    expect(decideBrokerRoute('show realtor performance')).toBe('agent');
-    expect(decideBrokerRoute("who's unassigned?")).toBe('agent');
-    expect(decideBrokerRoute('reassign Maria to John')).toBe('agent');
-    expect(decideBrokerRoute('what does the leaderboard look like?')).toBe('agent');
-    expect(decideBrokerRoute('brokerage revenue this quarter')).toBe('agent');
+describe('decideManagerRoute', () => {
+  it('routes manager-domain reads to agent — the snapshot path has no manager tools', () => {
+    // The shared seller router sent all of these to the manager direct path,
+    // whose prompt is INSTRUCTED to say it doesn't have the answer — managers
+    // read that as "Cola has no tools".
+    expect(decideManagerRoute("how's team health?")).toBe('agent');
+    expect(decideManagerRoute('audit response times')).toBe('agent');
+    expect(decideManagerRoute('which agents are at risk?')).toBe('agent');
+    expect(decideManagerRoute('show seller performance')).toBe('agent');
+    expect(decideManagerRoute("who's unassigned?")).toBe('agent');
+    expect(decideManagerRoute('reassign Maria to John')).toBe('agent');
+    expect(decideManagerRoute('what does the leaderboard look like?')).toBe('agent');
+    expect(decideManagerRoute('company revenue this quarter')).toBe('agent');
   });
 
   it('keeps generic Q&A on direct', () => {
-    expect(decideBrokerRoute("what's a CMA?")).toBe('direct');
-    expect(decideBrokerRoute('Explain the 1031 exchange rules to me.')).toBe('direct');
+    expect(decideManagerRoute("what's a CMA?")).toBe('direct');
+    expect(decideManagerRoute('Explain the 1031 exchange rules to me.')).toBe('direct');
   });
 
-  it('inherits the realtor routing for shared phrasings', () => {
-    expect(decideBrokerRoute('Send Preston the follow-up email')).toBe('agent');
-    expect(decideBrokerRoute('do I have any new emails?')).toBe('agent');
+  it('inherits the seller routing for shared phrasings', () => {
+    expect(decideManagerRoute('Send Preston the follow-up email')).toBe('agent');
+    expect(decideManagerRoute('do I have any new emails?')).toBe('agent');
   });
 });
 
@@ -143,7 +143,7 @@ describe('shouldEscalate', () => {
 
   it('escalates on hand-off language', () => {
     expect(
-      shouldEscalate("Let me hand this to Chippi's tools for the actual send."),
+      shouldEscalate("Let me hand this to Cola's tools for the actual send."),
     ).toBe(true);
     expect(shouldEscalate("I'll hand this over to the agent.")).toBe(true);
   });

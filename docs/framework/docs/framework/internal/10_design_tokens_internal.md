@@ -297,7 +297,7 @@ These are the canonical durations and easings for every animated interaction in 
 
 ### Motion Rules
 
-- Prefer opacity and transform. Do not animate layout properties (width, height, padding).
+- Prefer opacity and transform. Do not animate layout products (width, height, padding).
 - Skeleton loaders use a horizontal shimmer via CSS @keyframes at 1.5s duration, not Motion.
 - Do not animate color changes on hover — use CSS transition at duration-fast.
 - Page content entrance: opacity 0→1, y: 8→0, 300ms ease-out. Subtle — users should feel it, not notice it.

@@ -11,11 +11,11 @@
  *   - Single-subject tips (hot lead dormant, deal closing): 7 days
  *   - Past-client / unworked-tag (segments need time to work): 30 days
  *   - Trend tips (overdue pileup, reply rate, stage stagnation,
- *     tour conversion, source dry spell): 14 days — week-over-week
+ *     demo conversion, source dry spell): 14 days — week-over-week
  *     stability needs a real new week before re-firing.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -31,7 +31,7 @@ const COOL_DOWN_DAYS: Record<string, number> = {
   // two stages stagnating in parallel produce two independent cool-downs.
   reply_rate_decline: 14,
   stage_stagnation: 14,
-  tour_conversion_drop: 14,
+  demo_conversion_drop: 14,
   source_dry_spell: 14,
 };
 
@@ -53,29 +53,20 @@ export async function canFireTip(
   tipCategory: string,
   subjectId: string | null,
 ): Promise<boolean> {
-  const query = supabase
-    .from('BriefTipHistory')
-    .select('firedAt, outcome')
-    .eq('spaceId', spaceId)
-    .eq('tipCategory', tipCategory)
-    .order('firedAt', { ascending: false })
-    .limit(1);
+  // subjectId is tri-state: null selects the no-subject (trend) cool-down key; a
+  // value selects that exact subject. The Convex fn distinguishes absent vs equal
+  // exactly as Postgres `is null` vs `eq` did.
+  const data = await convex().query(api.portal.briefTips.latestFire, {
+    spaceId,
+    tipCategory,
+    subjectId,
+  });
+  if (!data) return true; // never fired → can fire
 
-  // Postgres treats `is null` and `eq null` differently — explicit null check.
-  if (subjectId === null) {
-    query.is('subjectId', null);
-  } else {
-    query.eq('subjectId', subjectId);
-  }
-
-  const { data, error } = await query.maybeSingle();
-  if (error || !data) return true;
-
-  const firedAt = new Date((data as { firedAt: string }).firedAt);
+  const firedAt = new Date(data.firedAt);
   if (isNaN(firedAt.getTime())) return true;
 
-  const outcome = (data as { outcome: 'shown' | 'acted' | 'dismissed' }).outcome;
-  const coolDownMs = coolDownDaysFor(tipCategory, outcome) * MS_PER_DAY;
+  const coolDownMs = coolDownDaysFor(tipCategory, data.outcome) * MS_PER_DAY;
   return Date.now() - firedAt.getTime() >= coolDownMs;
 }
 
@@ -88,7 +79,7 @@ export async function recordTipFired(
   tipCategory: string,
   subjectId: string | null,
 ): Promise<void> {
-  await supabase.from('BriefTipHistory').insert({
+  await convex().mutation(api.portal.briefTips.record, {
     spaceId,
     tipCategory,
     subjectId,

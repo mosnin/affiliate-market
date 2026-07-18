@@ -10,16 +10,16 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import type { Space } from '@/lib/types';
 
 /**
  * Returns { userId } or a 401/403 NextResponse.
  *
- * Brokerage offboarding status gate: after Clerk auth succeeds we look up the
+ * Company offboarding status gate: after Clerk auth succeeds we look up the
  * User row and reject with 403 if `status === 'offboarded'`. Offboarding is a
- * hard-stop initiated by a broker_owner/broker_admin when an agent leaves the
- * brokerage; their book of business has been reassigned and they must lose API
+ * hard-stop initiated by a manager_owner/manager_admin when an agent leaves the
+ * company; their book of business has been reassigned and they must lose API
  * access immediately, even though their Clerk session may still be valid. This
  * is the single choke-point for API auth, so enforcing it here blocks every
  * protected route uniformly. Resilience: if the User row is missing (user is
@@ -35,15 +35,11 @@ export async function requireAuth(): Promise<{ userId: string } | NextResponse> 
   // missing `status` column (pre-migration) or transient DB issue does not
   // brick auth; we only block on a definitive 'offboarded' signal.
   try {
-    const { data: userRow } = await supabase
-      .from('User')
-      .select('id, status')
-      .eq('clerkId', userId)
-      .maybeSingle();
+    const userRow = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
 
     if (userRow && (userRow as { status?: string }).status === 'offboarded') {
       return NextResponse.json(
-        { error: 'Your access has been revoked by your brokerage.', code: 'offboarded' },
+        { error: 'Your access has been revoked by your company.', code: 'offboarded' },
         { status: 403 },
       );
     }
@@ -68,11 +64,7 @@ export async function requireActiveSubscription(
 
   // Check if user is a platform admin (admins bypass paywall)
   if (userId) {
-    const { data: userRow } = await supabase
-      .from('User')
-      .select('platformRole')
-      .eq('clerkId', userId)
-      .maybeSingle();
+    const userRow = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
     if (userRow?.platformRole === 'admin') return null;
   }
 
@@ -94,7 +86,7 @@ export function isSubscriptionDelinquent(status: string | null | undefined): boo
 
 /**
  * Verifies the calling user owns the given workspace slug, OR is a
- * broker_owner/broker_admin of the brokerage that manages this space.
+ * manager_owner/manager_admin of the company that manages this space.
  * Returns { userId, space } or a 4xx NextResponse.
  */
 export async function requireSpaceOwner(
@@ -116,42 +108,39 @@ export async function requireSpaceOwner(
     return { userId, space };
   }
 
-  // Broker owner/admin check — allow managing brokerage members' spaces
-  const { data: dbUser } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .maybeSingle();
+  // Manager owner/admin check — allow managing company members' spaces
+  const dbUser = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
 
   if (dbUser) {
-    // Check if the space belongs to a brokerage the user is admin/owner of.
-    // Fetch ALL broker-level memberships rather than .maybeSingle() — a user
-    // who owns/admins more than one brokerage would otherwise make
+    // Check if the space belongs to a company the user is admin/owner of.
+    // Fetch ALL manager-level memberships rather than .maybeSingle() — a user
+    // who owns/admins more than one company would otherwise make
     // .maybeSingle() throw (PostgREST errors on >1 row), 500ing a legitimate
-    // multi-brokerage admin. Mirror the context helpers in lib/permissions.ts:
-    // fetch all, then deterministically prefer broker_owner over broker_admin.
-    const { data: memberships } = await supabase
-      .from('BrokerageMembership')
-      .select('role, brokerageId, createdAt')
-      .eq('userId', dbUser.id)
-      .in('role', ['broker_owner', 'broker_admin'])
-      .order('createdAt', { ascending: true });
+    // multi-company admin. Mirror the context helpers in lib/permissions.ts:
+    // fetch all, then deterministically prefer manager_owner over manager_admin.
+    const memberships = await convex().query(api.org.memberships.listByUser, {
+      userId: dbUser.id,
+      roles: ['manager_owner', 'manager_admin'],
+    });
 
-    // The caller may broker-own/admin MORE THAN ONE brokerage. Grant access
+    // The caller may manager-own/admin MORE THAN ONE company. Grant access
     // when the space's owner belongs to ANY of them. The previous code collapsed
-    // the memberships to a single one (broker_owner-first) and checked only that
-    // brokerage, so e.g. a broker_owner of A who is also broker_admin of B was
+    // the memberships to a single one (manager_owner-first) and checked only that
+    // company, so e.g. a manager_owner of A who is also manager_admin of B was
     // wrongly 403'd when opening a space owned by a B member.
-    const brokerBrokerageIds = (memberships ?? []).map((m) => m.brokerageId);
+    const managerCompanyIds = (memberships ?? []).map((m) => m.companyId);
 
-    if (brokerBrokerageIds.length > 0) {
-      const { data: spaceOwnerMembership } = await supabase
-        .from('BrokerageMembership')
-        .select('id')
-        .in('brokerageId', brokerBrokerageIds)
-        .eq('userId', space.ownerId)
-        .limit(1)
-        .maybeSingle();
+    if (managerCompanyIds.length > 0) {
+      // Does the space's owner share a company with the caller's managed set?
+      // Resolve the owner's memberships and intersect with managerCompanyIds —
+      // mirrors the old `.in('companyId', ids).eq('userId', space.ownerId)`.
+      const ownerMemberships = await convex().query(api.org.memberships.listByUser, {
+        userId: space.ownerId,
+      });
+      const managerSet = new Set(managerCompanyIds);
+      const spaceOwnerMembership = (ownerMemberships ?? []).some((m) =>
+        managerSet.has(m.companyId),
+      );
 
       if (spaceOwnerMembership) {
         return { userId, space };
@@ -192,15 +181,13 @@ export async function requireContactAccess(
   const space = await getSpaceForUser(userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data: rows, error } = await supabase
-    .from('Contact')
-    .select('spaceId')
-    .eq('id', contactId)
-    .eq('spaceId', space.id)
-    .limit(1)
-    .maybeSingle();
+  // Convex throws on failure; the contact read returns the row only when it
+  // exists AND lives in this space (spaceId arg enforces the scope), else null.
+  const rows = await convex().query(api.contacts.contacts.getById, {
+    id: contactId,
+    spaceId: space.id,
+  });
 
-  if (error) throw error;
   if (!rows) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   return { userId, space };

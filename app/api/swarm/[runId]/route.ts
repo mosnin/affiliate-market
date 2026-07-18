@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -22,14 +22,13 @@ export async function GET(
   }
 
   // Fetch the run and verify it belongs to the calling user's space.
-  const { data: run, error: runError } = await supabase
-    .from('SwarmRun')
-    .select('*')
-    .eq('id', runId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  if (runError) {
+  let run;
+  try {
+    run = await convex().query(api.swarmvector.swarmRuns.getByIdInSpace, {
+      id: runId,
+      spaceId: space.id,
+    });
+  } catch (runError) {
     console.error('[swarm/[runId]/GET] run fetch error:', runError);
     return NextResponse.json({ error: 'Failed to fetch run' }, { status: 500 });
   }
@@ -38,12 +37,12 @@ export async function GET(
   }
 
   // Fetch all members for this run.
-  const { data: members, error: membersError } = await supabase
-    .from('SwarmMember')
-    .select('*')
-    .eq('swarmRunId', runId);
-
-  if (membersError) {
+  let members;
+  try {
+    members = await convex().query(api.swarmvector.swarmMembers.listForRun, {
+      swarmRunId: runId,
+    });
+  } catch (membersError) {
     console.error('[swarm/[runId]/GET] members fetch error:', membersError);
     return NextResponse.json({ error: 'Failed to fetch members' }, { status: 500 });
   }

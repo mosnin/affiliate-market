@@ -3,13 +3,13 @@
 /**
  * /s/[slug]/calls — Call log.
  *
- * One intent: a quiet record of who you called and what Chippi heard. Each row
+ * One intent: a quiet record of who you called and what Cola heard. Each row
  * is a call with a status pill, the contact (or number), and how long it ran.
- * Tap a row to expand its Chippi summary and full transcript.
+ * Tap a row to expand its Cola summary and full transcript.
  *
  * Design: Jobs lens — paper-flat, hairline-divided rows, calm copy. The
  * summary is the focal payoff inside an expanded row; the transcript sits
- * quietly beneath it. No configuration the realtor operates here — placing a
+ * quietly beneath it. No configuration the seller operates here — placing a
  * call happens from a contact; this surface is the memory.
  */
 
@@ -57,12 +57,12 @@ interface Call {
 
 // Status pill tones — the canonical status palette from STYLESHEET.md.
 const STATUS_STYLES: Record<CallStatus, string> = {
-  initiated: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  ringing: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  answered: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
-  completed: 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
+  initiated: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  ringing: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  answered: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
+  completed: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
   no_answer: 'text-muted-foreground bg-muted',
-  failed: 'text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15',
+  failed: 'text-negative bg-negative-subtle dark:text-negative dark:bg-negative-subtle0/15',
 };
 
 const STATUS_LABELS: Record<CallStatus, string> = {
@@ -202,7 +202,7 @@ export function CallsView({ slug }: { slug: string }) {
         </div>
         <p className={cn(CAPTION)}>
           Your phone rings first; once you pick up, we connect you to the contact and record the
-          call. Chippi summarizes it when it ends.
+          call. Cola summarizes it when it ends.
         </p>
       </section>
 
@@ -279,7 +279,7 @@ export function CallsView({ slug }: { slug: string }) {
                       <div className="mt-3 ml-10 space-y-4">
                         {c.summary && (
                           <div className="space-y-1.5">
-                            <p className={cn(SECTION_LABEL)}>Chippi summary</p>
+                            <p className={cn(SECTION_LABEL)}>Cola summary</p>
                             <p className={cn(BODY)}>{c.summary}</p>
                           </div>
                         )}

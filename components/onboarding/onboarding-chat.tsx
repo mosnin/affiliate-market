@@ -4,16 +4,16 @@
  * Chat primitives for the conversational onboarding.
  *
  * Deliberately mirror the live intake chat (`components/intake-chat`) so
- * onboarding reads as the SAME conversation surface the realtor's own leads
+ * onboarding reads as the SAME conversation surface the seller's own leads
  * will experience - just from the other side of the glass:
  *
- *   - The ACTIVE Chippi question is a focal serif line that types in.
- *   - PAST Chippi questions recede to small muted text.
- *   - The realtor's answers are right-aligned, softly-tinted bubbles.
+ *   - The ACTIVE Cola question is a focal serif line that types in.
+ *   - PAST Cola questions recede to small muted text.
+ *   - The seller's answers are right-aligned, softly-tinted bubbles.
  *
  * Nothing here talks to the network or owns onboarding state - it's pure
  * presentation. The orchestration (steps, persistence, validation) lives in
- * `onboarding-realtor-v2.tsx`.
+ * `onboarding-seller-v2.tsx`.
  */
 
 import { useEffect, useRef } from 'react';
@@ -32,12 +32,12 @@ const turnRise = {
 };
 
 /**
- * A Chippi message.
+ * A Cola message.
  *  - `active`  → focal serif line. Types in when `typing` is set, then fires
- *               `onTyped`. The one the realtor is answering right now.
- *  - past      → small muted text. What Chippi already said.
+ *               `onTyped`. The one the seller is answering right now.
+ *  - past      → small muted text. What Cola already said.
  */
-export function ChippiSays({
+export function ColaSays({
   text,
   active = false,
   typing = false,
@@ -70,7 +70,7 @@ export function ChippiSays({
   );
 }
 
-/** The realtor's answer - right-aligned, softly tinted bubble. Matches the
+/** The seller's answer - right-aligned, softly tinted bubble. Matches the
  *  intake chat's `UserTurn` vocabulary (foreground tint here, since onboarding
  *  has no per-space accent color yet). */
 export function UserSays({ children }: { children: React.ReactNode }) {
@@ -90,7 +90,7 @@ export function UserSays({ children }: { children: React.ReactNode }) {
 
 /**
  * The inline answer affordance under the active question (input, pickers,
- * cards). Fades in a beat after the question finishes typing so the realtor
+ * cards). Fades in a beat after the question finishes typing so the seller
  * reads the question first, then sees how to answer.
  */
 export function AnswerAffordance({

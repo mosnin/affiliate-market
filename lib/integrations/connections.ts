@@ -5,7 +5,7 @@
  * row to 'revoked' and inserts a new 'active' row.
  */
 
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { deleteConnection as composioDelete, listConnectedAccountsForEntity } from './composio';
 import { findIntegration } from './catalog';
@@ -32,7 +32,7 @@ export interface IntegrationConnectionRow {
 /**
  * Best-effort reconcile from Composio → our DB. Pulls every active
  * connection Composio has for this user and upserts any our DB doesn't
- * know about. Recovery path for realtors who completed OAuth on the
+ * know about. Recovery path for sellers who completed OAuth on the
  * old broken codebase (where the row was only persisted in the callback,
  * which was failing silently). Idempotent; safe to call on every
  * /settings load.
@@ -103,16 +103,16 @@ export async function reconcileFromComposio(args: {
 
 /** All connections for a space, regardless of status. UI filters as needed. */
 export async function listConnections(spaceId: string): Promise<IntegrationConnectionRow[]> {
-  const { data, error } = await supabase
-    .from('IntegrationConnection')
-    .select('*')
-    .eq('spaceId', spaceId)
-    .order('createdAt', { ascending: false });
-  if (error) {
-    logger.warn('[integrations.connections] list failed', { spaceId, err: error.message });
+  try {
+    const rows = await convex().query(api.integrations.connections.listBySpace, { spaceId });
+    return rows as IntegrationConnectionRow[];
+  } catch (err) {
+    logger.warn('[integrations.connections] list failed', {
+      spaceId,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return [];
   }
-  return (data ?? []) as IntegrationConnectionRow[];
 }
 
 /** Active toolkit slugs for a given (space, user) — the chat agent reads this
@@ -121,40 +121,32 @@ export async function activeToolkits(args: {
   spaceId: string;
   userId: string;
 }): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('IntegrationConnection')
-    .select('toolkit')
-    .eq('spaceId', args.spaceId)
-    .eq('userId', args.userId)
-    .eq('status', 'active');
-  if (error) {
+  try {
+    return await convex().query(api.integrations.connections.activeToolkits, {
+      spaceId: args.spaceId,
+      userId: args.userId,
+    });
+  } catch (err) {
     logger.warn('[integrations.connections] activeToolkits failed', {
       spaceId: args.spaceId,
-      err: error.message,
+      err: err instanceof Error ? err.message : String(err),
     });
     return [];
   }
-  return ((data ?? []) as Array<{ toolkit: string }>).map((r) => r.toolkit);
 }
 
 /** Look up by composio connection id — used by the OAuth callback. */
 export async function findByComposioId(composioConnectionId: string) {
-  const { data } = await supabase
-    .from('IntegrationConnection')
-    .select('*')
-    .eq('composioConnectionId', composioConnectionId)
-    .maybeSingle();
-  return (data ?? null) as IntegrationConnectionRow | null;
+  const row = await convex().query(api.integrations.connections.findByComposioId, {
+    composioConnectionId,
+  });
+  return (row ?? null) as IntegrationConnectionRow | null;
 }
 
 /** Look up by our own row id. */
 export async function getById(id: string) {
-  const { data } = await supabase
-    .from('IntegrationConnection')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
-  return (data ?? null) as IntegrationConnectionRow | null;
+  const row = await convex().query(api.integrations.connections.getById, { id });
+  return (row ?? null) as IntegrationConnectionRow | null;
 }
 
 /**
@@ -174,33 +166,27 @@ export async function upsertByComposioId(args: {
   /** Status to land on. The callback passes 'active' only when Composio's
    *  fetched account status confirms ACTIVE; unconfirmed accounts stay
    *  'pending' so the chat agent never loads tools for a half-finished
-   *  OAuth (which 401s and reads as "Chippi lost my integrations"). */
+   *  OAuth (which 401s and reads as "Cola lost my integrations"). */
   status?: 'active' | 'pending';
 }): Promise<IntegrationConnectionRow | null> {
   const targetStatus = args.status ?? 'active';
-  const existing = await findByComposioId(args.composioConnectionId);
-  if (existing) {
-    const { error } = await supabase
-      .from('IntegrationConnection')
-      .update({
-        label: args.label ?? existing.label ?? null,
-        status: targetStatus,
-        lastError: null,
-        updatedAt: new Date().toISOString(),
-      })
-      .eq('id', existing.id);
-    if (error) {
-      logger.error('[integrations.connections] upsertByComposioId update failed', {
-        id: existing.id,
-        errCode: (error as { code?: string }).code ?? null,
-        errMessage: error.message,
-        errDetails: (error as { details?: string }).details ?? null,
-      });
-      return null;
-    }
-    return { ...existing, label: args.label ?? existing.label ?? null, status: targetStatus, lastError: null };
+  try {
+    const row = await convex().mutation(api.integrations.connections.upsertByComposioId, {
+      spaceId: args.spaceId,
+      userId: args.userId,
+      toolkit: args.toolkit,
+      composioConnectionId: args.composioConnectionId,
+      ...(args.label !== undefined ? { label: args.label } : {}),
+      status: targetStatus,
+    });
+    return (row ?? null) as IntegrationConnectionRow | null;
+  } catch (err) {
+    logger.error('[integrations.connections] upsertByComposioId failed', {
+      composioConnectionId: args.composioConnectionId,
+      errMessage: err instanceof Error ? err.message : String(err),
+    });
+    return null;
   }
-  return insertConnection(args);
 }
 
 /**
@@ -223,39 +209,28 @@ export async function insertConnection(args: {
    *  API key). Omit for Composio-backed connections. */
   secretCiphertext?: string;
 }): Promise<IntegrationConnectionRow | null> {
-  const { data, error } = await supabase
-    .from('IntegrationConnection')
-    .insert({
+  try {
+    const row = await convex().mutation(api.integrations.connections.insert, {
       spaceId: args.spaceId,
       userId: args.userId,
       toolkit: args.toolkit,
       composioConnectionId: args.composioConnectionId,
-      label: args.label ?? null,
-      status: args.status ?? 'active',
+      ...(args.label !== undefined ? { label: args.label } : {}),
+      ...(args.status !== undefined ? { status: args.status } : {}),
       ...(args.secretCiphertext ? { secretCiphertext: args.secretCiphertext } : {}),
-    })
-    .select('*')
-    .single();
-  if (error) {
-    // Log the full error shape — code, details, hint — so post-mortem can
-    // tell apart a unique-constraint clash from an RLS rejection from a
-    // missing column. The previous version logged only `error.message`,
-    // which Supabase often returns as a generic "duplicate key value" or
-    // "permission denied" without enough context to fix.
+    });
+    return row as IntegrationConnectionRow;
+  } catch (err) {
     logger.error('[integrations.connections] insert failed', {
       spaceId: args.spaceId,
       userId: args.userId,
       toolkit: args.toolkit,
       composioConnectionId: args.composioConnectionId,
       hasLabel: Boolean(args.label),
-      errCode: (error as { code?: string }).code ?? null,
-      errMessage: error.message,
-      errDetails: (error as { details?: string }).details ?? null,
-      errHint: (error as { hint?: string }).hint ?? null,
+      errMessage: err instanceof Error ? err.message : String(err),
     });
     return null;
   }
-  return data as IntegrationConnectionRow;
 }
 
 /** Flip a row's status. Used for reconnect (prior → revoked) and on errors. */
@@ -264,16 +239,17 @@ export async function setStatus(args: {
   status: IntegrationStatus;
   lastError?: string;
 }): Promise<void> {
-  const { error } = await supabase
-    .from('IntegrationConnection')
-    .update({
+  try {
+    await convex().mutation(api.integrations.connections.setStatus, {
+      id: args.id,
       status: args.status,
-      lastError: args.lastError ?? null,
-      updatedAt: new Date().toISOString(),
-    })
-    .eq('id', args.id);
-  if (error) {
-    logger.warn('[integrations.connections] setStatus failed', { id: args.id, err: error.message });
+      ...(args.lastError !== undefined ? { lastError: args.lastError } : {}),
+    });
+  } catch (err) {
+    logger.warn('[integrations.connections] setStatus failed', {
+      id: args.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -304,7 +280,7 @@ export async function revoke(row: IntegrationConnectionRow): Promise<void> {
 /**
  * Flip the row matching this Composio connection id to 'expired'. Used by
  * the chat agent when the SDK reports the connected account is gone or
- * unauthorized — typically because the realtor revoked our OAuth grant on
+ * unauthorized — typically because the seller revoked our OAuth grant on
  * the provider's side. Reflects truth on the integrations panel (amber
  * dot + "Reconnect") the moment we discover the drift; no toast, no
  * notification, just the page being honest the next time they look.
@@ -319,7 +295,7 @@ export async function markExpiredByComposioId(
   const row = await findByComposioId(composioConnectionId);
   if (!row) return;
   // Don't downgrade an already-revoked or already-expired row — the
-  // realtor's already seen the truth, and a chat-time write would be
+  // seller's already seen the truth, and a chat-time write would be
   // pure churn.
   if (row.status === 'revoked' || row.status === 'expired') return;
   const message = error instanceof Error ? error.message : String(error);
@@ -364,15 +340,12 @@ export async function findActive(args: {
   userId: string;
   toolkit: string;
 }): Promise<IntegrationConnectionRow | null> {
-  const { data } = await supabase
-    .from('IntegrationConnection')
-    .select('*')
-    .eq('spaceId', args.spaceId)
-    .eq('userId', args.userId)
-    .eq('toolkit', args.toolkit)
-    .eq('status', 'active')
-    .maybeSingle();
-  return (data ?? null) as IntegrationConnectionRow | null;
+  const row = await convex().query(api.integrations.connections.findActive, {
+    spaceId: args.spaceId,
+    userId: args.userId,
+    toolkit: args.toolkit,
+  });
+  return (row ?? null) as IntegrationConnectionRow | null;
 }
 
 /** Pending rows for this (space, user, toolkit) — unfinished OAuth initiations.
@@ -383,12 +356,10 @@ export async function findPending(args: {
   userId: string;
   toolkit: string;
 }): Promise<IntegrationConnectionRow[]> {
-  const { data } = await supabase
-    .from('IntegrationConnection')
-    .select('*')
-    .eq('spaceId', args.spaceId)
-    .eq('userId', args.userId)
-    .eq('toolkit', args.toolkit)
-    .eq('status', 'pending');
-  return ((data ?? []) as IntegrationConnectionRow[]);
+  const rows = await convex().query(api.integrations.connections.findPending, {
+    spaceId: args.spaceId,
+    userId: args.userId,
+    toolkit: args.toolkit,
+  });
+  return rows as IntegrationConnectionRow[];
 }

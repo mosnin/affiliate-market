@@ -16,12 +16,12 @@
  *     also throttles itself, but that limiter lives in agent process memory —
  *     a buggy or restarted Modal container could blow past it. The server-
  *     side cap turns a runaway agent into "the next 27 sends fail" instead
- *     of "the realtor's whole contact list gets spammed at 03:00."
+ *     of "the seller's whole contact list gets spammed at 03:00."
  */
 
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { sendEmailFromCRM } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -32,10 +32,10 @@ const AGENT_INTERNAL_SECRET = process.env.AGENT_INTERNAL_SECRET ?? '';
 const VALID_CHANNELS = new Set(['email', 'sms']);
 
 /** Per-space cap on autonomous sends. 30 in 5min covers any realistic burst
- *  (a multi-action post-tour batch, a multi-stage drip resuming) while
+ *  (a multi-action post-demo batch, a multi-stage drip resuming) while
  *  shutting down a runaway agent before it can burn through a contact
  *  list. Email + SMS share the same bucket — the rate limit is about the
- *  realtor's contacts, not the underlying transport. */
+ *  seller's contacts, not the underlying transport. */
 const RATE_LIMIT_MAX = 30;
 const RATE_LIMIT_WINDOW_SECONDS = 5 * 60;
 
@@ -90,14 +90,11 @@ export async function POST(req: NextRequest) {
 
   // Validate contact belongs to this space — the spaceId check is the
   // tenant isolation boundary. Never trust the LLM's contactId without it.
-  const { data: contact, error: contactErr } = await supabase
-    .from('Contact')
-    .select('id, name, email, phone')
-    .eq('id', contactId)
-    .eq('spaceId', spaceId)
-    .maybeSingle();
-
-  if (contactErr) {
+  // Convex throws on infra failure (→ old 500), returns null on miss (→ 404).
+  let contact;
+  try {
+    contact = await convex().query(api.contacts.contacts.getById, { id: contactId, spaceId });
+  } catch (contactErr) {
     console.error('[agent/send] contact lookup error', contactErr);
     return NextResponse.json({ error: 'Contact lookup failed' }, { status: 500 });
   }
@@ -106,11 +103,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Resolve sender display name from SpaceSetting, same as the on-demand agent
-  const { data: spaceSetting } = await supabase
-    .from('SpaceSetting')
-    .select('businessName')
-    .eq('spaceId', spaceId)
-    .maybeSingle();
+  const spaceSetting = await convex()
+    .query(api.workspace.settings.getBySpace, { spaceId })
+    .catch(() => null);
   const fromName = (spaceSetting?.businessName as string | undefined) ?? spaceId;
 
   let deliveredTo: string | null = null;
@@ -148,7 +143,7 @@ export async function POST(req: NextRequest) {
 
   // Audit the send to the contact's activity feed — non-fatal
   try {
-    await supabase.from('ContactActivity').insert({
+    await convex().mutation(api.contacts.activity.create, {
       id: crypto.randomUUID(),
       spaceId,
       contactId,

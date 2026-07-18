@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-export type RightPanelTab = 'people' | 'deals' | 'properties';
+export type RightPanelTab = 'people' | 'deals' | 'products';
 
 interface SplitPanelState {
   isSplit: boolean;
@@ -10,7 +10,7 @@ interface SplitPanelState {
   leftWidthPercent: number; // 0-100, default 58
 }
 
-const STORAGE_KEY = 'chippi-split-panel-v1';
+const STORAGE_KEY = 'cola-split-panel-v1';
 const DEFAULTS: SplitPanelState = {
   isSplit: false,
   rightTab: 'people',
@@ -45,11 +45,11 @@ function persistState(next: SplitPanelState): void {
 }
 
 /**
- * Manages Chippi split-panel layout state, persisted in localStorage.
+ * Manages Cola split-panel layout state, persisted in localStorage.
  *
  * - `isSplit` — whether the panel is in split view
  * - `toggle` — toggles between split and single view
- * - `rightTab` — active tab in the right panel ('people' | 'deals' | 'properties')
+ * - `rightTab` — active tab in the right panel ('people' | 'deals' | 'products')
  * - `setRightTab` — sets the active right tab
  * - `leftWidthPercent` — left panel width as a percentage (clamped 30–75, default 58)
  * - `setLeftWidthPercent` — sets the left panel width (auto-clamped)

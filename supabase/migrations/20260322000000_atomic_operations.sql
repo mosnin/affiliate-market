@@ -1,28 +1,28 @@
 -- Migration: Atomic database functions for race-condition-prone operations
--- Fixes: tour double-booking, non-atomic space creation, non-atomic brokerage creation
+-- Fixes: demo double-booking, non-atomic space creation, non-atomic company creation
 
 -----------------------------------------------------------------------
--- 1. Atomic tour booking — prevents double-booking via row-level lock
+-- 1. Atomic demo booking — prevents double-booking via row-level lock
 -----------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION book_tour_atomic(
+CREATE OR REPLACE FUNCTION book_demo_atomic(
   p_id            UUID,
   p_space_id      UUID,
   p_contact_id    UUID,
   p_guest_name    TEXT,
   p_guest_email   TEXT,
   p_guest_phone   TEXT,
-  p_property_address TEXT,
+  p_product_address TEXT,
   p_notes         TEXT,
   p_starts_at     TIMESTAMPTZ,
   p_ends_at       TIMESTAMPTZ,
-  p_property_profile_id UUID,
+  p_product_profile_id UUID,
   p_manage_token  TEXT
 ) RETURNS UUID AS $$
 DECLARE
   v_conflict_count INT;
 BEGIN
-  -- Lock existing overlapping tours to prevent concurrent inserts
-  PERFORM id FROM "Tour"
+  -- Lock existing overlapping demos to prevent concurrent inserts
+  PERFORM id FROM "Demo"
     WHERE "spaceId" = p_space_id
       AND status IN ('scheduled', 'confirmed')
       AND "startsAt" < p_ends_at
@@ -31,7 +31,7 @@ BEGIN
 
   -- Count conflicts (after acquiring lock)
   SELECT COUNT(*) INTO v_conflict_count
-    FROM "Tour"
+    FROM "Demo"
     WHERE "spaceId" = p_space_id
       AND status IN ('scheduled', 'confirmed')
       AND "startsAt" < p_ends_at
@@ -41,12 +41,12 @@ BEGIN
     RETURN NULL;  -- Conflict found; caller should return 409
   END IF;
 
-  INSERT INTO "Tour" (
+  INSERT INTO "Demo" (
     id, "spaceId", "contactId", "guestName", "guestEmail", "guestPhone",
-    "propertyAddress", notes, "startsAt", "endsAt", "propertyProfileId", "manageToken"
+    "productAddress", notes, "startsAt", "endsAt", "productProfileId", "manageToken"
   ) VALUES (
     p_id, p_space_id, p_contact_id, p_guest_name, p_guest_email, p_guest_phone,
-    p_property_address, p_notes, p_starts_at, p_ends_at, p_property_profile_id, p_manage_token
+    p_product_address, p_notes, p_starts_at, p_ends_at, p_product_profile_id, p_manage_token
   );
 
   RETURN p_id;
@@ -97,23 +97,23 @@ END;
 $$ LANGUAGE plpgsql;
 
 -----------------------------------------------------------------------
--- 3. Atomic brokerage + owner membership creation
+-- 3. Atomic company + owner membership creation
 -----------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION create_brokerage_with_owner(
+CREATE OR REPLACE FUNCTION create_company_with_owner(
   p_name     TEXT,
   p_owner_id UUID
 ) RETURNS UUID AS $$
 DECLARE
-  v_brokerage_id UUID;
+  v_company_id UUID;
 BEGIN
-  INSERT INTO "Brokerage" (name, "ownerId")
+  INSERT INTO "Company" (name, "ownerId")
     VALUES (p_name, p_owner_id)
-    RETURNING id INTO v_brokerage_id;
+    RETURNING id INTO v_company_id;
 
-  INSERT INTO "BrokerageMembership" ("brokerageId", "userId", role)
-    VALUES (v_brokerage_id, p_owner_id, 'broker_owner');
+  INSERT INTO "CompanyMembership" ("companyId", "userId", role)
+    VALUES (v_company_id, p_owner_id, 'manager_owner');
 
-  RETURN v_brokerage_id;
+  RETURN v_company_id;
 END;
 $$ LANGUAGE plpgsql;
 

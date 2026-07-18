@@ -1,7 +1,7 @@
 /**
  * POST /api/agent/briefing/test
  *
- * Send a one-off test brief to the realtor's enabled channels. Composes
+ * Send a one-off test brief to the seller's enabled channels. Composes
  * a fresh brief (or uses today's existing if one's there), persists
  * nothing, never writes to Brief.{email,sms}SentAt so it doesn't
  * clobber the morning send.
@@ -11,7 +11,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { composeBrief } from '@/lib/briefing/compose';
@@ -56,7 +56,7 @@ export async function POST() {
     );
   }
 
-  // Compose a fresh brief (don't reuse the saved one — the realtor may
+  // Compose a fresh brief (don't reuse the saved one — the seller may
   // be testing right after fixing something they want reflected).
   const { brief } = await composeBrief(space.id);
 
@@ -68,19 +68,15 @@ export async function POST() {
   const realToday = localDateIn(new Date(), tz);
   const syntheticDate = `TEST-${realToday}-${Date.now()}`;
 
-  const { data: row, error } = await supabase
-    .from('Brief')
-    .insert({
+  let row: { id: string };
+  try {
+    row = await convex().mutation(api.portal.briefs.upsert, {
       spaceId: space.id,
       forDate: syntheticDate,
-      status: 'pending',
       payload: brief,
       cardMeta: [],
-    })
-    .select('id')
-    .single();
-
-  if (error || !row) {
+    });
+  } catch {
     return NextResponse.json({ error: 'Could not stage the test brief.' }, { status: 500 });
   }
 
@@ -88,7 +84,7 @@ export async function POST() {
   if (!ctx) return NextResponse.json({ error: 'Settings not found.' }, { status: 500 });
 
   const result = await deliverBrief({
-    briefId: row.id as string,
+    briefId: row.id,
     brief: brief as Brief,
     forDate: realToday,
     space: ctx,
@@ -97,16 +93,14 @@ export async function POST() {
 
   // Clean up the synthetic row — we never want it in the analytics
   // aggregations or in tomorrow's "yesterday" link.
-  await supabase.from('Brief').delete().eq('id', row.id);
+  await convex().mutation(api.portal.briefs.deleteById, { id: row.id });
 
   return NextResponse.json({ ok: true, result });
 }
 
 async function getSpaceTimezone(spaceId: string): Promise<string> {
-  const { data } = await supabase
-    .from('SpaceSetting')
-    .select('timezone')
-    .eq('spaceId', spaceId)
-    .maybeSingle();
+  const data = await convex()
+    .query(api.workspace.settings.getBySpace, { spaceId })
+    .catch(() => null);
   return (data?.timezone as string | undefined) ?? DEFAULT_TIMEZONE;
 }

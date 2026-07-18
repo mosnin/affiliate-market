@@ -1,13 +1,13 @@
 /**
  * GET /api/agent/briefing
  *
- * Read today's brief for the authenticated realtor's space. The cron at
+ * Read today's brief for the authenticated seller's space. The cron at
  * /api/cron/daily-briefing pre-generates the row at 7am UTC; this route
  * is the read path the workspace surface calls.
  *
- * Behavior when no brief exists yet (cron hasn't run, or this realtor's
+ * Behavior when no brief exists yet (cron hasn't run, or this seller's
  * row was missed by the last tick): compose on demand and persist. The
- * realtor opening Chippi at 8am before the cron caught up still sees
+ * seller opening Cola at 8am before the cron caught up still sees
  * their brief; they just paid the latency.
  *
  * PATCH is the seen / acted lifecycle — the workspace marks the brief
@@ -15,7 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { composeBrief } from '@/lib/briefing/compose';
@@ -25,17 +25,15 @@ import type { Brief, BriefCardTap, SignalKind, SignalSource } from '@/lib/briefi
 const DEFAULT_TIMEZONE = 'America/New_York';
 
 /**
- * The brief's `forDate` is the realtor's LOCAL date — the date they see
- * on their phone when they open Chippi — not the server's UTC date.
- * Otherwise the late-night Pacific realtor opening the app at 11:30 PM
+ * The brief's `forDate` is the seller's LOCAL date — the date they see
+ * on their phone when they open Cola — not the server's UTC date.
+ * Otherwise the late-night Pacific seller opening the app at 11:30 PM
  * would already see "tomorrow's brief" because UTC has rolled over.
  */
 async function todayLocalDate(spaceId: string): Promise<string> {
-  const { data } = await supabase
-    .from('SpaceSetting')
-    .select('timezone')
-    .eq('spaceId', spaceId)
-    .maybeSingle();
+  const data = await convex()
+    .query(api.workspace.settings.getBySpace, { spaceId })
+    .catch(() => null);
   return localDateIn(new Date(), (data?.timezone as string | undefined) ?? DEFAULT_TIMEZONE);
 }
 
@@ -63,21 +61,17 @@ export async function GET(req: NextRequest) {
   // The one-day backward window is hard: there is no ?day=2-days-ago.
   const dayParam = req.nextUrl.searchParams.get('day');
   if (dayParam === 'yesterday') {
-    const { data: tz } = await supabase
-      .from('SpaceSetting')
-      .select('timezone')
-      .eq('spaceId', space.id)
-      .maybeSingle();
+    const tz = await convex()
+      .query(api.workspace.settings.getBySpace, { spaceId: space.id })
+      .catch(() => null);
     const yForDate = localDateOffset(
       (tz?.timezone as string | undefined) ?? DEFAULT_TIMEZONE,
       -1,
     );
-    const { data: yRow } = await supabase
-      .from('Brief')
-      .select('id, status, payload, createdAt, seenAt, actedAt')
-      .eq('spaceId', space.id)
-      .eq('forDate', yForDate)
-      .maybeSingle();
+    const yRow = await convex().query(api.portal.briefs.getBySpaceDate, {
+      spaceId: space.id,
+      forDate: yForDate,
+    });
 
     if (!yRow) return NextResponse.json({ brief: null });
     return NextResponse.json({
@@ -93,21 +87,17 @@ export async function GET(req: NextRequest) {
   const forDate = await todayLocalDate(space.id);
 
   // Whether to show the one-line intro on this brief. Null means the
-  // realtor has never seen a brief — the intro renders. Once 'seen'
+  // seller has never seen a brief — the intro renders. Once 'seen'
   // PATCH fires the column gets stamped and the intro never returns.
-  const { data: setting } = await supabase
-    .from('SpaceSetting')
-    .select('briefIntroSeenAt')
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const setting = await convex()
+    .query(api.workspace.settings.getBySpace, { spaceId: space.id })
+    .catch(() => null);
   const showIntro = setting?.briefIntroSeenAt == null;
 
-  const { data: existing } = await supabase
-    .from('Brief')
-    .select('id, status, payload, createdAt, seenAt, actedAt')
-    .eq('spaceId', space.id)
-    .eq('forDate', forDate)
-    .maybeSingle();
+  const existing = await convex().query(api.portal.briefs.getBySpaceDate, {
+    spaceId: space.id,
+    forDate,
+  });
 
   if (existing) {
     return NextResponse.json({
@@ -121,22 +111,18 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // No row yet — compose on demand and persist. The realtor sees their
+  // No row yet — compose on demand and persist. The seller sees their
   // brief; tomorrow's cron tick fills the gap for everyone systematically.
   const { brief, cardMeta } = await composeBrief(space.id);
-  const { data: created, error } = await supabase
-    .from('Brief')
-    .insert({
+  let created;
+  try {
+    created = await convex().mutation(api.portal.briefs.upsert, {
       spaceId: space.id,
       forDate,
-      status: 'pending',
       payload: brief,
       cardMeta,
-    })
-    .select('id, status, payload, createdAt, seenAt, actedAt')
-    .single();
-
-  if (error || !created) {
+    });
+  } catch {
     // Persist failed but the brief itself is fine — return it anyway
     // so the surface doesn't get stuck on a transient DB hiccup.
     return NextResponse.json({
@@ -172,7 +158,7 @@ export async function GET(req: NextRequest) {
  * 'acted' → set actedAt + flip status to 'acted' (once) + append the
  *           tap event to Brief.cardTaps. The cardIndex/source/kind
  *           triple identifies WHICH card was tapped so analytics can
- *           answer "which sources move realtors" without DOM scraping.
+ *           answer "which sources move sellers" without DOM scraping.
  *
  * Both are idempotent and additive — re-firing 'seen' doesn't overwrite
  * the earlier timestamp; re-firing 'acted' with the same
@@ -198,12 +184,10 @@ export async function PATCH(req: NextRequest) {
   }
 
   const forDate = await todayLocalDate(space.id);
-  const { data: existing } = await supabase
-    .from('Brief')
-    .select('id, seenAt, actedAt, status, cardTaps')
-    .eq('spaceId', space.id)
-    .eq('forDate', forDate)
-    .maybeSingle();
+  const existing = await convex().query(api.portal.briefs.getBySpaceDate, {
+    spaceId: space.id,
+    forDate,
+  });
 
   if (!existing) return NextResponse.json({ ok: true });
 
@@ -246,18 +230,30 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (Object.keys(update).length > 0) {
-    await supabase.from('Brief').update(update).eq('id', existing.id);
+    await convex().mutation(api.portal.briefs.patchEngagement, {
+      id: existing.id,
+      ...(update.seenAt !== undefined ? { seenAt: update.seenAt as string } : {}),
+      ...(update.actedAt !== undefined ? { actedAt: update.actedAt as string } : {}),
+      ...(update.status !== undefined ? { status: update.status as string } : {}),
+      ...(update.cardTaps !== undefined ? { cardTaps: update.cardTaps } : {}),
+    });
   }
 
   // The first ever 'seen' PATCH stamps briefIntroSeenAt so the one-line
   // intro never reappears. Only on 'seen' (not 'acted') because the
   // intro lives on the live brief surface, not on acted-then-collapsed.
+  // The PG `.is('briefIntroSeenAt', null)` guard becomes a read-check-write:
+  // only stamp when currently unset, so a re-fired 'seen' never overwrites it.
   if (body.event === 'seen') {
-    await supabase
-      .from('SpaceSetting')
-      .update({ briefIntroSeenAt: nowIso })
-      .eq('spaceId', space.id)
-      .is('briefIntroSeenAt', null);
+    const current = await convex()
+      .query(api.workspace.settings.getBySpace, { spaceId: space.id })
+      .catch(() => null);
+    if (current?.briefIntroSeenAt == null) {
+      await convex().mutation(api.workspace.settings.upsertBySpace, {
+        spaceId: space.id,
+        fields: { briefIntroSeenAt: nowIso },
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });

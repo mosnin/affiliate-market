@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import crypto from 'crypto';
 import { jwtVerify } from 'jose';
@@ -40,22 +41,16 @@ async function authenticateKey(req: NextRequest): Promise<{ spaceId: string; ip:
   // 20260607000012_mcp_key_expiry migration. NULL expiresAt = legacy key,
   // never expires (preserves backward compat for existing integrations).
   const keyHash = crypto.createHash('sha256').update(token).digest('hex');
-  const { data } = await supabase
-    .from('McpApiKey')
-    .select('spaceId, expiresAt')
-    .eq('keyHash', keyHash)
-    .maybeSingle();
+  const data = await convex().query(api.infra.mcpApiKeys.authByKeyHash, { keyHash });
 
   if (!data) return null;
-  if (data.expiresAt && new Date(data.expiresAt as string).getTime() < Date.now()) {
+  if (data.expiresAt && new Date(data.expiresAt).getTime() < Date.now()) {
     return null;
   }
 
-  supabase
-    .from('McpApiKey')
-    .update({ lastUsedAt: new Date().toISOString() })
-    .eq('keyHash', keyHash)
-    .then(({ error }) => { if (error) console.error('[mcp] lastUsedAt update failed:', error.message); });
+  void convex()
+    .mutation(api.infra.mcpApiKeys.touchByKeyHash, { keyHash })
+    .catch((error) => { console.error('[mcp] lastUsedAt update failed:', String(error)); });
 
   return { spaceId: data.spaceId, ip };
 }
@@ -65,7 +60,7 @@ async function authenticateKey(req: NextRequest): Promise<{ spaceId: string; ip:
 // ---------------------------------------------------------------------------
 function buildServer(spaceId: string): McpServer {
   const server = new McpServer({
-    name: 'Chippi CRM',
+    name: 'Cola CRM',
     version: '1.0.0',
   });
 
@@ -76,7 +71,7 @@ function buildServer(spaceId: string): McpServer {
     {
       query: z.string().optional().describe('Search by name, email, or phone'),
       type: z
-        .enum(['QUALIFICATION', 'TOUR', 'APPLICATION'])
+        .enum(['QUALIFICATION', 'DEMO', 'APPLICATION'])
         .optional()
         .describe('Filter by contact type'),
       leadType: z.enum(['rental', 'buyer']).optional().describe('Filter by lead type'),
@@ -164,10 +159,10 @@ function buildServer(spaceId: string): McpServer {
     },
   );
 
-  // ── list_tours ──
+  // ── list_demos ──
   server.tool(
-    'list_tours',
-    'List upcoming and recent tours.',
+    'list_demos',
+    'List upcoming and recent demos.',
     {
       status: z
         .enum(['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show'])
@@ -175,19 +170,17 @@ function buildServer(spaceId: string): McpServer {
       limit: z.number().int().positive().max(200).optional().default(20),
     },
     async ({ status, limit }) => {
-      let q = supabase
-        .from('Tour')
-        .select(
-          'id, guestName, guestEmail, guestPhone, propertyAddress, startsAt, endsAt, status, createdAt',
-        )
-        .eq('spaceId', spaceId)
-        .order('startsAt', { ascending: false })
-        .limit(limit ?? 20);
-      if (status) q = q.eq('status', status);
-      const { data, error } = await q;
-      if (error)
+      try {
+        const data = await convex().query(api.demos.demos.listBySpace, {
+          spaceId,
+          order: 'desc',
+          limit: limit ?? 20,
+          ...(status ? { statuses: [status] } : {}),
+        });
+        return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+      } catch {
         return { content: [{ type: 'text' as const, text: 'Query failed' }] };
-      return { content: [{ type: 'text' as const, text: JSON.stringify(data ?? [], null, 2) }] };
+      }
     },
   );
 
@@ -270,11 +263,11 @@ function buildServer(spaceId: string): McpServer {
   // ── dashboard_summary ──
   server.tool(
     'dashboard_summary',
-    'Get a high-level summary: lead count, deal pipeline value, upcoming tours, overdue follow-ups.',
+    'Get a high-level summary: lead count, deal pipeline value, upcoming demos, overdue follow-ups.',
     {},
     async () => {
       const now = new Date().toISOString();
-      const [contactCount, dealAgg, tourCount, followUpCount, buyerLeadCount] = await Promise.all([
+      const [contactCount, dealAgg, demoCount, followUpCount, buyerLeadCount] = await Promise.all([
         supabase
           .from('Contact')
           .select('*', { count: 'exact', head: true })
@@ -292,13 +285,13 @@ function buildServer(spaceId: string): McpServer {
               0,
             ),
           })),
-        supabase
-          .from('Tour')
-          .select('*', { count: 'exact', head: true })
-          .eq('spaceId', spaceId)
-          .in('status', ['scheduled', 'confirmed'])
-          .gte('startsAt', now)
-          .then((r) => r.count ?? 0),
+        convex()
+          .query(api.demos.demos.listBySpace, {
+            spaceId,
+            statuses: ['scheduled', 'confirmed'],
+            startsAtGte: now,
+          })
+          .then((rows) => rows.length),
         supabase
           .from('Contact')
           .select('*', { count: 'exact', head: true })
@@ -324,7 +317,7 @@ function buildServer(spaceId: string): McpServer {
                 rentalLeads: (contactCount as number) - (buyerLeadCount as number),
                 activeDeals: dealAgg.count,
                 pipelineValue: dealAgg.totalValue,
-                upcomingTours: tourCount,
+                upcomingDemos: demoCount,
                 overdueFollowUps: followUpCount,
               },
               null,
@@ -342,13 +335,11 @@ function buildServer(spaceId: string): McpServer {
     'List custom calendar events.',
     { limit: z.number().int().positive().max(200).optional().default(20) },
     async ({ limit }) => {
-      const { data } = await supabase
-        .from('CalendarEvent')
-        .select('id, title, description, date, time, color')
-        .eq('spaceId', spaceId)
-        .gte('date', new Date().toISOString().slice(0, 10))
-        .order('date')
-        .limit(limit ?? 20);
+      const data = await convex().query(api.calendar.events.listUpcoming, {
+        spaceId,
+        fromDate: new Date().toISOString().slice(0, 10),
+        limit: limit ?? 20,
+      });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(data ?? [], null, 2) }],
       };
@@ -374,7 +365,7 @@ export async function POST(req: NextRequest) {
 
   const BASE_URL = process.env.NEXT_PUBLIC_ROOT_DOMAIN
     ? `https://${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`
-    : 'https://my.usechippi.com';
+    : 'https://my.usecola.com';
 
   const authResult = await authenticateKey(req);
   if (!authResult) {
@@ -429,7 +420,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const BASE_URL = process.env.NEXT_PUBLIC_ROOT_DOMAIN
     ? `https://${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`
-    : 'https://my.usechippi.com';
+    : 'https://my.usecola.com';
 
   // If no auth, return 401 with resource metadata link (MCP OAuth discovery)
   const auth = req.headers.get('authorization');

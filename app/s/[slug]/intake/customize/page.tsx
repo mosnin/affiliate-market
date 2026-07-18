@@ -24,7 +24,7 @@ function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
 }
 
-type FormConfigSource = 'custom' | 'brokerage' | 'legacy';
+type FormConfigSource = 'custom' | 'company' | 'legacy';
 type LeadType = 'rental' | 'buyer';
 
 const SUB_TABS: { value: string; label: string }[] = [
@@ -58,7 +58,7 @@ export default function IntakeCustomizePage() {
   // Bumps after a successful save so the preview iframe remounts and reloads.
   const [previewVersion, setPreviewVersion] = useState(0);
   // Live preview iframe ref — used to postMessage draft updates so changes
-  // appear on the realtor's keystroke (CSS-driven properties) instead of
+  // appear on the seller's keystroke (CSS-driven products) instead of
   // waiting for Save.
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -131,7 +131,7 @@ export default function IntakeCustomizePage() {
 
   // ── Live preview bridge ────────────────────────────────────────────────────
   // Post the draft customization to the iframe on every edit so CSS-driven
-  // properties (accent, dark mode, font) update without a full reload.
+  // products (accent, dark mode, font) update without a full reload.
   // Debounced 250ms to avoid spamming on every keystroke. Save still drives
   // the full re-mount via `previewVersion` for semantic edits (copy, etc.).
   useEffect(() => {
@@ -140,7 +140,7 @@ export default function IntakeCustomizePage() {
       const target = iframeRef.current?.contentWindow;
       if (!target) return;
       target.postMessage(
-        { type: 'chippi:preview-update', customization: config },
+        { type: 'cola:preview-update', customization: config },
         window.location.origin,
       );
     }, 250);
@@ -239,7 +239,7 @@ export default function IntakeCustomizePage() {
     const label = activeLeadType === 'rental' ? 'rental' : 'buyer';
     if (
       !confirm(
-        `Reset the ${label} form to the standard Chippi default? Your custom changes will be removed.`,
+        `Reset the ${label} form to the standard Cola default? Your custom changes will be removed.`,
       )
     )
       return;
@@ -282,27 +282,27 @@ export default function IntakeCustomizePage() {
 
   const formLabel = activeLeadType === 'rental' ? 'rental form' : 'buyer form';
   const isCustom = configSource === 'custom' && hasSavedConfig;
-  const isBrokerage = configSource === 'brokerage';
+  const isCompany = configSource === 'company';
 
   const subtitleBase = isCustom
     ? `Your ${formLabel}.`
-    : isBrokerage
-      ? `Brokerage ${formLabel}.`
+    : isCompany
+      ? `Company ${formLabel}.`
       : `Default ${formLabel}.`;
   const subtitle = hasChanges ? `${subtitleBase} Unsaved changes.` : subtitleBase;
 
   return (
     // The form-builder itself has its own three-column layout (palette /
-    // sections / property inspector) — stacking the live-preview beside
+    // sections / product inspector) — stacking the live-preview beside
     // it at lg/xl squeezed the middle column to nothing on typical
     // viewports. Side-by-side preview is reserved for 2xl+ (1536px),
     // where everything fits. On smaller screens the preview drops below
     // the builder; the "Open in new tab" link at the top of the preview
-    // is the escape hatch when the realtor wants a dedicated window.
+    // is the escape hatch when the seller wants a dedicated window.
     <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_480px] gap-6 max-w-[1600px] pb-12">
       {/* Left column — scrolls with the page */}
       <div className="min-w-0 space-y-6">
-        {/* Header — H1 + Chippi narration */}
+        {/* Header — H1 + Cola narration */}
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
           <div className="space-y-1.5">
             <h1 className={H1} style={TITLE_FONT}>

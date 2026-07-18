@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 import { assertSpaceEnabled } from '@/lib/agent/kill-switch';
@@ -59,13 +59,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Space is disabled' }, { status: 403 });
   }
 
-  const { data, error } = await supabase
-    .from('AIUserProfile')
-    .select('*')
-    .eq('spaceId', spaceId)
-    .maybeSingle();
-
-  if (error) {
+  let data;
+  try {
+    data = await convex().query(api.contacts.profiles.getForSpace, { spaceId });
+  } catch (error) {
     console.error('[ai-profile/GET] query error:', error);
     return NextResponse.json({ error: 'Failed to fetch AI profile' }, { status: 500 });
   }
@@ -166,30 +163,31 @@ export async function PUT(req: NextRequest) {
     );
   }
 
-  // ── Build upsert payload (only include defined fields) ────────────────────
+  // ── Build upsert patch (only include defined fields) ──────────────────────
 
-  const payload: Record<string, unknown> = { spaceId };
+  const patch: Record<string, unknown> = {};
 
-  if (body.displayName !== undefined) payload.displayName = body.displayName;
-  if (body.businessFocus !== undefined) payload.businessFocus = body.businessFocus;
-  if (body.yearsExperience !== undefined) payload.yearsExperience = body.yearsExperience;
-  if (body.workingStyle !== undefined) payload.workingStyle = body.workingStyle;
-  if (body.communicationTone !== undefined) payload.communicationTone = body.communicationTone;
-  if (body.currentGoals !== undefined) payload.currentGoals = body.currentGoals;
+  if (body.displayName !== undefined) patch.displayName = body.displayName;
+  if (body.businessFocus !== undefined) patch.businessFocus = body.businessFocus;
+  if (body.yearsExperience !== undefined) patch.yearsExperience = body.yearsExperience;
+  if (body.workingStyle !== undefined) patch.workingStyle = body.workingStyle;
+  if (body.communicationTone !== undefined) patch.communicationTone = body.communicationTone;
+  if (body.currentGoals !== undefined) patch.currentGoals = body.currentGoals;
   if (body.quirksAndPreferences !== undefined)
-    payload.quirksAndPreferences = body.quirksAndPreferences;
+    patch.quirksAndPreferences = body.quirksAndPreferences;
   if (body.agentPersonalizationNote !== undefined)
-    payload.agentPersonalizationNote = body.agentPersonalizationNote;
+    patch.agentPersonalizationNote = body.agentPersonalizationNote;
 
-  const { data, error } = await supabase
-    .from('AIUserProfile')
-    .upsert(payload, { onConflict: 'spaceId' })
-    .select();
-
-  if (error) {
+  let data;
+  try {
+    data = await convex().mutation(api.contacts.profiles.upsertForSpace, {
+      spaceId,
+      patch,
+    });
+  } catch (error) {
     console.error('[ai-profile/PUT] upsert error:', error);
     return NextResponse.json({ error: 'Failed to save AI profile' }, { status: 500 });
   }
 
-  return NextResponse.json({ profile: data[0] });
+  return NextResponse.json({ profile: data });
 }

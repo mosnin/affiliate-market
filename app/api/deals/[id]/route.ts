@@ -310,12 +310,12 @@ export async function PATCH(
         ...(milestonesVal !== undefined && { milestones: milestonesVal }),
         ...(nextActionVal !== undefined && { nextAction: nextActionVal }),
         ...(nextActionDueAtVal !== undefined && { nextActionDueAt: nextActionDueAtVal }),
-        // propertyId: null unlinks; otherwise validated as string referencing a
-        // Property in this space. We don't load the row here — the FK will
+        // productId: null unlinks; otherwise validated as string referencing a
+        // Product in this space. We don't load the row here — the FK will
         // reject a mismatched id; validating at edit time adds a round-trip
         // without additional safety.
-        ...(body.propertyId !== undefined && {
-          propertyId: body.propertyId ? String(body.propertyId).slice(0, 64) : null,
+        ...(body.productId !== undefined && {
+          productId: body.productId ? String(body.productId).slice(0, 64) : null,
         }),
         // Won/lost post-mortem fields — captured from the kanban dialog.
         // When the deal transitions back to active we clear them so stale
@@ -388,7 +388,7 @@ export async function PATCH(
     syncDeal({ ...deal, stage: deal.stage ?? undefined }).catch(console.error);
     void audit({ actorClerkId: userId, action: 'UPDATE', resource: 'Deal', resourceId: id, spaceId: space.id, req });
 
-    // Fire the agent trigger on stage transitions so Chippi reacts in real
+    // Fire the agent trigger on stage transitions so Cola reacts in real
     // time to a deal moving stages (e.g. drafts a "we're under contract" SMS
     // to the contact, or marks the win/loss). Never fails the response.
     if (stageChanged) {

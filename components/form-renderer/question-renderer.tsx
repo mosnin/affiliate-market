@@ -16,7 +16,7 @@ const INPUT_CLASS = cn(FIELD_BASE, 'h-10');
 const TEXTAREA_CLASS = cn(FIELD_BASE, 'py-2 min-h-[80px] resize-y');
 const FIELD_LABEL = 'text-sm font-medium text-foreground';
 const HELPER_TEXT = 'text-xs text-muted-foreground mt-0.5';
-const ERROR_TEXT = 'text-xs text-rose-600 dark:text-rose-400 mt-1';
+const ERROR_TEXT = 'text-xs text-negative dark:text-negative mt-1';
 const OPTIONAL_TAG = 'ml-1.5 text-xs font-normal text-muted-foreground';
 
 // Tile cards (radio / single-select). Selection uses foreground tone — no
@@ -146,7 +146,7 @@ export function QuestionRenderer({
   const arrValue = Array.isArray(value) ? value : [];
 
   const hasError = !!error;
-  const errorBorder = hasError ? 'border-rose-500/60 focus:border-rose-500/60' : '';
+  const errorBorder = hasError ? 'border-negative/20 focus:border-negative/20' : '';
 
   // Single source for the optional label + description rows so every case
   // in the switch below opts in identically. Checkbox keeps its inline
@@ -347,7 +347,7 @@ export function QuestionRenderer({
           {question.description && (
             <p className="text-xs text-muted-foreground ml-7">{question.description}</p>
           )}
-          {hasError && <p className="text-xs text-rose-600 dark:text-rose-400 ml-7">{error}</p>}
+          {hasError && <p className="text-xs text-negative dark:text-negative ml-7">{error}</p>}
         </div>
       );
 

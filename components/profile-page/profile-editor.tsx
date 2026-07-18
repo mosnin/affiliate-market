@@ -1,15 +1,15 @@
 'use client';
 
 /**
- * Editor for the realtor's public "link in bio" page (/p/[slug]).
+ * Editor for the seller's public "link in bio" page (/p/[slug]).
  *
  * Reads and writes the ProfilePage row through /api/profile-page. Three
- * tabs split the surface so the realtor's mental model matches the page
+ * tabs split the surface so the seller's mental model matches the page
  * itself:
  *
  *   Identity  → Profile photo, Headline, Verified badge, Social links
  *   Page      → Enabled toggle, Cover photo, section visibility toggles
- *   Content   → Custom links, Videos, Featured properties
+ *   Content   → Custom links, Videos, Featured products
  *
  * The Share row (URL + Copy + View) sits above the tabs — always-relevant
  * context, no tabbing needed.
@@ -78,7 +78,7 @@ interface VideoItem {
   title: string;
 }
 
-interface AvailableProperty {
+interface AvailableProduct {
   id: string;
   address: string;
   city: string | null;
@@ -112,22 +112,22 @@ export function ProfileEditor({ slug }: { slug: string }) {
   const [enabled, setEnabled] = useState(true);
   const [headline, setHeadline] = useState('');
   const [showIntake, setShowIntake] = useState(true);
-  const [showTours, setShowTours] = useState(true);
-  const [showProperties, setShowProperties] = useState(true);
+  const [showDemos, setShowDemos] = useState(true);
+  const [showProducts, setShowProducts] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
   const [socialLinks, setSocialLinks] = useState<Partial<Record<SocialPlatform, string>>>({});
   const [customLinks, setCustomLinks] = useState<CustomLink[]>([]);
   const [videos, setVideos] = useState<VideoItem[]>([]);
-  const [featuredPropertyIds, setFeaturedPropertyIds] = useState<string[]>([]);
-  const [availableProperties, setAvailableProperties] = useState<AvailableProperty[]>([]);
+  const [featuredProductIds, setFeaturedProductIds] = useState<string[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<AvailableProduct[]>([]);
   // Cover photo is owned by its dedicated endpoint — updated independently
   // of the rest of the form (no "Save changes" required).
   const [coverPhotoUrl, setCoverPhotoUrl] = useState<string | null>(null);
   const [coverUploading, setCoverUploading] = useState(false);
   const [coverError, setCoverError] = useState('');
   const coverFileRef = useRef<HTMLInputElement>(null);
-  // Profile photo — separate from the dashboard's realtorPhotoUrl. Owned by
-  // a dedicated endpoint so the realtor can swap their public-page face
+  // Profile photo — separate from the dashboard's sellerPhotoUrl. Owned by
+  // a dedicated endpoint so the seller can swap their public-page face
   // without disturbing the dashboard chrome / intake / booking photo.
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const [profilePhotoUploading, setProfilePhotoUploading] = useState(false);
@@ -169,8 +169,8 @@ export function ProfileEditor({ slug }: { slug: string }) {
     setEnabled(data.enabled !== false);
     setHeadline(typeof data.headline === 'string' ? data.headline : '');
     setShowIntake(data.showIntake !== false);
-    setShowTours(data.showTours !== false);
-    setShowProperties(data.showProperties !== false);
+    setShowDemos(data.showDemos !== false);
+    setShowProducts(data.showProducts !== false);
     setIsVerified(data.isVerified === true);
     {
       const raw =
@@ -203,16 +203,16 @@ export function ProfileEditor({ slug }: { slug: string }) {
           }))
         : [],
     );
-    setFeaturedPropertyIds(
-      Array.isArray(data.featuredPropertyIds)
-        ? (data.featuredPropertyIds as unknown[]).filter(
+    setFeaturedProductIds(
+      Array.isArray(data.featuredProductIds)
+        ? (data.featuredProductIds as unknown[]).filter(
             (id): id is string => typeof id === 'string' && id.length > 0,
           )
         : [],
     );
-    if (Array.isArray(data.availableProperties)) {
-      setAvailableProperties(
-        (data.availableProperties as Partial<AvailableProperty>[]).map((p) => ({
+    if (Array.isArray(data.availableProducts)) {
+      setAvailableProducts(
+        (data.availableProducts as Partial<AvailableProduct>[]).map((p) => ({
           id: typeof p.id === 'string' ? p.id : '',
           address: typeof p.address === 'string' ? p.address : '',
           city: typeof p.city === 'string' ? p.city : null,
@@ -234,7 +234,7 @@ export function ProfileEditor({ slug }: { slug: string }) {
 
   async function handleCoverFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ''; // let the realtor re-pick the same file
+    e.target.value = ''; // let the seller re-pick the same file
     if (!file) return;
 
     // Client-side check is a UX convenience — the server check is authoritative.
@@ -354,10 +354,10 @@ export function ProfileEditor({ slug }: { slug: string }) {
   }
 
   // Drag-to-reorder for all three lists (links, videos, featured
-  // properties). The array order is the render order on the public page,
+  // products). The array order is the render order on the public page,
   // so reordering here IS the feature — Save changes persists. PointerSensor
   // handles mouse + pen, TouchSensor handles mobile (a 200ms hold so the
-  // realtor can still scroll); 5px activation distance on the pointer
+  // seller can still scroll); 5px activation distance on the pointer
   // keeps small fidget clicks from starting a drag accidentally. One
   // sensor set, used by every DndContext on the page.
   const dndSensors = useSensors(
@@ -391,7 +391,7 @@ export function ProfileEditor({ slug }: { slug: string }) {
   function handleFeaturedDragEnd(e: DragEndEvent) {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
-    setFeaturedPropertyIds((ids) => {
+    setFeaturedProductIds((ids) => {
       const oldIndex = ids.indexOf(String(active.id));
       const newIndex = ids.indexOf(String(over.id));
       if (oldIndex < 0 || newIndex < 0) return ids;
@@ -412,7 +412,7 @@ export function ProfileEditor({ slug }: { slug: string }) {
   }
 
   function toggleFeatured(id: string) {
-    setFeaturedPropertyIds((ids) => {
+    setFeaturedProductIds((ids) => {
       if (ids.includes(id)) return ids.filter((x) => x !== id);
       if (ids.length >= MAX_FEATURED) return ids; // capped — checkbox stays off
       return [...ids, id];
@@ -420,13 +420,13 @@ export function ProfileEditor({ slug }: { slug: string }) {
   }
 
   // Index for O(1) lookup when rendering the featured-order list (it reads
-  // the available-properties metadata by id).
-  const propertyById = new Map(availableProperties.map((p) => [p.id, p]));
+  // the available-products metadata by id).
+  const productById = new Map(availableProducts.map((p) => [p.id, p]));
   // Featured rows in render order — drops ids that are no longer in the
   // active-listing set so the editor doesn't show ghost entries.
-  const featuredRows = featuredPropertyIds
-    .map((id) => propertyById.get(id))
-    .filter((p): p is AvailableProperty => Boolean(p));
+  const featuredRows = featuredProductIds
+    .map((id) => productById.get(id))
+    .filter((p): p is AvailableProduct => Boolean(p));
 
   const publicUrl = origin ? `${origin}/p/${slug}` : `/p/${slug}`;
 
@@ -485,13 +485,13 @@ export function ProfileEditor({ slug }: { slug: string }) {
           enabled,
           headline: headline.trim() || null,
           showIntake,
-          showTours,
-          showProperties,
+          showDemos,
+          showProducts,
           isVerified,
           socialLinks: cleanedSocial,
           customLinks: cleanedLinks,
           videos: cleanedVideos,
-          featuredPropertyIds,
+          featuredProductIds,
         }),
       });
       if (!res.ok) {
@@ -532,7 +532,7 @@ export function ProfileEditor({ slug }: { slug: string }) {
     <form onSubmit={handleSave} className="space-y-10">
       {/* ── Share ──────────────────────────────────────────────────────────
           Sits ABOVE the tabs — the URL and "view live" are always relevant
-          regardless of which tab the realtor is on. The page-live toggle
+          regardless of which tab the seller is on. The page-live toggle
           also lives here because it's a page-wide kill switch, not a tab
           concern. ──────────────────────────────────────────────────────── */}
       <section className="space-y-4">
@@ -856,18 +856,18 @@ export function ProfileEditor({ slug }: { slug: string }) {
                 help="The button to start an application — your main way to capture a lead."
               />
               <ToggleRow
-                id="showTours"
-                checked={showTours}
-                onChange={setShowTours}
-                label="Book a tour"
-                help="A link to your tour-booking page."
+                id="showDemos"
+                checked={showDemos}
+                onChange={setShowDemos}
+                label="Book a demo"
+                help="A link to your demo-booking page."
               />
               <ToggleRow
-                id="showProperties"
-                checked={showProperties}
-                onChange={setShowProperties}
+                id="showProducts"
+                checked={showProducts}
+                onChange={setShowProducts}
                 label="Featured listings"
-                help="The properties you've picked in Content. Hidden if none are selected."
+                help="The products you've picked in Content. Hidden if none are selected."
               />
             </div>
           </section>
@@ -932,7 +932,7 @@ export function ProfileEditor({ slug }: { slug: string }) {
             <header className="space-y-1">
               <h2 className="text-base font-semibold">Videos</h2>
               <p className={BODY_MUTED}>
-                Paste a YouTube link — a property tour, a market update — and it
+                Paste a YouTube link — a product demo, a market update — and it
                 shows as a playable thumbnail in a &ldquo;Watch&rdquo; section.
                 Drag to reorder.
               </p>
@@ -979,10 +979,10 @@ export function ProfileEditor({ slug }: { slug: string }) {
             )}
           </section>
 
-          {/* Featured properties */}
+          {/* Featured products */}
           <section className="space-y-4 border-t border-border/60 pt-10">
             <header className="space-y-1">
-              <h2 className="text-base font-semibold">Featured properties</h2>
+              <h2 className="text-base font-semibold">Featured products</h2>
               <p className={BODY_MUTED}>
                 Pick which active listings show on your page, and the order
                 they show in. Up to {MAX_FEATURED}.
@@ -990,10 +990,10 @@ export function ProfileEditor({ slug }: { slug: string }) {
             </header>
 
             <FeaturedPicker
-              available={availableProperties}
-              selectedIds={featuredPropertyIds}
+              available={availableProducts}
+              selectedIds={featuredProductIds}
               onToggle={toggleFeatured}
-              maxReached={featuredPropertyIds.length >= MAX_FEATURED}
+              maxReached={featuredProductIds.length >= MAX_FEATURED}
             />
 
             {featuredRows.length > 0 && (
@@ -1012,9 +1012,9 @@ export function ProfileEditor({ slug }: { slug: string }) {
                   >
                     <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70">
                       {featuredRows.map((p) => (
-                        <SortablePropertyRow
+                        <SortableProductRow
                           key={p.id}
-                          property={p}
+                          product={p}
                           onRemove={() => toggleFeatured(p.id)}
                         />
                       ))}
@@ -1081,9 +1081,9 @@ function ToggleRow({
 }
 
 /** The shared drag-handle button. Used by every sortable row (links,
- *  videos, properties). Reveals on row hover on desktop, always visible on
+ *  videos, products). Reveals on row hover on desktop, always visible on
  *  touch — matches the restraint guidance in STYLESHEET.md (the row
- *  doesn't carry chrome until the realtor reaches for it). */
+ *  doesn't carry chrome until the seller reaches for it). */
 function DragHandle({
   className,
   isDragging,
@@ -1152,7 +1152,7 @@ function LinkRow({
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ''; // let the realtor re-pick the same file
+    e.target.value = ''; // let the seller re-pick the same file
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
       setUploadError('Image must be under 2MB.');
@@ -1365,14 +1365,14 @@ function VideoRow({
   );
 }
 
-/** Sortable wrapper around <PropertyOrderRow>. Used for the curated
+/** Sortable wrapper around <ProductOrderRow>. Used for the curated
  *  featured-listings list in render order. */
-function SortablePropertyRow(props: {
-  property: AvailableProperty;
+function SortableProductRow(props: {
+  product: AvailableProduct;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: props.property.id });
+    useSortable({ id: props.product.id });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -1382,7 +1382,7 @@ function SortablePropertyRow(props: {
 
   return (
     <li ref={setNodeRef} style={style} className="bg-card">
-      <PropertyOrderRow
+      <ProductOrderRow
         {...props}
         dragHandleProps={{ ...attributes, ...listeners }}
         isDragging={isDragging}
@@ -1391,34 +1391,34 @@ function SortablePropertyRow(props: {
   );
 }
 
-function PropertyOrderRow({
-  property,
+function ProductOrderRow({
+  product,
   onRemove,
   dragHandleProps,
   isDragging,
 }: {
-  property: AvailableProperty;
+  product: AvailableProduct;
   onRemove: () => void;
   dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>;
   isDragging?: boolean;
 }) {
-  const locality = [property.city, property.stateRegion].filter(Boolean).join(', ');
-  const price = formatPrice(property.listPrice);
+  const locality = [product.city, product.stateRegion].filter(Boolean).join(', ');
+  const price = formatPrice(product.listPrice);
 
   return (
     <div className={cn('group flex items-center gap-3 px-3 py-3', isDragging && 'cursor-grabbing')}>
       {dragHandleProps && <DragHandle isDragging={isDragging} {...dragHandleProps} />}
 
       <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border/60 bg-muted/30">
-        {property.photo ? (
-          <img src={property.photo} alt="" className="h-full w-full object-cover" loading="lazy" />
+        {product.photo ? (
+          <img src={product.photo} alt="" className="h-full w-full object-cover" loading="lazy" />
         ) : (
           <Home size={16} className="text-muted-foreground/60" />
         )}
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">{property.address}</p>
+        <p className="truncate text-sm font-medium text-foreground">{product.address}</p>
         <p className="truncate text-xs text-muted-foreground">
           {locality}
           {locality && price && ' · '}
@@ -1438,7 +1438,7 @@ function PropertyOrderRow({
   );
 }
 
-/** Checkbox-led picker for the featured-properties section. Lists every
+/** Checkbox-led picker for the featured-products section. Lists every
  *  active listing in the space; checking a row appends its id to the
  *  featured array; unchecking removes it. The reorder UI lives in a
  *  separate sortable list below — this picker is membership only. */
@@ -1448,7 +1448,7 @@ function FeaturedPicker({
   onToggle,
   maxReached,
 }: {
-  available: AvailableProperty[];
+  available: AvailableProduct[];
   selectedIds: string[];
   onToggle: (id: string) => void;
   maxReached: boolean;

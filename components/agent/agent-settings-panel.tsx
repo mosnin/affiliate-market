@@ -156,18 +156,18 @@ export function AgentSettingsPanel({ slug: _slug }: Props) {
             <div className={cn(
               'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
               settings.enabled
-                ? 'bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400'
+                ? 'bg-brand-subtle text-primary dark:bg-brand/20 dark:text-primary'
                 : 'bg-muted text-muted-foreground',
             )}>
               <Bot size={18} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <p className="font-semibold text-sm">Chippi</p>
+                <p className="font-semibold text-sm">Cola</p>
                 <span className={cn(
                   'text-[11px] font-semibold px-1.5 py-0.5 rounded-full',
                   settings.enabled
-                    ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400'
+                    ? 'bg-brand-subtle text-primary dark:bg-brand/20 dark:text-primary'
                     : 'bg-muted text-muted-foreground',
                 )}>
                   {settings.enabled ? 'ACTIVE' : 'PAUSED'}
@@ -218,7 +218,7 @@ export function AgentSettingsPanel({ slug: _slug }: Props) {
               </span>
               <span className={cn(
                 'font-medium',
-                usage.pct >= 90 ? 'text-destructive' : usage.pct >= 70 ? 'text-amber-500' : 'text-muted-foreground',
+                usage.pct >= 90 ? 'text-destructive' : usage.pct >= 70 ? 'text-muted-foreground' : 'text-muted-foreground',
               )}>
                 {usage.pct}% · resets in {timeUntil(usage.resetsAt)}
               </span>
@@ -227,7 +227,7 @@ export function AgentSettingsPanel({ slug: _slug }: Props) {
               <div
                 className={cn(
                   'h-full rounded-full transition-all',
-                  usage.pct >= 90 ? 'bg-destructive' : usage.pct >= 70 ? 'bg-amber-400' : 'bg-orange-500',
+                  usage.pct >= 90 ? 'bg-destructive' : usage.pct >= 70 ? 'bg-lead-warm' : 'bg-brand',
                 )}
                 style={{ width: `${usage.pct}%` }}
               />
@@ -256,7 +256,7 @@ export function AgentSettingsPanel({ slug: _slug }: Props) {
               className={cn(
                 'flex flex-col items-center px-4 py-2.5 rounded-lg border text-sm transition-all',
                 settings.dailyTokenBudget === preset.value
-                  ? 'border-orange-500 bg-orange-500/5 text-orange-600 dark:text-orange-400 font-semibold ring-1 ring-orange-500/20'
+                  ? 'border-primary/200 bg-brand/5 text-primary dark:text-primary font-semibold ring-1 ring-ring'
                   : 'border-border/70 bg-card text-foreground hover:bg-foreground/[0.04]',
               )}
             >
@@ -266,7 +266,7 @@ export function AgentSettingsPanel({ slug: _slug }: Props) {
           ))}
         </div>
         {savedField === 'budget' && (
-          <p className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 size={11} /> Saved</p>
+          <p className="text-xs text-positive flex items-center gap-1"><CheckCircle2 size={11} /> Saved</p>
         )}
       </div>
 

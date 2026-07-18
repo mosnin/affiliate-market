@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -17,20 +17,19 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
 
   // Ensure the key belongs to the user's space before deleting
-  const { data: existing } = await supabase
-    .from('McpApiKey')
-    .select('id')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const existing = await convex().query(api.infra.mcpApiKeys.existsForSpace, {
+    id,
+    spaceId: space.id,
+  });
 
   if (!existing)
     return NextResponse.json({ error: 'API key not found' }, { status: 404 });
 
-  const { error } = await supabase.from('McpApiKey').delete().eq('id', id);
-
-  if (error)
+  try {
+    await convex().mutation(api.infra.mcpApiKeys.deleteById, { id });
+  } catch {
     return NextResponse.json({ error: 'Failed to delete API key' }, { status: 500 });
+  }
 
   return NextResponse.json({ success: true });
 }

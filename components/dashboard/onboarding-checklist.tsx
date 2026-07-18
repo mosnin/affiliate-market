@@ -20,7 +20,7 @@ interface OnboardingChecklistProps {
   slug: string;
   hasLeads: boolean;
   hasContacts: boolean;
-  hasTours: boolean;
+  hasDemos: boolean;
   hasDeals: boolean;
 }
 
@@ -38,9 +38,9 @@ type Step = {
 // (e.g. a `dismissedOnboardingChecklist` column on the User table), but
 // that requires a schema migration. Keeping localStorage for now as a
 // low-priority known limitation.
-const STORAGE_KEY = 'chippi-onboarding-dismissed';
+const STORAGE_KEY = 'cola-onboarding-dismissed';
 
-export function OnboardingChecklist({ slug, hasLeads, hasContacts, hasTours, hasDeals }: OnboardingChecklistProps) {
+export function OnboardingChecklist({ slug, hasLeads, hasContacts, hasDemos, hasDeals }: OnboardingChecklistProps) {
   const [dismissed, setDismissed] = useState(true); // Start hidden to avoid flash
 
   useEffect(() => {
@@ -78,12 +78,12 @@ export function OnboardingChecklist({ slug, hasLeads, hasContacts, hasTours, has
       completed: hasContacts,
     },
     {
-      id: 'first-tour',
-      label: 'Schedule a tour',
-      description: 'Book a property showing with a prospect',
+      id: 'first-demo',
+      label: 'Schedule a demo',
+      description: 'Book a product showing with a prospect',
       href: `${base}/calendar`,
       icon: CalendarDays,
-      completed: hasTours,
+      completed: hasDemos,
     },
     {
       id: 'first-deal',
@@ -120,7 +120,7 @@ export function OnboardingChecklist({ slug, hasLeads, hasContacts, hasTours, has
             </div>
             <div>
               <p className="text-sm font-semibold text-foreground">
-                {allDone ? 'You\'re all set!' : 'Get started with Chippi'}
+                {allDone ? 'You\'re all set!' : 'Get started with Cola'}
               </p>
               <p className="text-xs text-muted-foreground">
                 {allDone
@@ -162,7 +162,7 @@ export function OnboardingChecklist({ slug, hasLeads, hasContacts, hasTours, has
               )}
             >
               {step.completed ? (
-                <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                <CheckCircle2 size={16} className="text-positive dark:text-positive flex-shrink-0" />
               ) : (
                 <Circle size={16} className="text-muted-foreground/40 flex-shrink-0 group-hover:text-muted-foreground" />
               )}

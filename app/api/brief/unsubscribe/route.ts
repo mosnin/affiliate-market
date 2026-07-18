@@ -11,23 +11,21 @@
  * "Unsubscribe" affordance (paired with the List-Unsubscribe-Post:
  * List-Unsubscribe=One-Click header in the email).
  *
- * The realtor's master `notifications` toggle is NOT touched. Brief
+ * The seller's master `notifications` toggle is NOT touched. Brief
  * unsubscribe is narrow — they keep new-lead alerts.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 async function unsubscribe(token: string): Promise<NextResponse> {
   if (!token || typeof token !== 'string' || token.length < 8) {
     return NextResponse.json({ error: 'Invalid token.' }, { status: 400 });
   }
 
-  const { data: setting } = await supabase
-    .from('SpaceSetting')
-    .select('id, spaceId, briefEmail')
-    .eq('unsubscribeToken', token)
-    .maybeSingle();
+  const setting = await convex()
+    .query(api.workspace.settings.getByUnsubscribeToken, { token })
+    .catch(() => null);
 
   if (!setting) {
     // Don't leak whether the token exists — same 200 either way so
@@ -36,7 +34,10 @@ async function unsubscribe(token: string): Promise<NextResponse> {
   }
 
   if (setting.briefEmail) {
-    await supabase.from('SpaceSetting').update({ briefEmail: false }).eq('id', setting.id);
+    await convex().mutation(api.workspace.settings.setBriefEmailById, {
+      id: setting.id,
+      briefEmail: false,
+    });
   }
 
   return htmlResponse('You&#39;re unsubscribed from the daily brief.');
@@ -67,7 +68,7 @@ function htmlResponse(message: string): NextResponse {
 <html>
 <head><meta charset="utf-8"><title>Unsubscribed</title></head>
 <body style="font-family:-apple-system,sans-serif;text-align:center;padding:48px 16px;color:#111827">
-  <p style="font-size:14px;color:#6b7280;margin:0 0 12px">Chippi</p>
+  <p style="font-size:14px;color:#6b7280;margin:0 0 12px">Cola</p>
   <p style="font-size:18px;margin:0">${message}</p>
 </body>
 </html>`;

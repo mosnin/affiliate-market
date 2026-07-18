@@ -1,10 +1,10 @@
 /**
- * The public realtor "link in bio" page rendered at /p/[slug].
+ * The public seller "link in bio" page rendered at /p/[slug].
  *
  * Layout: a single narrow column. A full-bleed header photo fades into the
  * page; identity and socials sit just below it. Then clearly separated,
- * labelled sections — the application (the conversion, in the realtor's
- * accent colour), tour booking, featured videos, listings, and links.
+ * labelled sections — the application (the conversion, in the seller's
+ * accent colour), demo booking, featured videos, listings, and links.
  *
  * On desktop the column becomes a centred card; on mobile it's full-bleed.
  * Branding (logo, accent colour, light/dark) is inherited from SpaceSetting
@@ -30,7 +30,7 @@ import { cn, safeHref } from '@/lib/utils';
 import { pickContrastColor } from '@/lib/color';
 import { parseYouTubeId, youTubeThumbnail, faviconUrl } from '@/lib/profile-page';
 
-export interface PublicProperty {
+export interface PublicProduct {
   id: string;
   address: string;
   city: string | null;
@@ -58,18 +58,18 @@ interface PublicProfileProps {
   accentColor: string;
   darkMode: boolean;
   showIntake: boolean;
-  showTours: boolean;
+  showDemos: boolean;
   customLinks: Array<{ id: string; label: string; url: string; thumbnail?: string }>;
   videos: PublicVideo[];
-  /** Realtor-curated hero image. When set it becomes the full-bleed header
+  /** Seller-curated hero image. When set it becomes the full-bleed header
    *  and the agent photo demotes to a round avatar centered below. When null,
    *  the agent photo stretches as the hero (the original behavior). On
    *  desktop, this is ALSO the blur source for the page background. */
   coverPhotoUrl: string | null;
-  /** Small blue checkmark next to the realtor's name. Realtor-controlled
+  /** Small blue checkmark next to the seller's name. Seller-controlled
    *  toggle in the editor; defaults to false if the column doesn't exist. */
   isVerified: boolean;
-  properties: PublicProperty[];
+  products: PublicProduct[];
   hidePoweredBy: boolean;
 }
 
@@ -150,7 +150,7 @@ function SocialIcon({ platform }: { platform: string }) {
 }
 
 /** Closed platform list. The order is the render order in the icon row —
- *  Instagram first (where realtors live) → Facebook → X → LinkedIn →
+ *  Instagram first (where sellers live) → Facebook → X → LinkedIn →
  *  YouTube → TikTok → Threads → "Personal site" last. The editor accepts
  *  these keys only; the renderer iterates this list (not the entries) so
  *  the order is stable regardless of object-key insertion. */
@@ -238,22 +238,22 @@ function VideoCard({ video }: { video: PublicVideo }) {
   );
 }
 
-/** A single property card inside the carousel. Image-led; fixed width so
+/** A single product card inside the carousel. Image-led; fixed width so
  *  the carousel hints a peek of the next card at the right edge on mobile.
- *  When a property has no photo we render a tasteful muted placeholder
+ *  When a product has no photo we render a tasteful muted placeholder
  *  (Home glyph) rather than a broken-image gap. The whole card is a link
  *  when `listingUrl` is set; otherwise it's a static surface. */
-function PropertyCard({ property }: { property: PublicProperty }) {
-  const cover = property.photos?.[0] ?? null;
-  const locality = [property.city, property.stateRegion].filter(Boolean).join(', ');
-  const price = formatPrice(property.listPrice);
+function ProductCard({ product }: { product: PublicProduct }) {
+  const cover = product.photos?.[0] ?? null;
+  const locality = [product.city, product.stateRegion].filter(Boolean).join(', ');
+  const price = formatPrice(product.listPrice);
 
   const inner = (
     <>
       {cover ? (
         <img
           src={cover}
-          alt={property.address}
+          alt={product.address}
           loading="lazy"
           decoding="async"
           className="aspect-[16/9] w-full object-cover"
@@ -267,7 +267,7 @@ function PropertyCard({ property }: { property: PublicProperty }) {
         </div>
       )}
       <div className="px-4 py-3">
-        <p className="truncate text-sm font-medium text-foreground">{property.address}</p>
+        <p className="truncate text-sm font-medium text-foreground">{product.address}</p>
         {locality && <p className="truncate text-xs text-muted-foreground">{locality}</p>}
         {price && (
           <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{price}</p>
@@ -281,14 +281,14 @@ function PropertyCard({ property }: { property: PublicProperty }) {
   // canonical card border/radius vocabulary, and `sm:hover:-translate-y-0.5`
   // so it lifts on desktop only (mobile gets no hover state). `snap-start`
   // pairs with the scroller's `snap-x mandatory` to lock each card into
-  // place as the realtor swipes.
+  // place as the seller swipes.
   const slideClass =
     'block w-[260px] shrink-0 snap-start overflow-hidden rounded-2xl border border-border/70 bg-card sm:transition-transform sm:duration-150 sm:hover:-translate-y-0.5';
 
-  if (property.listingUrl) {
+  if (product.listingUrl) {
     return (
       <a
-        href={safeHref(property.listingUrl)}
+        href={safeHref(product.listingUrl)}
         target="_blank"
         rel="noopener noreferrer"
         className={slideClass}
@@ -346,12 +346,12 @@ export function PublicProfile({
   accentColor,
   darkMode,
   showIntake,
-  showTours,
+  showDemos,
   customLinks,
   videos,
   coverPhotoUrl,
   isVerified,
-  properties,
+  products,
   hidePoweredBy,
 }: PublicProfileProps) {
   // Render the icon row in canonical platform order (not object-key
@@ -368,8 +368,8 @@ export function PublicProfile({
   const playableVideos = videos.filter((v) => parseYouTubeId(v.url));
   const ctaTextColor = pickContrastColor(accentColor);
 
-  // Pick the best image for the desktop blur fill: realtor-curated cover
-  // wins; otherwise the realtor's face; otherwise null (we fall through to
+  // Pick the best image for the desktop blur fill: seller-curated cover
+  // wins; otherwise the seller's face; otherwise null (we fall through to
   // a neutral gradient). Mobile ignores this — a heavy blur on a phone is
   // expensive and the background fights the card on a small screen.
   const blurSource = coverPhotoUrl || agentPhoto || null;
@@ -495,7 +495,7 @@ export function PublicProfile({
         {/* ── Body ───────────────────────────────────────────────────────── */}
         <div className="px-6 pb-10">
           {/* Primary actions */}
-          {(showIntake || showTours) && (
+          {(showIntake || showDemos) && (
             <div className="mt-7 space-y-3">
               {showIntake && (
                 <a
@@ -515,14 +515,14 @@ export function PublicProfile({
                   />
                 </a>
               )}
-              {showTours && (
+              {showDemos && (
                 <a
                   href={`/book/${slug}`}
                   className="group flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-5 py-4 transition-colors hover:bg-muted/30"
                 >
                   <CalendarCheck size={18} className="shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">Book a tour</p>
+                    <p className="text-sm font-medium text-foreground">Book a demo</p>
                     <p className="truncate text-xs text-muted-foreground">
                       Pick a time that works for you.
                     </p>
@@ -553,18 +553,18 @@ export function PublicProfile({
               cards align with the page padding but can scroll past it; the
               trailing card sits flush with the edge instead of clipping at
               the page padding. `snap-x mandatory` + `snap-start` on each
-              card locks the card to the left edge as the realtor swipes.
+              card locks the card to the left edge as the seller swipes.
               `no-scrollbar` hides the scrollbar — the peek of the next card
               is the affordance, not chrome. */}
-          {properties.length > 0 && (
+          {products.length > 0 && (
             <section className="mt-10 space-y-4">
               <SectionHeader>Listings</SectionHeader>
               <div
                 className="-mx-6 flex snap-x snap-mandatory gap-3 overflow-x-auto px-6 pb-2 no-scrollbar"
                 style={{ scrollPaddingLeft: '1.5rem', scrollPaddingRight: '1.5rem' }}
               >
-                {properties.map((p) => (
-                  <PropertyCard key={p.id} property={p} />
+                {products.map((p) => (
+                  <ProductCard key={p.id} product={p} />
                 ))}
               </div>
             </section>
@@ -593,7 +593,7 @@ export function PublicProfile({
             </a>
           </div>
 
-          {/* Powered by Chippi — free tier only; paid plans are white-label. */}
+          {/* Powered by Cola — free tier only; paid plans are white-label. */}
           {!hidePoweredBy && (
             <footer className="mt-6 flex items-center justify-center gap-1.5 opacity-40">
               <span className="text-[10px] text-muted-foreground">Powered by</span>

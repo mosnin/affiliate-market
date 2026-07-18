@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { cn } from '@/lib/utils';
 import { H1, TITLE_FONT, BODY_MUTED, PRIMARY_PILL } from '@/lib/typography';
 import { AgentsGrid } from '@/components/agents/agents-grid';
@@ -16,32 +16,27 @@ export default async function AgentsPage({
 }) {
   const { slug } = await params;
   const { userId } = await auth();
-  if (!userId) redirect('/login/realtor');
+  if (!userId) redirect('/login/seller');
 
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
   // Verify the authenticated user owns this space.
-  const { data: spaceOwner } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .eq('id', space.ownerId)
-    .maybeSingle();
-  if (!spaceOwner) notFound();
+  const spaceOwner = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: userId })
+    .catch(() => null);
+  if (!spaceOwner || spaceOwner.id !== space.ownerId) notFound();
 
-  const { data, error } = await supabase
-    .from('CustomAgent')
-    .select('*')
-    .eq('spaceId', space.id)
-    .eq('isActive', true)
-    .order('createdAt', { ascending: false });
-
-  if (error) {
+  let data: CustomAgent[] = [];
+  try {
+    data = (await convex().query(api.agent.customAgents.listActiveBySpace, {
+      spaceId: space.id,
+    })) as CustomAgent[];
+  } catch (error) {
     console.error('[agents/page] query error:', error);
   }
 
-  const agents = (data ?? []) as CustomAgent[];
+  const agents = data ?? [];
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12">

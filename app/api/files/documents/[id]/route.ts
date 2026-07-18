@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { uploadObject, deleteObject, getObjectText } from '@/lib/storage';
 import { DOC_MIME } from '../route';
@@ -21,14 +21,11 @@ export const runtime = 'nodejs';
 const MAX_DOC_BYTES = 1_000_000;
 const MAX_TITLE_LEN = 200;
 
+/** Load an editor document (File with mimeType=text/markdown) by id+space.
+ *  Returns the row, or null when missing/not-a-doc; throws on a backend error
+ *  (callers catch and 500), mirroring the prior `{ data, error }` split. */
 function loadDoc(id: string, spaceId: string) {
-  return supabase
-    .from('File')
-    .select('id, spaceId, storageKey, name, createdAt')
-    .eq('id', id)
-    .eq('spaceId', spaceId)
-    .eq('mimeType', DOC_MIME)
-    .maybeSingle();
+  return convex().query(api.infra.files.getDocByIdForSpace, { id, spaceId });
 }
 
 export async function GET(
@@ -41,9 +38,11 @@ export async function GET(
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { id } = await params;
-  const { data: doc, error } = await loadDoc(id, space.id);
-  if (error) {
-    logger.error('[files/documents/id] lookup failed', { id }, error);
+  let doc;
+  try {
+    doc = await loadDoc(id, space.id);
+  } catch (err) {
+    logger.error('[files/documents/id] lookup failed', { id }, err as Error);
     return NextResponse.json({ error: 'Failed to load document' }, { status: 500 });
   }
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -92,9 +91,11 @@ export async function PUT(
     return NextResponse.json({ error: 'Document is too large' }, { status: 413 });
   }
 
-  const { data: doc, error } = await loadDoc(id, space.id);
-  if (error) {
-    logger.error('[files/documents/id] update lookup failed', { id }, error);
+  let doc;
+  try {
+    doc = await loadDoc(id, space.id);
+  } catch (err) {
+    logger.error('[files/documents/id] update lookup failed', { id }, err as Error);
     return NextResponse.json({ error: 'Failed to load document' }, { status: 500 });
   }
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -112,14 +113,15 @@ export async function PUT(
     return NextResponse.json({ error: 'Failed to save document' }, { status: 500 });
   }
 
-  const { error: updateError } = await supabase
-    .from('File')
-    .update({ name: title, sizeBytes: bytes })
-    .eq('id', id)
-    .eq('spaceId', space.id);
-
-  if (updateError) {
-    logger.error('[files/documents/id] row update failed', { id }, updateError);
+  try {
+    await convex().mutation(api.infra.files.updateDocMeta, {
+      id,
+      spaceId: space.id,
+      name: title,
+      sizeBytes: bytes,
+    });
+  } catch (updateError) {
+    logger.error('[files/documents/id] row update failed', { id }, updateError as Error);
     return NextResponse.json({ error: 'Failed to save document' }, { status: 500 });
   }
 
@@ -136,21 +138,22 @@ export async function DELETE(
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { id } = await params;
-  const { data: doc, error } = await loadDoc(id, space.id);
-  if (error) {
-    logger.error('[files/documents/id] delete lookup failed', { id }, error);
+  let doc;
+  try {
+    doc = await loadDoc(id, space.id);
+  } catch (err) {
+    logger.error('[files/documents/id] delete lookup failed', { id }, err as Error);
     return NextResponse.json({ error: 'Failed to load document' }, { status: 500 });
   }
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { error: delError } = await supabase
-    .from('File')
-    .delete()
-    .eq('id', id)
-    .eq('spaceId', space.id);
-
-  if (delError) {
-    logger.error('[files/documents/id] delete failed', { id }, delError);
+  try {
+    await convex().mutation(api.infra.files.deleteByIdForSpace, {
+      id,
+      spaceId: space.id,
+    });
+  } catch (delError) {
+    logger.error('[files/documents/id] delete failed', { id }, delError as Error);
     return NextResponse.json({ error: 'Failed to delete document' }, { status: 500 });
   }
 

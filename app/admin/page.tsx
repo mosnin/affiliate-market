@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import {
   Users,
   CheckCircle2,
@@ -51,8 +52,8 @@ export default async function AdminOverviewPage() {
     usersWithSpace = 0,
     totalContacts = 0,
     totalLeads = 0,
-    totalBrokerages = 0,
-    activeBrokerages = 0,
+    totalCompanies = 0,
+    activeCompanies = 0,
     totalDeals = 0,
     totalPipelineValue = 0,
     signupsLast7 = 0,
@@ -69,8 +70,8 @@ export default async function AdminOverviewPage() {
   // Feature usage metrics
   let spacesWithLeads = 0,
     spacesWithDeals = 0,
-    spacesWithTours = 0,
-    totalTours = 0,
+    spacesWithDemos = 0,
+    totalDemos = 0,
     totalFollowUps = 0,
     totalSpaces = 0;
 
@@ -116,7 +117,7 @@ export default async function AdminOverviewPage() {
   let inactiveWorkspacesTotal = 0;
   let signupsByDay: { date: string; count: number }[] = [];
   let recentActivity: {
-    type: 'signup' | 'lead' | 'deal' | 'brokerage';
+    type: 'signup' | 'lead' | 'deal' | 'company';
     label: string;
     detail: string;
     time: string;
@@ -129,8 +130,8 @@ export default async function AdminOverviewPage() {
       withSpaceRes,
       contactsRes,
       leadsRes,
-      brokerageRes,
-      activeBrokerageRes,
+      companyRes,
+      activeCompanyRes,
       dealsRes,
       signups7Res,
       signups30Res,
@@ -139,7 +140,7 @@ export default async function AdminOverviewPage() {
       signupsRaw,
       recentLeads,
       recentDeals,
-      recentBrokerages,
+      recentCompanies,
     ] = await Promise.all([
       supabase.from('User').select('*', { count: 'exact', head: true }),
       supabase.from('User').select('*', { count: 'exact', head: true }).eq('onboard', true),
@@ -149,9 +150,9 @@ export default async function AdminOverviewPage() {
         .from('Contact')
         .select('*', { count: 'exact', head: true })
         .contains('tags', ['application-link']),
-      supabase.from('Brokerage').select('*', { count: 'exact', head: true }),
+      supabase.from('Company').select('*', { count: 'exact', head: true }),
       supabase
-        .from('Brokerage')
+        .from('Company')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'active'),
       supabase.from('Deal').select('value'),
@@ -192,9 +193,9 @@ export default async function AdminOverviewPage() {
         .select('title, value, createdAt, Space(name)')
         .order('createdAt', { ascending: false })
         .limit(3),
-      // Recent brokerages for activity feed
+      // Recent companies for activity feed
       supabase
-        .from('Brokerage')
+        .from('Company')
         .select('name, createdAt')
         .order('createdAt', { ascending: false })
         .limit(2),
@@ -205,8 +206,8 @@ export default async function AdminOverviewPage() {
     usersWithSpace = withSpaceRes.count ?? 0;
     totalContacts = contactsRes.count ?? 0;
     totalLeads = leadsRes.count ?? 0;
-    totalBrokerages = brokerageRes.count ?? 0;
-    activeBrokerages = activeBrokerageRes.count ?? 0;
+    totalCompanies = companyRes.count ?? 0;
+    activeCompanies = activeCompanyRes.count ?? 0;
     signupsLast7 = signups7Res.count ?? 0;
     signupsLast30 = signups30Res.count ?? 0;
     leadsLast7 = leads7Res.count ?? 0;
@@ -262,11 +263,11 @@ export default async function AdminOverviewPage() {
         time: d.createdAt,
       });
     }
-    for (const b of (recentBrokerages.data ?? []) as any[]) {
+    for (const b of (recentCompanies.data ?? []) as any[]) {
       activities.push({
-        type: 'brokerage',
+        type: 'company',
         label: b.name,
-        detail: 'Brokerage created',
+        detail: 'Company created',
         time: b.createdAt,
       });
     }
@@ -297,12 +298,12 @@ export default async function AdminOverviewPage() {
 
     // ── Feature usage metrics ─────────────────────────────────────────
     try {
-      const [contactSpaces, dealSpaces, tourSpaces, toursCount, followUpsCount] =
+      const [contactSpaces, dealSpaces, demoSpaces, demosCount, followUpsCount] =
         await Promise.all([
           supabase.from('Contact').select('spaceId').limit(1000),
           supabase.from('Deal').select('spaceId').limit(1000),
-          supabase.from('Tour').select('spaceId').limit(1000),
-          supabase.from('Tour').select('*', { count: 'exact', head: true }),
+          convex().query(api.demos.demos.listSpaceIds, { limit: 1000 }),
+          convex().query(api.demos.demos.countAll, {}),
           supabase
             .from('Contact')
             .select('*', { count: 'exact', head: true })
@@ -314,10 +315,10 @@ export default async function AdminOverviewPage() {
       spacesWithDeals = new Set(
         (dealSpaces.data ?? []).map((r: any) => r.spaceId).filter(Boolean)
       ).size;
-      spacesWithTours = new Set(
-        (tourSpaces.data ?? []).map((r: any) => r.spaceId).filter(Boolean)
+      spacesWithDemos = new Set(
+        demoSpaces.map((r) => r.spaceId).filter(Boolean)
       ).size;
-      totalTours = toursCount.count ?? 0;
+      totalDemos = demosCount;
       totalFollowUps = followUpsCount.count ?? 0;
     } catch (e) {
       console.error('[admin] Feature usage queries failed', e);
@@ -491,7 +492,7 @@ export default async function AdminOverviewPage() {
     signup: UserPlus,
     lead: PhoneIncoming,
     deal: Briefcase,
-    brokerage: Building2,
+    company: Building2,
   };
 
   return (
@@ -500,7 +501,7 @@ export default async function AdminOverviewPage() {
       <header className="space-y-1.5">
         <p className={BODY_MUTED}>Platform.</p>
         <h1 className={H1} style={TITLE_FONT}>
-          Chippi admin
+          Cola admin
         </h1>
         <p className={BODY_MUTED}>
           {totalUsers} users · {activeSubscriptions} active · ${mrr.toLocaleString()} MRR.
@@ -534,9 +535,9 @@ export default async function AdminOverviewPage() {
             sub: `${activeSubscriptions} active`,
           },
           {
-            label: 'Brokerages',
-            value: totalBrokerages,
-            sub: `${activeBrokerages} active`,
+            label: 'Companies',
+            value: totalCompanies,
+            sub: `${activeCompanies} active`,
           },
           {
             label: 'Total leads',
@@ -565,7 +566,7 @@ export default async function AdminOverviewPage() {
             <p
               className={cn(
                 STAT_NUMBER_COMPACT,
-                alert && 'text-amber-600 dark:text-amber-400',
+                alert && 'text-muted-foreground dark:text-muted-foreground',
               )}
             >
               {value}
@@ -593,7 +594,7 @@ export default async function AdminOverviewPage() {
                 name={u.name || u.email}
                 email={u.email}
                 badge={`${u.daysLeft}d left`}
-                badgeClass="text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15"
+                badgeClass="text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15"
               />
             ))}
           </AtRiskCard>
@@ -612,7 +613,7 @@ export default async function AdminOverviewPage() {
                 name={u.name || u.email}
                 email={u.email}
                 badge={`${u.daysPastDue}d`}
-                badgeClass="text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15"
+                badgeClass="text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15"
               />
             ))}
           </AtRiskCard>
@@ -710,8 +711,8 @@ export default async function AdminOverviewPage() {
               {[
                 { label: 'Spaces with leads', value: spacesWithLeads, total: totalSpaces, icon: PhoneIncoming },
                 { label: 'Spaces with deals', value: spacesWithDeals, total: totalSpaces, icon: Briefcase },
-                { label: 'Spaces with tours', value: spacesWithTours, total: totalSpaces, icon: Calendar },
-                { label: 'Total tours booked', value: totalTours, total: null, icon: Calendar },
+                { label: 'Spaces with demos', value: spacesWithDemos, total: totalSpaces, icon: Calendar },
+                { label: 'Total demos booked', value: totalDemos, total: null, icon: Calendar },
                 { label: 'Follow-ups set', value: totalFollowUps, total: null, icon: Bell },
               ].map(({ label, value, total, icon: Icon }) => {
                 const pct = total && total > 0 ? Math.round((value / total) * 100) : null;
@@ -752,17 +753,17 @@ export default async function AdminOverviewPage() {
                 {
                   label: 'Hot',
                   value: hotLeads,
-                  pill: 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15',
+                  pill: 'text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15',
                 },
                 {
                   label: 'Warm',
                   value: warmLeads,
-                  pill: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+                  pill: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
                 },
                 {
                   label: 'Cold',
                   value: coldLeads,
-                  pill: 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
+                  pill: 'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15',
                 },
                 {
                   label: 'Unqualified',
@@ -839,8 +840,8 @@ export default async function AdminOverviewPage() {
                           className={cn(
                             'inline-flex text-[10px] font-medium rounded-full px-2 py-0.5',
                             user.onboard
-                              ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15'
-                              : 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+                              ? 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15'
+                              : 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
                           )}
                         >
                           {user.onboard ? 'Onboarded' : 'Pending'}

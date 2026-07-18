@@ -1,7 +1,7 @@
 /**
  * GET /api/sync?slug=<slug>
  *
- * Detects the realtor's connected CRM(s) and pulls records via Composio.
+ * Detects the seller's connected CRM(s) and pulls records via Composio.
  *
  * Unified contract:
  *   { connected: boolean, source: string | null, records: SyncRecord[] }
@@ -73,9 +73,9 @@ function mapToRecords(toolkit: LiveCrmToolkit, raw: unknown[]): SyncRecord[] {
     .map((item, idx) => {
       const obj = item as Record<string, unknown>;
 
-      // HubSpot: { id, properties: { firstname, lastname, email, phone, hs_lead_status, lastmodifieddate } }
+      // HubSpot: { id, products: { firstname, lastname, email, phone, hs_lead_status, lastmodifieddate } }
       if (toolkit === 'hubspot') {
-        const props = (obj.properties ?? obj) as Record<string, unknown>;
+        const props = (obj.products ?? obj) as Record<string, unknown>;
         const fn = String(props.firstname ?? props.first_name ?? '').trim();
         const ln = String(props.lastname ?? props.last_name ?? '').trim();
         return {

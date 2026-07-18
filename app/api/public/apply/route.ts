@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { redis } from '@/lib/redis';
 import { getSpaceFromSlug } from '@/lib/space';
 import { scoreLeadApplicationDynamic } from '@/lib/lead-scoring';
@@ -60,17 +60,17 @@ function parseBudgetToNumber(val: unknown): number | null {
  * Fallback chain:
  *   1. Dual config: SpaceSetting.[rental|buyer]FormConfig (custom per-agent)
  *   2. Legacy single: SpaceSetting.formConfig (if leadType matches)
- *   3. Brokerage dual: Brokerage.[brokerage[Rental|Buyer]FormConfig]
- *   4. Brokerage legacy: Brokerage.brokerageFormConfig (if leadType matches)
+ *   3. Company dual: Company.[company[Rental|Buyer]FormConfig]
+ *   4. Company legacy: Company.companyFormConfig (if leadType matches)
  *   5. null (use legacy schema / default template)
  */
 async function fetchFormConfigForLeadType(
   spaceId: string,
-  brokerageId: string | null,
+  companyId: string | null,
   leadType: 'rental' | 'buyer',
 ): Promise<IntakeFormConfig | null> {
   try {
-    const dual = await getFormConfigs(spaceId, brokerageId);
+    const dual = await getFormConfigs(spaceId, companyId);
 
     const config = leadType === 'buyer'
       ? dual.buyer
@@ -83,11 +83,7 @@ async function fetchFormConfigForLeadType(
 
   // Legacy fallback: try the single formConfig column directly
   try {
-    const { data: spaceSetting } = await supabase
-      .from('SpaceSetting')
-      .select('formConfig, formConfigSource')
-      .eq('spaceId', spaceId)
-      .maybeSingle();
+    const spaceSetting = await convex().query(api.workspace.settings.getBySpace, { spaceId });
 
     if (spaceSetting?.formConfig && spaceSetting.formConfigSource !== 'legacy') {
       const parsed = formConfigSchema.safeParse(spaceSetting.formConfig);
@@ -100,16 +96,12 @@ async function fetchFormConfigForLeadType(
       }
     }
 
-    // Fall back to brokerage-level config
-    if (brokerageId) {
-      const { data: brokerage } = await supabase
-        .from('Brokerage')
-        .select('brokerageFormConfig')
-        .eq('id', brokerageId)
-        .maybeSingle();
+    // Fall back to company-level config
+    if (companyId) {
+      const company = await convex().query(api.org.companies.getById, { id: companyId });
 
-      if (brokerage?.brokerageFormConfig) {
-        const parsed = formConfigSchema.safeParse(brokerage.brokerageFormConfig);
+      if (company?.companyFormConfig) {
+        const parsed = formConfigSchema.safeParse(company.companyFormConfig);
         if (parsed.success) {
           const configLeadType = parsed.data.leadType;
           if (configLeadType === leadType || configLeadType === 'general') {
@@ -330,7 +322,7 @@ export async function POST(req: NextRequest) {
     // Fetch the CORRECT config based on leadType (rental vs buyer)
     let formConfig: IntakeFormConfig | null = null;
     try {
-      const rawConfig = await fetchFormConfigForLeadType(space.id, space.brokerageId, resolvedLeadType);
+      const rawConfig = await fetchFormConfigForLeadType(space.id, space.companyId, resolvedLeadType);
       if (rawConfig) {
         // Re-validate the stored config to guard against corrupt data
         formConfig = formConfigSchema.parse(rawConfig);
@@ -350,11 +342,9 @@ export async function POST(req: NextRequest) {
         const scoringColumn = resolvedLeadType === 'buyer'
           ? 'buyerScoringModel'
           : 'rentalScoringModel';
-        const { data: scoringSettings } = await supabase
-          .from('SpaceSetting')
-          .select(scoringColumn)
-          .eq('spaceId', space.id)
-          .maybeSingle();
+        const scoringSettings = await convex().query(api.workspace.settings.getBySpace, {
+          spaceId: space.id,
+        });
         if (scoringSettings) {
           scoringModel = (scoringSettings as Record<string, unknown>)[scoringColumn] as ScoringModel | null;
         }
@@ -413,7 +403,7 @@ export async function POST(req: NextRequest) {
       // `data.budget` is the generic key emitted by the AI chat; the traditional
       // form uses `monthlyRent` (rental) or `buyerBudget` (buyer). Check all.
       contactBudget = parseBudgetToNumber(data.monthlyRent ?? data.buyerBudget ?? data.budget ?? data.monthlyGrossIncome ?? null);
-      contactPreferences = typeof data.propertyAddress === 'string' ? data.propertyAddress : null;
+      contactPreferences = typeof data.productAddress === 'string' ? data.productAddress : null;
       contactAddress = typeof data.currentAddress === 'string' ? data.currentAddress : null;
       privacyConsent = typeof data.privacyConsent === 'boolean' ? data.privacyConsent : undefined;
       slugForFingerprint = rawSlug;
@@ -445,7 +435,7 @@ export async function POST(req: NextRequest) {
           ? (payload.buyerBudget ?? payload.monthlyGrossIncome ?? null)
           : (payload.monthlyRent ?? payload.monthlyGrossIncome ?? null),
       );
-      contactPreferences = payload.propertyAddress ?? null;
+      contactPreferences = payload.productAddress ?? null;
       contactAddress = payload.currentAddress ?? null;
       privacyConsent = payload.privacyConsent;
       slugForFingerprint = payload.slug;
@@ -453,7 +443,7 @@ export async function POST(req: NextRequest) {
       // Build notes for backwards compat with existing lead cards
       const noteParts: string[] = [];
       if (payload.targetMoveInDate) noteParts.push(`Timeline: ${payload.targetMoveInDate}`);
-      if (payload.propertyAddress) noteParts.push(`Property: ${payload.propertyAddress}`);
+      if (payload.productAddress) noteParts.push(`Product: ${payload.productAddress}`);
       if (payload.employmentStatus) noteParts.push(`Employment: ${payload.employmentStatus}`);
       if (payload.monthlyGrossIncome != null) noteParts.push(`Income: $${payload.monthlyGrossIncome}/mo`);
       if (payload.additionalNotes) noteParts.push(payload.additionalNotes);
@@ -484,16 +474,20 @@ export async function POST(req: NextRequest) {
      // different phone, days later, it doesn't matter. The 5-minute name+phone
      // window below catches the "double-tap submit" case for emailless flows.
      if (contactEmail) {
-      const { data: emailMatches, error: emailDupErr } = await supabase
-        .from('Contact')
-        .select('id, applicationRef')
-        .eq('spaceId', space.id)
-        .ilike('email', contactEmail)
-        .contains('tags', ['application-link'])
-        .order('createdAt', { ascending: false })
-        .limit(1);
-      if (!emailDupErr && emailMatches && emailMatches.length > 0) {
-        const match = emailMatches[0] as { id: string; applicationRef: string | null };
+      // Best-effort (a lookup failure must not block a real submission): on
+      // error, skip dedup and fall through to insert — matching the old
+      // error-swallowing `if (!emailDupErr …)`.
+      let match: { id: string; applicationRef: string | null } | null = null;
+      try {
+        match = await convex().query(api.contacts.contacts.findApplicationByEmailInSpace, {
+          spaceId: space.id,
+          email: contactEmail,
+          tag: 'application-link',
+        });
+      } catch {
+        match = null;
+      }
+      if (match) {
         return NextResponse.json(
           {
             success: true,
@@ -505,18 +499,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Expanded window: 5 minutes (was 2 minutes)
+    // Expanded window: 5 minutes (was 2 minutes). A failure here THROWS (the old
+    // `if (dupError) throw dupError`), failing the request rather than risking a
+    // duplicate.
     const duplicateCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: existingRecentLeads, error: dupError } = await supabase
-      .from('Contact')
-      .select('id, phone, email, scoringStatus, leadScore, scoreLabel, scoreSummary, scoreDetails, applicationRef')
-      .eq('spaceId', space.id)
-      .eq('name', contactName)
-      .contains('tags', ['application-link'])
-      .gte('createdAt', duplicateCutoff)
-      .order('createdAt', { ascending: false })
-      .limit(5);
-    if (dupError) throw dupError;
+    const existingRecentLeads = await convex().query(
+      api.contacts.contacts.recentByNameAndTag,
+      {
+        spaceId: space.id,
+        name: contactName,
+        tag: 'application-link',
+        sinceIso: duplicateCutoff,
+        limit: 5,
+      },
+    );
 
     // Generate a unique application reference for the status page (64 hex chars = 256 bits entropy)
     const applicationRef = crypto.randomBytes(32).toString('hex');
@@ -528,7 +524,7 @@ export async function POST(req: NextRequest) {
       const normalizedPhone = normalizePhone(contactPhone);
       const normalizedEmail = (contactEmail ?? '').trim().toLowerCase();
 
-      const duplicate = (existingRecentLeads as Contact[]).find((lead) => {
+      const duplicate = (existingRecentLeads as unknown as Contact[]).find((lead) => {
         const phoneMatch =
           normalizePhone(lead.phone ?? '') !== '' &&
           normalizePhone(lead.phone ?? '') === normalizedPhone;
@@ -567,11 +563,9 @@ export async function POST(req: NextRequest) {
     let spaceBusinessName: string | null = null;
     let intakeConfirmationEmail: string | null = null;
     try {
-      const { data: spaceSetting } = await supabase
-        .from('SpaceSetting')
-        .select('privacyPolicyUrl, businessName, intakeConfirmationEmail')
-        .eq('spaceId', space.id)
-        .maybeSingle();
+      const spaceSetting = await convex().query(api.workspace.settings.getBySpace, {
+        spaceId: space.id,
+      });
       spacePrivacyPolicyUrl = spaceSetting?.privacyPolicyUrl ?? null;
       spaceBusinessName = spaceSetting?.businessName ?? null;
       intakeConfirmationEmail = spaceSetting?.intakeConfirmationEmail ?? null;
@@ -590,7 +584,7 @@ export async function POST(req: NextRequest) {
       address: contactAddress,
       notes: contactNotes,
       type: 'QUALIFICATION',
-      properties: [],
+      products: [],
       leadType: contactLeadType,
       formLeadType: contactLeadType,
       tags: [
@@ -616,23 +610,22 @@ export async function POST(req: NextRequest) {
       contactInsert.formConfigSnapshot = formConfigSnapshot;
     }
 
-    const { data: contacts, error: insertError } = await supabase
-      .from('Contact')
-      .insert(contactInsert)
-      .select();
-    if (insertError) throw insertError;
-    const contact = contacts![0] as Contact;
+    // contactInsert is a Record<string, unknown> built above; its camelCase keys
+    // are exactly the create-mutation args (id, spaceId, name, …, formConfigSnapshot).
+    const contact = (await convex().mutation(
+      api.contacts.contacts.create,
+      contactInsert as any,
+    )) as unknown as Contact;
     // Create initial status update record for audit trail
-    const { error: statusAuditErr } = await supabase
-      .from('ApplicationStatusUpdate')
-      .insert({
+    try {
+      await convex().mutation(api.portal.applicationStatus.create, {
         contactId: contact.id,
         spaceId: space.id,
         fromStatus: null,
         toStatus: 'received',
         note: null,
       });
-    if (statusAuditErr) {
+    } catch (statusAuditErr) {
       logger.warn('[apply] initial status audit insert failed (non-fatal)', { contactId: contact.id }, statusAuditErr);
     }
 
@@ -672,48 +665,48 @@ export async function POST(req: NextRequest) {
         scoringModel,
       });
 
-      const { error: scoreUpdateError } = await supabase
-        .from('Contact')
-        .update({
-          scoringStatus: scoring.scoringStatus,
-          leadScore: scoring.leadScore,
-          scoreLabel: scoring.scoreLabel,
-          scoreSummary: scoring.scoreSummary,
-          scoreDetails: scoring.scoreDetails,
+      try {
+        await convex().mutation(api.contacts.contacts.update, {
+          id: contact.id,
+          patch: {
+            scoringStatus: scoring.scoringStatus,
+            leadScore: scoring.leadScore,
+            scoreLabel: scoring.scoreLabel,
+            scoreSummary: scoring.scoreSummary,
+            scoreDetails: scoring.scoreDetails,
+          },
           updatedAt: new Date().toISOString(),
-        })
-        .eq('id', contact.id);
-      if (scoreUpdateError) {
-        logger.error('[apply] scoring update failed', { contactId: contact.id }, scoreUpdateError);
-      } else {
+        });
         logger.info('[apply] scoring persisted', {
           contactId: contact.id,
           scoringStatus: scoring.scoringStatus,
           scoreLabel: scoring.scoreLabel,
         });
+      } catch (scoreUpdateError) {
+        logger.error('[apply] scoring update failed', { contactId: contact.id }, scoreUpdateError);
       }
     } catch (error) {
       logger.error('[apply] scoring failed', { contactId: contact.id }, error);
       try {
-        await supabase
-          .from('Contact')
-          .update({
+        await convex().mutation(api.contacts.contacts.update, {
+          id: contact.id,
+          patch: {
             scoringStatus: 'failed',
             leadScore: null,
             scoreLabel: 'unscored',
             scoreSummary: 'Scoring unavailable right now. Lead saved.',
-            updatedAt: new Date().toISOString(),
-          })
-          .eq('id', contact.id);
+          },
+          updatedAt: new Date().toISOString(),
+        });
       } catch (fallbackErr) {
         logger.error('[apply] fallback scoring state failed', { contactId: contact.id }, fallbackErr);
       }
     }
 
-    // Send realtor notification + applicant confirmation email in parallel
+    // Send seller notification + applicant confirmation email in parallel
     const businessName = spaceBusinessName || space.name;
 
-    const realtorNotification = notifyNewLead({
+    const sellerNotification = notifyNewLead({
       spaceId: space.id,
       contactId: contact.id,
       name: contactName,
@@ -725,7 +718,7 @@ export async function POST(req: NextRequest) {
       scoreSummary: scoring.scoreSummary,
       applicationData,
     }).catch((notifyErr) => {
-      logger.error('[apply] realtor notification failed', { contactId: contact.id }, notifyErr);
+      logger.error('[apply] seller notification failed', { contactId: contact.id }, notifyErr);
     });
 
     const applicantConfirmation = contactEmail
@@ -743,11 +736,11 @@ export async function POST(req: NextRequest) {
         })
       : Promise.resolve();
 
-    await Promise.all([realtorNotification, applicantConfirmation]);
+    await Promise.all([sellerNotification, applicantConfirmation]);
     logger.debug('[apply] notifications dispatched', { contactId: contact.id });
 
-    // Fire the agent trigger so Chippi reacts to the new application in real
-    // time (drafts a follow-up, scores against the realtor's criteria, etc.)
+    // Fire the agent trigger so Cola reacts to the new application in real
+    // time (drafts a follow-up, scores against the seller's criteria, etc.)
     // instead of waiting for the 4-hour cron sweep.
     try {
       await fireAgentTrigger({

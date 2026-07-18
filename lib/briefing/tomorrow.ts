@@ -1,7 +1,7 @@
 /**
  * Tomorrow line — the one-sentence forward look at the bottom of the brief.
  *
- * The realtor reads the brief, sees what today needs, and looks one day
+ * The seller reads the brief, sees what today needs, and looks one day
  * out. Not a calendar, not a schedule — one sentence naming the one or
  * two loudest things on the horizon so they finish today with the next
  * day already framed.
@@ -11,11 +11,12 @@
  *
  * What we name (priority order, top two win):
  *   - Deals closing tomorrow (named subject)
- *   - Tours scheduled tomorrow (named or counted, depending on quantity)
+ *   - Demos scheduled tomorrow (named or counted, depending on quantity)
  *   - Follow-ups due tomorrow (counted)
  */
 
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -36,7 +37,7 @@ function tomorrowBounds(): { start: string; end: string; dateOnly: string } {
 interface ForwardItems {
   closingDeal: { name: string } | null;
   closingDealsCount: number;
-  tourCount: number;
+  demoCount: number;
   followUpCount: number;
 }
 
@@ -50,8 +51,8 @@ function renderForward(items: ForwardItems): string | null {
     pieces.push(`${items.closingDealsCount} deals close`);
   }
 
-  if (items.tourCount > 0) {
-    pieces.push(items.tourCount === 1 ? '1 tour' : `${items.tourCount} tours`);
+  if (items.demoCount > 0) {
+    pieces.push(items.demoCount === 1 ? '1 demo' : `${items.demoCount} demos`);
   }
 
   if (items.followUpCount > 0) {
@@ -72,25 +73,25 @@ function renderForward(items: ForwardItems): string | null {
 export async function composeTomorrow(spaceId: string): Promise<string | null> {
   const { start, end, dateOnly } = tomorrowBounds();
 
-  const [closingRes, toursRes, followUpsRes] = await Promise.all([
+  const [closingRes, demoRows, followUpsRes] = await Promise.all([
     supabase
       .from('Deal')
       .select('id, title')
       .eq('spaceId', spaceId)
       .eq('status', 'active')
       .eq('closeDate', dateOnly),
-    supabase
-      .from('Tour')
-      .select('id', { count: 'exact', head: true })
-      .eq('spaceId', spaceId)
-      .gte('startsAt', start)
-      .lt('startsAt', end)
-      .neq('status', 'cancelled'),
+    // Demos scheduled tomorrow (excluding cancelled), counted via length.
+    convex().query(api.demos.demos.listBySpace, {
+      spaceId,
+      statuses: ['scheduled', 'confirmed', 'completed', 'no_show'],
+      startsAtGte: start,
+      startsAtLt: end,
+    }),
     supabase
       .from('Contact')
       .select('id', { count: 'exact', head: true })
       .eq('spaceId', spaceId)
-      .is('brokerageId', null)
+      .is('companyId', null)
       .gte('followUpAt', start)
       .lt('followUpAt', end),
   ]);
@@ -99,7 +100,7 @@ export async function composeTomorrow(spaceId: string): Promise<string | null> {
   const items: ForwardItems = {
     closingDeal: closingRows.length > 0 ? { name: closingRows[0].title } : null,
     closingDealsCount: closingRows.length,
-    tourCount: toursRes.count ?? 0,
+    demoCount: demoRows.length,
     followUpCount: followUpsRes.count ?? 0,
   };
 

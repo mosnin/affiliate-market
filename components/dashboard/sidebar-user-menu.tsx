@@ -21,7 +21,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { useTheme } from '@/components/theme-provider';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SidebarUserMenu — the realtor's footer chip + popover. Avatar + online dot
+// SidebarUserMenu — the seller's footer chip + popover. Avatar + online dot
 // + name + email, with a MoreHorizontal trigger that opens a menu of account
 // actions. The trigger is the WHOLE chip on the avatar+name region; the ⋯ is
 // purely a visual hint. Tapping anywhere on the chip opens the menu.
@@ -76,7 +76,7 @@ export function SidebarUserMenu({
   const base = `/s/${slug}`;
 
   const handleSignOut = () => {
-    void signOut({ redirectUrl: '/login/realtor' });
+    void signOut({ redirectUrl: '/login/seller' });
   };
 
   const rows: MenuRow[] = [
@@ -142,7 +142,7 @@ export function SidebarUserMenu({
       )}
       <span
         aria-hidden
-        className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-background"
+        className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-positive ring-2 ring-background"
       />
     </div>
   );
@@ -287,7 +287,7 @@ function renderRow(row: MenuRow): React.ReactNode {
   const classes = cn(
     'flex items-center gap-2 h-8 px-2 rounded-md text-[12px] transition-colors duration-150',
     row.destructive
-      ? 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+      ? 'text-negative dark:text-negative hover:bg-negative-subtle0/10'
       : 'text-foreground/85 hover:bg-foreground/[0.05] hover:text-foreground',
   );
 

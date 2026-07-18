@@ -6,7 +6,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -19,12 +19,10 @@ export async function GET() {
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   // Most recent 5 distinct runIds from the activity log
-  const { data } = await supabase
-    .from('AgentActivityLog')
-    .select('runId, agentType, createdAt')
-    .eq('spaceId', space.id)
-    .order('createdAt', { ascending: false })
-    .limit(20);
+  const data = await convex().query(api.agent.activity.recentRuns, {
+    spaceId: space.id,
+    limit: 20,
+  });
 
   // Deduplicate by runId, keep earliest timestamp per run
   const seen = new Set<string>();

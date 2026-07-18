@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { formConfigSchema } from '@/lib/form-config-schema';
 import type {
   IntakeFormConfig,
@@ -51,9 +51,9 @@ export function generateSystemFields(): FormQuestion[] {
 }
 
 // ── Default Rental Form Config ──
-// The 10-question rental intake used when a realtor hasn't customized
-// their form. Also the fallback IntakeChat uses on the brokerage variant
-// when no brokerage-level config exists.
+// The 10-question rental intake used when a seller hasn't customized
+// their form. Also the fallback IntakeChat uses on the company variant
+// when no company-level config exists.
 // Step 1: Getting Started  |  Step 2: Basics  |  Step 3: Move Timing  |  Step 4: Location
 // Step 5: Budget  |  Step 6: Income  |  Step 7: Employment  |  Step 8: Household
 // Step 9: Additional Info  |  Step 10: Ready?
@@ -269,11 +269,11 @@ export const DEFAULT_RENTAL_FORM_CONFIG: IntakeFormConfig = {
 };
 
 // ── Default Buyer Form Config ──
-// The 9-question buyer intake used when a realtor hasn't customized
-// their form. Also the fallback IntakeChat uses on the brokerage variant
-// when no brokerage-level config exists.
+// The 9-question buyer intake used when a seller hasn't customized
+// their form. Also the fallback IntakeChat uses on the company variant
+// when no company-level config exists.
 // Step 1: Getting Started  |  Step 2: Basics  |  Step 3: Budget
-// Step 4: Pre-Approval  |  Step 5: Property Type  |  Step 6: Must-Haves
+// Step 4: Pre-Approval  |  Step 5: Product Type  |  Step 6: Must-Haves
 // Step 7: Timeline  |  Step 8: About You  |  Step 9: Ready?
 
 export const DEFAULT_BUYER_FORM_CONFIG: IntakeFormConfig = {
@@ -363,10 +363,10 @@ export const DEFAULT_BUYER_FORM_CONFIG: IntakeFormConfig = {
         },
       ],
     },
-    // ── Section 3 (Step 4): Property Type ──
+    // ── Section 3 (Step 4): Product Type ──
     {
       id: '20000000-0000-4000-a000-000000000004',
-      title: 'What type of property are you looking for?',
+      title: 'What type of product are you looking for?',
       position: 3,
       questions: [
         {
@@ -550,20 +550,21 @@ export function validateFormConfig(config: unknown) {
 /**
  * Fetches the form config for a given space, with the following fallback chain:
  * 1. If SpaceSetting.formConfig is set and formConfigSource is 'custom', use it
- * 2. If formConfigSource is 'brokerage', fetch from the linked Brokerage.brokerageFormConfig
+ * 2. If formConfigSource is 'company', fetch from the linked Company.companyFormConfig
  * 3. Otherwise (formConfigSource is 'legacy' or formConfig is null), return null (legacy mode)
  */
 export async function getFormConfig(
   spaceId: string
 ): Promise<IntakeFormConfig | null> {
   // Fetch the space setting with its form config
-  const { data: setting, error: settingError } = await supabase
-    .from('SpaceSetting')
-    .select('"formConfig", "formConfigSource"')
-    .eq('spaceId', spaceId)
-    .single();
+  let setting;
+  try {
+    setting = await convex().query(api.workspace.settings.getBySpace, { spaceId });
+  } catch {
+    return null; // legacy mode
+  }
 
-  if (settingError || !setting) {
+  if (!setting) {
     return null; // legacy mode
   }
 
@@ -575,30 +576,22 @@ export async function getFormConfig(
     return result.success ? result.data : null;
   }
 
-  // Brokerage-inherited form: fetch from the linked brokerage
-  if (source === 'brokerage') {
-    const { data: space } = await supabase
-      .from('Space')
-      .select('"brokerageId"')
-      .eq('id', spaceId)
-      .single();
+  // Company-inherited form: fetch from the linked company
+  if (source === 'company') {
+    const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
 
-    if (space?.brokerageId) {
-      const { data: brokerage } = await supabase
-        .from('Brokerage')
-        .select('"brokerageFormConfig"')
-        .eq('id', space.brokerageId)
-        .single();
+    if (space?.companyId) {
+      const company = await convex().query(api.org.companies.getById, { id: space.companyId });
 
-      if (brokerage?.brokerageFormConfig) {
+      if (company?.companyFormConfig) {
         const result = formConfigSchema.safeParse(
-          brokerage.brokerageFormConfig
+          company.companyFormConfig
         );
         return result.success ? result.data : null;
       }
     }
 
-    // Brokerage config missing: fall back to legacy
+    // Company config missing: fall back to legacy
     return null;
   }
 
@@ -611,7 +604,7 @@ export async function getFormConfig(
 export type DualFormConfigs = {
   rental: IntakeFormConfig | null;
   buyer: IntakeFormConfig | null;
-  source: 'custom' | 'brokerage' | 'legacy';
+  source: 'custom' | 'company' | 'legacy';
 };
 
 /** Safely parse a raw JSON value as IntakeFormConfig, returning null on failure. */
@@ -627,21 +620,22 @@ function safeParseConfig(raw: unknown): IntakeFormConfig | null {
  * Fallback chain per lead type:
  *   1. SpaceSetting.[rental|buyer]FormConfig (dual config columns)
  *   2. SpaceSetting.formConfig (legacy single column, treated as rental or buyer based on its leadType)
- *   3. Brokerage.[brokerage[Rental|Buyer]FormConfig] (if formConfigSource === 'brokerage')
- *   4. Brokerage.brokerageFormConfig (legacy single brokerage column)
+ *   3. Company.[company[Rental|Buyer]FormConfig] (if formConfigSource === 'company')
+ *   4. Company.companyFormConfig (legacy single company column)
  *   5. null (caller should use DEFAULT_*_FORM_CONFIG or legacy scoring)
  */
 export async function getFormConfigs(
   spaceId: string,
-  brokerageId?: string | null,
+  companyId?: string | null,
 ): Promise<DualFormConfigs> {
-  const { data: setting, error: settingError } = await supabase
-    .from('SpaceSetting')
-    .select('"formConfig", "formConfigSource", "rentalFormConfig", "buyerFormConfig"')
-    .eq('spaceId', spaceId)
-    .maybeSingle();
+  let setting;
+  try {
+    setting = await convex().query(api.workspace.settings.getBySpace, { spaceId });
+  } catch {
+    return { rental: null, buyer: null, source: 'legacy' };
+  }
 
-  if (settingError || !setting) {
+  if (!setting) {
     return { rental: null, buyer: null, source: 'legacy' };
   }
 
@@ -668,32 +662,24 @@ export async function getFormConfigs(
     return { rental: rentalConfig, buyer: buyerConfig, source: 'custom' };
   }
 
-  if (source === 'brokerage') {
-    // Resolve brokerageId if not provided
-    let resolvedBrokerageId = brokerageId;
-    if (!resolvedBrokerageId) {
-      const { data: space } = await supabase
-        .from('Space')
-        .select('"brokerageId"')
-        .eq('id', spaceId)
-        .maybeSingle();
-      resolvedBrokerageId = space?.brokerageId ?? null;
+  if (source === 'company') {
+    // Resolve companyId if not provided
+    let resolvedCompanyId = companyId;
+    if (!resolvedCompanyId) {
+      const space = await convex().query(api.workspace.spaces.getById, { id: spaceId });
+      resolvedCompanyId = space?.companyId ?? null;
     }
 
-    if (resolvedBrokerageId) {
-      const { data: brokerage } = await supabase
-        .from('Brokerage')
-        .select('"brokerageFormConfig", "brokerageRentalFormConfig", "brokerageBuyerFormConfig"')
-        .eq('id', resolvedBrokerageId)
-        .maybeSingle();
+    if (resolvedCompanyId) {
+      const company = await convex().query(api.org.companies.getById, { id: resolvedCompanyId });
 
-      if (brokerage) {
-        let rentalConfig = safeParseConfig(brokerage.brokerageRentalFormConfig);
-        let buyerConfig = safeParseConfig(brokerage.brokerageBuyerFormConfig);
+      if (company) {
+        let rentalConfig = safeParseConfig(company.companyRentalFormConfig);
+        let buyerConfig = safeParseConfig(company.companyBuyerFormConfig);
 
-        // Legacy compatibility: single brokerageFormConfig
-        if (!rentalConfig && !buyerConfig && brokerage.brokerageFormConfig) {
-          const legacySingle = safeParseConfig(brokerage.brokerageFormConfig);
+        // Legacy compatibility: single companyFormConfig
+        if (!rentalConfig && !buyerConfig && company.companyFormConfig) {
+          const legacySingle = safeParseConfig(company.companyFormConfig);
           if (legacySingle) {
             if (legacySingle.leadType === 'buyer') {
               buyerConfig = legacySingle;
@@ -703,11 +689,11 @@ export async function getFormConfigs(
           }
         }
 
-        return { rental: rentalConfig, buyer: buyerConfig, source: 'brokerage' };
+        return { rental: rentalConfig, buyer: buyerConfig, source: 'company' };
       }
     }
 
-    return { rental: null, buyer: null, source: 'brokerage' };
+    return { rental: null, buyer: null, source: 'company' };
   }
 
   // Legacy mode
@@ -716,7 +702,7 @@ export async function getFormConfigs(
 
 /**
  * Resolves the correct form config for a specific lead type using the full fallback chain:
- *   1. Custom or brokerage config for the specific lead type
+ *   1. Custom or company config for the specific lead type
  *   2. Default template for the lead type
  *
  * Returns { config, isCustom } so callers know whether to use dynamic scoring
@@ -725,9 +711,9 @@ export async function getFormConfigs(
 export async function getFormConfigForLeadType(
   spaceId: string,
   leadType: 'rental' | 'buyer',
-  brokerageId?: string | null,
+  companyId?: string | null,
 ): Promise<{ config: IntakeFormConfig; isCustom: boolean }> {
-  const dual = await getFormConfigs(spaceId, brokerageId);
+  const dual = await getFormConfigs(spaceId, companyId);
 
   const customConfig = leadType === 'buyer'
     ? dual.buyer

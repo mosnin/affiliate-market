@@ -81,7 +81,7 @@ export function DealMilestones({ dealId, initialMilestones }: DealMilestonesProp
           <span className={cn(
             'text-xs font-semibold px-2 py-0.5 rounded-full',
             completedCount === totalCount
-              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
+              ? 'bg-positive-subtle text-positive dark:bg-positive-subtle0/20 dark:text-positive'
               : 'bg-muted text-muted-foreground'
           )}>
             {completedCount} / {totalCount} complete

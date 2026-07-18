@@ -1,20 +1,20 @@
 /**
- * /integrations/callback — where Composio redirects the realtor after a
+ * /integrations/callback — where Composio redirects the seller after a
  * successful OAuth flow.
  *
  * Composio's redirect URL accepts `connected_account_id` + (sometimes)
  * `status` + `app` query params. We:
  *   1. Look up the connected account on Composio's side
  *   2. Persist an IntegrationConnection row with toolkit + composio id
- *   3. Redirect the realtor back into the app — settings, ideally onto
+ *   3. Redirect the seller back into the app — settings, ideally onto
  *      the integrations panel — with a success/error flag in the URL.
  *
- * Server component so the persistence happens before the realtor ever
+ * Server component so the persistence happens before the seller ever
  * sees a UI flash.
  *
  * Every branch logs through `logger.info` / `logger.warn` / `logger.error`
  * with `[integrations.callback]` so production logs tell us exactly which
- * step failed when a realtor reports "I connected at the provider but the
+ * step failed when a seller reports "I connected at the provider but the
  * row didn't show up." The previous implementation logged only on the
  * SDK-fetch path; every other failure mode redirected silently and made
  * post-mortem impossible.
@@ -22,7 +22,7 @@
 
 import { redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getComposio } from '@/lib/integrations/composio';
 import { upsertByComposioId, findActive, revoke } from '@/lib/integrations/connections';
 import { findIntegration } from '@/lib/integrations/catalog';
@@ -46,7 +46,7 @@ export default async function IntegrationsCallback({
   const { userId } = await auth();
   if (!userId) {
     logger.warn('[integrations.callback] no clerk session — redirecting to login');
-    redirect('/login/realtor');
+    redirect('/login/seller');
   }
 
   if (!connectedAccountId) {
@@ -54,22 +54,22 @@ export default async function IntegrationsCallback({
     return redirect(buildBackUrl({ ok: false, reason: 'missing_account' }));
   }
 
-  // Resolve the realtor's space — we won't ship without it.
+  // Resolve the seller's space — we won't ship without it.
   const dbUserId = await getDbUserId(userId);
   if (!dbUserId) {
     logger.error('[integrations.callback] db user not found for clerk id', { clerkId: userId });
     return redirect(buildBackUrl({ ok: false, reason: 'no_space' }));
   }
 
-  const { data: spaceRow, error: spaceErr } = await supabase
-    .from('Space')
-    .select('id, slug, ownerId')
-    .eq('ownerId', dbUserId)
-    .maybeSingle();
-  if (spaceErr) {
+  let spaceRow: { id: string; slug: string; ownerId: string } | null = null;
+  try {
+    spaceRow = await convex().query(api.workspace.spaces.getByOwnerId, {
+      ownerId: dbUserId,
+    });
+  } catch (err) {
     logger.error('[integrations.callback] space lookup failed', {
       dbUserId,
-      err: spaceErr.message,
+      err: err instanceof Error ? err.message : String(err),
     });
     return redirect(buildBackUrl({ ok: false, reason: 'no_space' }));
   }
@@ -142,7 +142,7 @@ export default async function IntegrationsCallback({
   // version trusted an optional ?status= query param (which Composio doesn't
   // reliably send) and force-activated everything, so abandoned OAuth flows
   // produced permanently-"active" rows whose tools 401'd in chat. If the
-  // account fetch itself failed, the realtor still landed back here via the
+  // account fetch itself failed, the seller still landed back here via the
   // provider redirect — strong signal OAuth completed — so we preserve the
   // old behavior and activate (the chat-time auth-error path self-corrects
   // a wrong guess by flipping the row to 'expired').
@@ -174,7 +174,7 @@ export default async function IntegrationsCallback({
 
   // Status gate — keyed on the FETCHED account status (authoritative), not
   // the optional ?status= query param. A non-ACTIVE account stays 'pending'
-  // (the upsert above already wrote that) and the realtor lands back on
+  // (the upsert above already wrote that) and the seller lands back on
   // settings with the failure reason; the reconcile sweep promotes the row
   // if Composio later reports ACTIVE.
   if (!confirmedActive) {
@@ -190,7 +190,7 @@ export default async function IntegrationsCallback({
 
   // Register curated triggers ONLY after the connection is confirmed
   // ACTIVE. Registering against an INITIALIZING / FAILED connection
-  // creates failed IntegrationTrigger rows the realtor would have to
+  // creates failed IntegrationTrigger rows the seller would have to
   // clean up on reconnect. Best-effort: a failure here logs but does
   // NOT fail the OAuth completion (the connection itself succeeded).
   try {
@@ -215,12 +215,8 @@ export default async function IntegrationsCallback({
 }
 
 async function getDbUserId(clerkId: string): Promise<string | null> {
-  const { data } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', clerkId)
-    .maybeSingle();
-  return (data?.id as string | undefined) ?? null;
+  const user = await convex().query(api.org.users.getByClerkId, { clerkId });
+  return user?.id ?? null;
 }
 
 interface CallbackResultArgs {
@@ -240,7 +236,7 @@ function buildBackUrl(args: CallbackResultArgs): string {
 }
 
 /**
- * Pull a realtor-friendly label from Composio's account payload — usually
+ * Pull a seller-friendly label from Composio's account payload — usually
  * the connected user's email. Falls back to whatever Composio surfaces
  * under common naming variants. If none exist, we leave it null and the
  * UI just shows "Connected".

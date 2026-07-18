@@ -7,13 +7,13 @@
  */
 
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import type { ToolContext } from './types';
 
 /**
  * Resolve the calling user's Clerk id and the space they're operating in for
- * this turn. We accept `spaceSlug` rather than inferring so brokers managing
+ * this turn. We accept `spaceSlug` rather than inferring so managers managing
  * multiple spaces can route turns to a specific space.
  *
  * Returns either a ToolContext (caller owns / manages the space) or a 4xx
@@ -28,25 +28,27 @@ export async function resolveToolContext(
   const { userId } = authResult;
 
   // Look up the internal user id to scope the space check.
-  const { data: userRow } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .maybeSingle();
+  let userRow: { id: string } | null = null;
+  try {
+    userRow = await convex().query(api.org.users.getByClerkId, { clerkId: userId });
+  } catch {
+    userRow = null;
+  }
   if (!userRow) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  const { data: space } = await supabase
-    .from('Space')
-    .select('id, slug, name, ownerId')
-    .eq('slug', spaceSlug)
-    .maybeSingle();
+  let space: { id: string; slug: string; name: string; ownerId: string } | null = null;
+  try {
+    space = await convex().query(api.workspace.spaces.getBySlug, { slug: spaceSlug });
+  } catch {
+    space = null;
+  }
   if (!space) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 });
   }
 
-  // Owner access: direct ownership is the common case. Broker-admin access
+  // Owner access: direct ownership is the common case. Manager-admin access
   // could be layered on here later — intentionally starting strict so the
   // on-demand agent never acts outside the caller's own space.
   if (space.ownerId !== userRow.id) {

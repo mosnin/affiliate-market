@@ -1,11 +1,11 @@
 /**
- * `delegate_task` — the orchestration tool. Chippi calls this on its own when
+ * `delegate_task` — the orchestration tool. Cola calls this on its own when
  * a request needs DEPTH: a multi-step investigation, a parallelizable sweep, a
  * "go figure this out and report back" job that would otherwise burn the whole
- * chat turn. It is Chippi's version of Claude Code's Task tool.
+ * chat turn. It is Cola's version of Claude Code's Task tool.
  *
  * What it does:
- *   1. Creates a SwarmRun row (status 'queued') for the realtor's space.
+ *   1. Creates a SwarmRun row (status 'queued') for the seller's space.
  *   2. Fires the Modal swarm runner (MODAL_SWARM_URL) fire-and-forget — the
  *      SAME infra `/api/swarm` uses. The sub-agents run on Modal on gpt-5-mini.
  *   3. Returns the run handle (runId + goal) so the chat UI can render a LIVE
@@ -14,11 +14,11 @@
  *
  * Why this is read-only from the approval system's POV: delegating does not
  * itself mutate workspace state. The sub-agent run is a separate, observable
- * job the realtor watches inline. The orchestrator stays in the chat with the
- * realtor and continues to gate any DIRECT mutation it makes through the normal
+ * job the seller watches inline. The orchestrator stays in the chat with the
+ * seller and continues to gate any DIRECT mutation it makes through the normal
  * approval flow. (Note: the Modal swarm runner today runs research-style
  * sub-agents without the workspace tool catalog — see swarm_orchestrator.py.
- * Wiring the full Chippi tool set + approvals into the Modal sub-agents is a
+ * Wiring the full Cola tool set + approvals into the Modal sub-agents is a
  * Python-side change tracked separately; this tool is the orchestration +
  * inline-progress wedge on the TypeScript side.)
  *
@@ -26,7 +26,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { assertSpaceEnabled } from '@/lib/agent/kill-switch';
 import { defineTool, type ToolContext } from '../types';
@@ -61,13 +61,13 @@ export const DELEGATE_TASK_TOOL_NAME = 'delegate_task';
  * Machine marker appended to the model-facing summary so the stream pump can
  * recover the SwarmRun id (which is minted server-side inside the handler and
  * is otherwise lost — the SDK only forwards the summary STRING to the model).
- * The pump parses + strips this before the realtor ever sees the summary.
- * Format: `⟦chippi:subagent runId=<id>⟧`
+ * The pump parses + strips this before the seller ever sees the summary.
+ * Format: `⟦cola:subagent runId=<id>⟧`
  */
-const RUN_ID_MARKER = /⟦chippi:subagent runId=([A-Za-z0-9-]+)⟧/;
+const RUN_ID_MARKER = /⟦cola:subagent runId=([A-Za-z0-9-]+)⟧/;
 
 export function encodeSubagentRunId(runId: string): string {
-  return `⟦chippi:subagent runId=${runId}⟧`;
+  return `⟦cola:subagent runId=${runId}⟧`;
 }
 
 /** Extract the SwarmRun id from a delegate_task summary, or null. */
@@ -76,7 +76,7 @@ export function parseSubagentRunId(summary: string): string | null {
   return m ? m[1] : null;
 }
 
-/** Remove the machine marker so the realtor-facing summary stays clean. */
+/** Remove the machine marker so the seller-facing summary stays clean. */
 export function stripSubagentMarker(summary: string): string {
   return summary.replace(RUN_ID_MARKER, '').replace(/\s+$/, '');
 }
@@ -92,7 +92,7 @@ export function buildDelegateTaskTool() {
       'Spawn a deeper sub-agent to work on an in-depth, multi-step task and report back. ' +
       'Its progress streams live in this chat. Use ONLY for tasks that need real depth or ' +
       'parallel work — answer simple questions yourself instead. After calling this, tell the ' +
-      'realtor you have kicked it off; the live task card shows the rest.',
+      'seller you have kicked it off; the live task card shows the rest.',
     parameters,
     riskLevel: 'safe',
     requiresApproval: false,
@@ -129,21 +129,21 @@ export function buildDelegateTaskTool() {
       }
 
       // Create the SwarmRun the UI will watch. Same shape /api/swarm uses.
-      const { data: run, error: insertError } = await supabase
-        .from('SwarmRun')
-        .insert({ spaceId: ctx.space.id, goal, status: 'queued' })
-        .select('id')
-        .single();
-
-      if (insertError || !run) {
+      let runId: string;
+      try {
+        const run = await convex().mutation(api.swarmvector.swarmRuns.create, {
+          spaceId: ctx.space.id,
+          goal,
+          status: 'queued',
+        });
+        runId = run.id;
+      } catch (insertError) {
         logger.error('[delegate_task] SwarmRun insert failed', { spaceId: ctx.space.id }, insertError);
         return {
           summary: 'Error: I couldn’t start the delegated task. I’ll try to handle it directly.',
           display: 'error',
         };
       }
-
-      const runId = run.id as string;
 
       // Fire-and-forget to Modal. Do NOT await — the chat turn must not block
       // on the sub-agent. The UI's stream subscription carries progress.

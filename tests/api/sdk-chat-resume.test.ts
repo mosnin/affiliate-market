@@ -4,7 +4,7 @@
  *
  * The bar:
  *   - Auth required (401 without).
- *   - 404 when CHIPPI_CHAT_RUNTIME=modal (paused runs only originate in the
+ *   - 404 when COLA_CHAT_RUNTIME=modal (paused runs only originate in the
  *     in-process TS runtime, so the resume endpoint is meaningless there).
  *   - 404 when no row.
  *   - 403 when the row belongs to another user.
@@ -38,12 +38,48 @@ vi.mock('@/lib/ai-tools/sdk-chat-stream', () => ({
   streamTsResumeTurn: streamResumeMock,
 }));
 
-// Per-table queue so we can return different rows for AgentPausedRun
-// vs Space. Hoisted because vi.mock factories are pulled to the top.
+// Per-table queue retained for any residual Supabase reads. Hoisted because
+// vi.mock factories are pulled to the top. AgentPausedRun, Space AND User all
+// migrated to Convex (see the convex-server mock below) — this route makes no
+// Supabase calls anymore, but the mock stays so an accidental read fails safe.
 const { tableQueue, updateMock } = vi.hoisted(() => ({
   tableQueue: {} as Record<string, Array<{ data?: unknown; error?: unknown }>>,
   updateMock: vi.fn(() => Promise.resolve({ data: [{ id: 'run_1' }], error: null })),
 }));
+
+// Convex: the resume route loads the AgentPausedRun via
+// api.agent.paused.getById, resolves the Space via api.workspace.spaces.getById,
+// maps the caller's Clerk id to the internal User via api.org.users.getByClerkId,
+// and does the anti-double-execution CAS via api.agent.paused.markResumed
+// (pending->resumed), with a fire-and-forget api.agent.paused.markExpired on the
+// 410 path. We branch on the fn path:
+//   - paused.getById       → the per-test staged row (or null for the 404)
+//   - workspace.spaces.getById → the per-test staged space (or null for the 404)
+//   - org.users.getByClerkId   → the caller's internal User row ({ id })
+//   - paused.markResumed   → { outcome: 'resumed' } on the happy path; the
+//                            already-resumed 409 is caught by the route's own
+//                            status guard BEFORE this CAS runs, so the default
+//                            is fine there too
+//   - paused.markExpired   → undefined (void; must not throw on the 410 path)
+// `api` is a path proxy so api.<domain>.<module>.<fn> stringifies to its
+// dotted path when called.
+const { pausedHolder, spaceHolder, userHolder, convexQueryMock, convexMutationMock } = vi.hoisted(() => ({
+  pausedHolder: { row: null as unknown },
+  spaceHolder: { row: null as unknown },
+  userHolder: { row: { id: 'u_1' } as unknown },
+  convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
+  convexMutationMock: vi.fn(async (_ref?: unknown, _args?: unknown) => null as unknown),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
+  return {
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: convexMutationMock }),
+  };
+});
 
 vi.mock('@/lib/supabase', () => {
   function chain(table: string) {
@@ -75,23 +111,42 @@ import { requireAuth } from '@/lib/api-auth';
 
 const mockedAuth = vi.mocked(requireAuth);
 
-const ORIGINAL_RUNTIME = process.env.CHIPPI_CHAT_RUNTIME;
+const ORIGINAL_RUNTIME = process.env.COLA_CHAT_RUNTIME;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.CHIPPI_CHAT_RUNTIME = 'ts';
+  process.env.COLA_CHAT_RUNTIME = 'ts';
   mockedAuth.mockResolvedValue({ userId: 'user_clerk_123' });
   for (const k of Object.keys(tableQueue)) delete tableQueue[k];
-  // Default: the User lookup (clerkId -> internal id) resolves to the space
-  // owner (SPACE.ownerId), so the resume ownership re-check passes. Override
-  // per-test to exercise the mismatch path.
-  tableQueue.User = [{ data: { id: 'u_1' } }];
   updateMock.mockResolvedValue({ data: [{ id: 'run_1' }], error: null });
+
+  // Convex: paused.getById → the per-test staged row (default null);
+  // workspace.spaces.getById → the per-test staged space (default null);
+  // org.users.getByClerkId → the caller's internal User (default { id: 'u_1' },
+  // the space owner, so the resume ownership re-check passes — override the
+  // holder per-test to exercise the mismatch path);
+  // paused.markResumed → won the CAS; paused.markExpired → void.
+  pausedHolder.row = null;
+  spaceHolder.row = null;
+  userHolder.row = { id: 'u_1' };
+  convexQueryMock.mockImplementation(async (ref: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('agent.paused.getById')) return pausedHolder.row;
+    if (p.includes('workspace.spaces.getById')) return spaceHolder.row;
+    if (p.includes('org.users.getByClerkId')) return userHolder.row;
+    return null;
+  });
+  convexMutationMock.mockImplementation(async (ref: unknown) => {
+    const p = typeof ref === 'function' ? (ref as () => string)() : '';
+    if (p.includes('agent.paused.markResumed')) return { outcome: 'resumed' };
+    if (p.includes('agent.paused.markExpired')) return undefined;
+    return null;
+  });
 });
 
 afterEach(() => {
-  if (ORIGINAL_RUNTIME === undefined) delete process.env.CHIPPI_CHAT_RUNTIME;
-  else process.env.CHIPPI_CHAT_RUNTIME = ORIGINAL_RUNTIME;
+  if (ORIGINAL_RUNTIME === undefined) delete process.env.COLA_CHAT_RUNTIME;
+  else process.env.COLA_CHAT_RUNTIME = ORIGINAL_RUNTIME;
 });
 
 function makeReq(body: Record<string, unknown>) {
@@ -129,15 +184,19 @@ const ROW: PausedRow = {
 const SPACE = { id: 's_1', slug: 'jane', name: 'Jane Realty', ownerId: 'u_1' };
 
 function queueRow(row: PausedRow | null) {
-  tableQueue.AgentPausedRun = [{ data: row }];
+  // The paused run now loads from Convex (api.agent.paused.getById), not
+  // Supabase — stage it on the holder the Convex query mock reads.
+  pausedHolder.row = row;
 }
 function queueSpace(space: typeof SPACE | null) {
-  tableQueue.Space = [{ data: space }];
+  // The space now loads from Convex (api.workspace.spaces.getById), not
+  // Supabase — stage it on the holder the Convex query mock reads.
+  spaceHolder.row = space;
 }
 
 describe('POST /api/ai/task/resume/[pausedRunId] — flag gate', () => {
-  it('returns 404 when CHIPPI_CHAT_RUNTIME != "ts"', async () => {
-    process.env.CHIPPI_CHAT_RUNTIME = 'modal';
+  it('returns 404 when COLA_CHAT_RUNTIME != "ts"', async () => {
+    process.env.COLA_CHAT_RUNTIME = 'modal';
     const res = await POST(makeReq({ approved: true }), params('run_1'));
     expect(res.status).toBe(404);
   });

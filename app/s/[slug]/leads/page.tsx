@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getSpaceFromSlug, getSpaceForUser } from '@/lib/space';
 import { Phone, Flame, Thermometer, Snowflake, HelpCircle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
@@ -16,7 +16,7 @@ export default async function LeadsPage({
   params: Promise<{ slug: string }>;
 }) {
   const { userId } = await auth();
-  if (!userId) redirect('/login/realtor');
+  if (!userId) redirect('/login/seller');
 
   const { slug } = await params;
   const space = await getSpaceFromSlug(slug);
@@ -28,16 +28,13 @@ export default async function LeadsPage({
 
   let leads: Contact[] = [];
   try {
-    const { data, error } = await supabase
-      .from('Contact')
-      .select('*')
-      .eq('spaceId', space.id)
-      .is('brokerageId', null) // Exclude brokerage leads
-      .contains('tags', ['application-link'])
-      .order('createdAt', { ascending: false })
-      .limit(500);
-    if (error) throw error;
-    leads = (data ?? []) as Contact[];
+    const data = await convex().query(api.contacts.contacts.filterForSpaces, {
+      spaceIds: [space.id],
+      requireCompanyIdNull: true, // Exclude company leads
+      tagsAll: ['application-link'],
+      limit: 500,
+    });
+    leads = (data ?? []) as unknown as Contact[];
   } catch (err) {
     console.error('[leads] DB query failed', { slug, error: err });
     return (
@@ -68,11 +65,12 @@ export default async function LeadsPage({
       await Promise.all(
         unreadLeads.map((lead) => {
           const newTags = (lead.tags ?? []).filter((t: string) => t !== 'new-lead');
-          return supabase
-            .from('Contact')
-            .update({ tags: newTags, updatedAt: new Date().toISOString() })
-            .eq('id', lead.id)
-            .eq('spaceId', space.id);
+          return convex().mutation(api.contacts.contacts.update, {
+            id: lead.id,
+            spaceId: space.id,
+            patch: { tags: newTags },
+            updatedAt: new Date().toISOString(),
+          });
         }),
       );
     } catch (err) {
@@ -99,14 +97,14 @@ export default async function LeadsPage({
       <header className="space-y-1.5">
         <p className="text-sm text-muted-foreground">People.</p>
         <h1 className={H1} style={TITLE_FONT}>
-          Applications
+          Quote requests
         </h1>
         <p className="text-sm text-muted-foreground">
           {leads.length === 0
-            ? 'Share your intake link and leads will appear here.'
+            ? 'Share your intake link and quote requests will appear here.'
             : unreadLeads.length > 0
               ? `${unreadLeads.length} new since you last checked.`
-              : 'All caught up — no new applications.'}
+              : 'All caught up — no new quote requests.'}
         </p>
       </header>
 
@@ -116,18 +114,18 @@ export default async function LeadsPage({
       {leads.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/70 bg-card px-4 py-3">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-            {leads.length} {leads.length === 1 ? 'application' : 'applications'}
+            {leads.length} {leads.length === 1 ? 'quote request' : 'quote requests'}
           </span>
           <div className="h-3 w-px bg-border hidden sm:block" />
           <div className="flex flex-wrap gap-3">
             {tierCounts.hot > 0 && (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-positive dark:text-positive">
                 <Flame size={13} />
                 {tierCounts.hot} hot
               </div>
             )}
             {tierCounts.warm > 0 && (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground dark:text-muted-foreground">
                 <Thermometer size={13} />
                 {tierCounts.warm} warm
               </div>
@@ -150,9 +148,9 @@ export default async function LeadsPage({
 
       {leads.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-5 py-10 text-center">
-          <p className="text-sm text-foreground">No applications yet.</p>
+          <p className="text-sm text-foreground">No quote requests yet.</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Share your intake link — new applications will appear here.
+            Share your intake link — new quote requests from potential buyers will appear here.
           </p>
           <Link
             href={`/s/${slug}/intake/share`}

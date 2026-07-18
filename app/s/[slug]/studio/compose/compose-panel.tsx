@@ -18,7 +18,7 @@ import { CAPTION } from '@/lib/typography';
 import { COMPOSE_TEMPLATES, type ComposeColor } from '@/lib/studio/templates';
 
 const CANVAS_SIZE = 1080;
-const DEFAULT_ACCENT = '#ff964f';
+const DEFAULT_ACCENT = '#34c77f';
 
 function resolveColor(c: ComposeColor, accent: string): string {
   if (c === 'accent') return accent;
@@ -227,7 +227,7 @@ export function ComposePanel() {
         </div>
 
         {error && (
-          <div className="rounded-lg border border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/5 px-3 py-2 flex items-start gap-2 text-[12.5px] text-rose-700 dark:text-rose-400">
+          <div className="rounded-lg border border-negative/20 bg-negative-subtle/70 dark:bg-negative-subtle0/5 px-3 py-2 flex items-start gap-2 text-[12.5px] text-negative dark:text-negative">
             <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
             <span>{error}</span>
           </div>

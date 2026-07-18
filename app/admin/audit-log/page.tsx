@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { isPlatformAdmin } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
 import { AuditLogClient } from './audit-log-client';
@@ -7,32 +7,31 @@ export default async function AuditLogPage() {
   const isAdmin = await isPlatformAdmin();
   if (!isAdmin) redirect('/');
 
-  // Fetch audit logs and users in parallel
-  const [logsRes, usersRes] = await Promise.all([
-    supabase
-      .from('AuditLog')
-      .select('*')
-      .order('createdAt', { ascending: false })
-      .limit(200),
-    supabase.from('User').select('clerkId, name, email'),
+  // Fetch audit logs and users in parallel. The user list is the full table (the
+  // old `.select('clerkId, name, email')` had no limit) so the clerkId map is
+  // complete; pass a high cap to listForAdmin to keep that "all users" behavior.
+  const [logs, users] = await Promise.all([
+    convex().query(api.infra.auditLog.listRecent, { limit: 200 }) as Promise<
+      {
+        id: string;
+        clerkId: string | null;
+        ipAddress: string | null;
+        action: string;
+        resource: string;
+        resourceId: string | null;
+        spaceId: string | null;
+        metadata: Record<string, unknown> | null;
+        createdAt: string;
+      }[]
+    >,
+    convex().query(api.org.users.listForAdmin, { limit: 100000 }) as Promise<
+      { clerkId: string; name: string | null; email: string }[]
+    >,
   ]);
-
-  const logs = (logsRes.data ?? []) as {
-    id: string;
-    clerkId: string | null;
-    ipAddress: string | null;
-    action: string;
-    resource: string;
-    resourceId: string | null;
-    spaceId: string | null;
-    metadata: Record<string, unknown> | null;
-    createdAt: string;
-  }[];
 
   // Build a clerkId -> { name, email } map
   const userMap: Record<string, { name: string | null; email: string }> = {};
-  for (const u of usersRes.data ?? []) {
-    const user = u as { clerkId: string; name: string | null; email: string };
+  for (const user of users) {
     userMap[user.clerkId] = { name: user.name, email: user.email };
   }
 

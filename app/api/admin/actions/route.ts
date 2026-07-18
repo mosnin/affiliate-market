@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClerkClient, auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAdmin, logAdminAction } from '@/lib/admin';
 import { shouldBackfillOnboardFromSpace } from '@/lib/onboarding';
 import { checkRateLimit } from '@/lib/rate-limit';
-import type { User, Space } from '@/lib/types';
+import type { User } from '@/lib/types';
 
 const clerkClient = createClerkClient({
   secretKey: process.env.CLERK_SECRET_KEY!,
@@ -88,24 +88,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'userId is required' }, { status: 400 });
       }
 
-      const { data: userRow, error: userError } = await supabase
-        .from('User')
-        .select('*, Space(id, slug)')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (userError) throw userError;
+      const userRow = await convex().query(api.org.users.getById, { id: userId });
 
       if (!userRow) {
         return NextResponse.json({ error: 'User not found' }, { status: 404 });
       }
 
-      const row = userRow as User & { Space: { id: string; slug: string } | null };
+      // Compose the embedded Space(id, slug) lib-side (old PostgREST User→Space
+      // join on Space.ownerId = User.id).
+      const spaceRow = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: userRow.id,
+      });
+      const row = userRow as unknown as User;
       const user = {
         ...row,
-        spaceId: row.Space?.id ?? null,
-        slug: row.Space?.slug ?? null,
-        space: row.Space ? { id: row.Space.id, slug: row.Space.slug } : null,
+        spaceId: spaceRow?.id ?? null,
+        slug: spaceRow?.slug ?? null,
+        space: spaceRow ? { id: spaceRow.id, slug: spaceRow.slug } : null,
       };
 
       let repairAction = 'none';
@@ -113,27 +112,25 @@ export async function POST(req: NextRequest) {
 
       if (shouldBackfillOnboardFromSpace(user)) {
         // Has space but onboard=false → backfill
-        const { error } = await supabase
-          .from('User')
-          .update({
+        await convex().mutation(api.org.users.updateById, {
+          id: user.id,
+          patch: {
             onboard: true,
             onboardingCompletedAt: new Date().toISOString(),
             onboardingCurrentStep: 7,
-          })
-          .eq('id', user.id);
-        if (error) throw error;
+          },
+        });
         repairAction = 'backfill_onboard';
         message = 'Backfilled onboard=true because workspace exists.';
       } else if (user.onboard && !user.space) {
         // Onboarded but no space → reset to re-onboard
-        const { error } = await supabase
-          .from('User')
-          .update({
+        await convex().mutation(api.org.users.updateById, {
+          id: user.id,
+          patch: {
             onboard: false,
             onboardingCurrentStep: 1,
-          })
-          .eq('id', user.id);
-        if (error) throw error;
+          },
+        });
         repairAction = 'reset_onboarding';
         message = 'Reset onboard=false and step=1 because workspace is missing.';
       }
@@ -175,13 +172,9 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const { data: spaceData, error: spaceLookupError } = await supabase
-        .from('Space')
-        .select('id, stripeSubscriptionId')
-        .eq('ownerId', userId)
-        .maybeSingle();
-
-      if (spaceLookupError) throw spaceLookupError;
+      const spaceData = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: userId,
+      });
 
       if (!spaceData) {
         return NextResponse.json({ error: 'No space found for this user' }, { status: 404 });
@@ -227,16 +220,12 @@ export async function POST(req: NextRequest) {
         stripeWarning = 'No Stripe subscription on record — database updated only. Stripe has no record of this change.';
       }
 
-      // Always mirror to Supabase as our local cache
-      const updatePayload: Record<string, unknown> = { stripeSubscriptionStatus: status };
-      if (periodEnd) updatePayload.stripePeriodEnd = periodEnd;
-
-      const { error: updateError } = await supabase
-        .from('Space')
-        .update(updatePayload)
-        .eq('id', spaceData.id);
-
-      if (updateError) throw updateError;
+      // Always mirror to our local cache
+      await convex().mutation(api.workspace.spaces.patchBillingById, {
+        id: spaceData.id,
+        stripeSubscriptionStatus: status,
+        ...(periodEnd ? { stripePeriodEnd: periodEnd } : {}),
+      });
 
       await logAdminAction({
         actor: admin.userId,
@@ -260,13 +249,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Look up the user to get their Clerk ID
-      const { data: userRow, error: userError } = await supabase
-        .from('User')
-        .select('id, clerkId, email, platformRole')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (userError) throw userError;
+      const userRow = await convex().query(api.org.users.getById, { id: userId });
       if (!userRow) {
         return NextResponse.json({ error: 'User not found' }, { status: 404 });
       }
@@ -286,10 +269,10 @@ export async function POST(req: NextRequest) {
 
       // Also mark as banned in the DB so the middleware secondary check works
       // even if Clerk metadata hasn't propagated yet.
-      await supabase
-        .from('User')
-        .update({ platformRole: 'banned' })
-        .eq('id', userId);
+      await convex().mutation(api.org.users.updateById, {
+        id: userId,
+        patch: { platformRole: 'banned' },
+      });
 
       await logAdminAction({
         actor: admin.userId,
@@ -312,13 +295,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Look up the user to get their Clerk ID
-      const { data: userRow, error: userError } = await supabase
-        .from('User')
-        .select('id, clerkId, email')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (userError) throw userError;
+      const userRow = await convex().query(api.org.users.getById, { id: userId });
       if (!userRow) {
         return NextResponse.json({ error: 'User not found' }, { status: 404 });
       }
@@ -329,10 +306,10 @@ export async function POST(req: NextRequest) {
       await clerkClient.users.unbanUser(target.clerkId);
 
       // Restore platformRole in DB (back to 'user' — admins wouldn't be banned)
-      await supabase
-        .from('User')
-        .update({ platformRole: 'user' })
-        .eq('id', userId);
+      await convex().mutation(api.org.users.updateById, {
+        id: userId,
+        patch: { platformRole: 'user' },
+      });
 
       await logAdminAction({
         actor: admin.userId,
@@ -358,11 +335,9 @@ export async function POST(req: NextRequest) {
       const { userId: targetUserId } = body as { userId: string };
       if (!targetUserId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
 
-      const { data: space } = await supabase
-        .from('Space')
-        .select('id, stripeSubscriptionStatus, stripeSubscriptionId')
-        .eq('ownerId', targetUserId)
-        .maybeSingle();
+      const space = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: targetUserId,
+      });
 
       if (!space) return NextResponse.json({ error: 'No workspace found' }, { status: 404 });
 
@@ -403,10 +378,11 @@ export async function POST(req: NextRequest) {
         stripeWarning = `Subscription is '${compStatus}' — Stripe has no active subscription to update. Database marked active for 30 days as a manual override. If you need to re-activate billing, create a new subscription in the Stripe dashboard.`;
       }
 
-      await supabase.from('Space').update({
+      await convex().mutation(api.workspace.spaces.patchBillingById, {
+        id: space.id,
         stripeSubscriptionStatus: 'active',
         stripePeriodEnd: periodEnd,
-      }).eq('id', space.id);
+      });
 
       await logAdminAction({ actor: admin.userId, action: 'comp_free_month', target: targetUserId, details: { periodEnd, stripeUpdated, stripeWarning } });
 
@@ -431,11 +407,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Refund limit reached (max 3 per day). Try again tomorrow.' }, { status: 429 });
       }
 
-      const { data: space } = await supabase
-        .from('Space')
-        .select('id, stripeCustomerId')
-        .eq('ownerId', targetUserId)
-        .maybeSingle();
+      const space = await convex().query(api.workspace.spaces.getByOwnerId, {
+        ownerId: targetUserId,
+      });
 
       if (!space?.stripeCustomerId) return NextResponse.json({ error: 'No Stripe customer' }, { status: 404 });
 

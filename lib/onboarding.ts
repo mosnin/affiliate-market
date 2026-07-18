@@ -7,7 +7,7 @@
  *   `user.onboard` trustworthy over time.
  * - All guards must call `getOnboardingStatus()` and check `.isOnboarded`.
  */
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 type OnboardingUser = {
   id?: string;
@@ -45,16 +45,15 @@ export async function ensureOnboardingBackfill(
 ): Promise<boolean> {
   if (!shouldBackfillOnboardFromSpace(user)) return false;
 
-  const { error } = await supabase
-    .from('User')
-    .update({
+  // Convex throws on failure, preserving the old "throw on DB error" contract.
+  await convex().mutation(api.org.users.updateById, {
+    id: user!.id!,
+    patch: {
       onboard: true,
       onboardingCompletedAt: new Date().toISOString(),
       onboardingCurrentStep: 7,
-    })
-    .eq('id', user!.id!);
-
-  if (error) throw error;
+    },
+  });
 
   // Mutate in-place so the caller's reference is up-to-date
   if (user) {

@@ -10,7 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -27,50 +27,45 @@ export async function GET(
 
   const { id: contactId } = await params;
 
-  // Verify contact belongs to this space
-  const { data: contact, error: contactError } = await supabase
-    .from('Contact')
-    .select('id, name')
-    .eq('id', contactId)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  // Verify contact belongs to this space. Convex throws on infra failure
+  // (matching the old `throw contactError`) and returns null when the row
+  // isn't in this space (matching the old `!contact` 404).
+  const contact = await convex().query(api.contacts.contacts.getById, {
+    id: contactId,
+    spaceId: space.id,
+  });
 
-  if (contactError) throw contactError;
   if (!contact) return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
 
-  const [memoriesResult, draftsResult, activityResult] = await Promise.all([
-    supabase
-      .from('AgentMemory')
-      .select('id, memoryType, content, importance, createdAt')
-      .eq('spaceId', space.id)
-      .eq('entityType', 'contact')
-      .eq('entityId', contactId)
-      .order('importance', { ascending: false })
-      .order('createdAt', { ascending: false })
-      .limit(20),
+  const [memories, drafts, activity] = await Promise.all([
+    convex().query(api.swarmvector.agentMemory.listForEntity, {
+      spaceId: space.id,
+      entityType: 'contact',
+      entityId: contactId,
+      limit: 20,
+    }),
 
-    supabase
-      .from('AgentDraft')
-      .select('id, channel, subject, content, reasoning, priority, status, createdAt')
-      .eq('spaceId', space.id)
-      .eq('contactId', contactId)
-      .in('status', ['pending', 'approved'])
-      .order('createdAt', { ascending: false })
-      .limit(10),
+    convex().query(api.agent.drafts.listForContact, {
+      spaceId: space.id,
+      contactId,
+      statuses: ['pending', 'approved'],
+      limit: 10,
+    }),
 
-    supabase
-      .from('AgentActivityLog')
-      .select('id, agentType, action, outcome, summary, contactId, createdAt')
-      .eq('spaceId', space.id)
-      .eq('contactId', contactId)
-      .order('createdAt', { ascending: false })
-      .limit(15),
+    // Old SELECT named non-existent columns (`action`, `summary`, `contactId`);
+    // real columns are actionType, reasoning, relatedContactId. The Convex fn
+    // returns the real columns — same 15-row, createdAt-desc scope.
+    convex().query(api.agent.activity.contextForContact, {
+      spaceId: space.id,
+      contactId,
+      limit: 15,
+    }),
   ]);
 
   return NextResponse.json({
     contactId,
-    memories: memoriesResult.data ?? [],
-    drafts: draftsResult.data ?? [],
-    activity: activityResult.data ?? [],
+    memories: memories ?? [],
+    drafts,
+    activity,
   });
 }

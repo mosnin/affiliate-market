@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { getClientUser } from '@/lib/client-auth';
 import { clientOwnsContact } from '@/lib/client-portal-data';
 import { sendClientNotification } from '@/lib/client-email';
@@ -13,7 +13,7 @@ const MAX_BODY = 2000;
 /**
  * GET /api/clients/messages?contactId=… — thread for one contact, scoped to
  * the signed-in client by clientOwnsContact (verified email is the boundary).
- * Marks the realtor's messages as read on fetch.
+ * Marks the seller's messages as read on fetch.
  */
 export async function GET(req: NextRequest) {
   const user = await getClientUser();
@@ -25,26 +25,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const { data } = await supabase
-    .from('ClientMessage')
-    .select('id, senderType, body, createdAt')
-    .eq('contactId', contactId)
-    .order('createdAt', { ascending: true });
+  const messages = await convex().query(api.conversations.clientMessages.listForContact, {
+    contactId,
+  });
 
-  // Mark realtor → client messages read now that the client has loaded them.
-  await supabase
-    .from('ClientMessage')
-    .update({ readAt: new Date().toISOString() })
-    .eq('contactId', contactId)
-    .eq('senderType', 'realtor')
-    .is('readAt', null);
+  // Mark seller → client messages read now that the client has loaded them.
+  await convex().mutation(api.conversations.clientMessages.markRead, {
+    contactId,
+    senderType: 'seller',
+  });
 
-  return NextResponse.json({ messages: data ?? [] });
+  return NextResponse.json({ messages });
 }
 
 /**
  * POST /api/clients/messages — client sends a message on a contact they own.
- * Optionally notifies the realtor by email (best-effort).
+ * Optionally notifies the seller by email (best-effort).
  */
 export async function POST(req: NextRequest) {
   const user = await getClientUser();
@@ -67,39 +63,28 @@ export async function POST(req: NextRequest) {
   const { allowed } = await checkRateLimit(`clients:msg:${user.id}`, 30, 60);
   if (!allowed) return NextResponse.json({ error: 'Too many messages. Slow down.' }, { status: 429 });
 
-  // Resolve the contact's space (needed for the row + realtor lookup).
-  const { data: contact } = await supabase
-    .from('Contact')
-    .select('spaceId, Space(ownerId)')
-    .eq('id', contactId)
-    .maybeSingle();
+  // Resolve the contact's space (needed for the row + seller lookup).
+  const contact = await convex().query(api.contacts.contacts.getById, { id: contactId });
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { data: inserted, error } = await supabase
-    .from('ClientMessage')
-    .insert({
+  let inserted;
+  try {
+    inserted = await convex().mutation(api.conversations.clientMessages.send, {
       contactId,
       spaceId: contact.spaceId,
       senderType: 'client',
       body: text,
-    })
-    .select('id, senderType, body, createdAt')
-    .single();
-
-  if (error) {
+    });
+  } catch (error) {
     logger.error('[clients/messages] insert failed', { contactId }, error);
     return NextResponse.json({ error: 'Failed to send.' }, { status: 500 });
   }
 
-  // Best-effort realtor notification. Resolve the owner's email via User.
-  const space = contact.Space as { ownerId?: string | null } | null;
+  // Best-effort seller notification. Resolve the owner's email via User.
+  const space = await convex().query(api.workspace.spaces.getById, { id: contact.spaceId });
   if (space?.ownerId) {
-    const { data: owner } = await supabase
-      .from('User')
-      .select('email')
-      .eq('id', space.ownerId)
-      .maybeSingle();
-    const ownerEmail = (owner as { email?: string | null } | null)?.email;
+    const owner = await convex().query(api.org.users.getById, { id: space.ownerId });
+    const ownerEmail = owner?.email;
     if (ownerEmail) {
       void sendClientNotification({
         to: ownerEmail,

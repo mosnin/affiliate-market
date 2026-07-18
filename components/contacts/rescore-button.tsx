@@ -48,7 +48,7 @@ export function RescoreButton({ contactId, onComplete }: Props) {
         className={cn(
           'inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-2.5 py-1.5 border transition-colors',
           done
-            ? 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20'
+            ? 'text-positive bg-positive-subtle border-positive/20 dark:text-positive dark:bg-positive-subtle0/10 dark:border-positive/20'
             : 'text-muted-foreground bg-muted border-border hover:bg-accent hover:text-foreground',
           loading && 'opacity-60 cursor-not-allowed',
         )}

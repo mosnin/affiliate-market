@@ -42,7 +42,7 @@ export async function generateMetadata({
     .maybeSingle();
   const user = rows as { name: string | null; email: string } | null;
   return {
-    title: `${user?.name || user?.email || 'User'} — Admin — Chippi`,
+    title: `${user?.name || user?.email || 'User'} — Admin — Cola`,
   };
 }
 
@@ -90,11 +90,11 @@ function InfoRow({
 }
 
 const SUB_STATUS_STYLES: Record<string, string> = {
-  active: 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15',
-  trialing: 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15',
-  past_due: 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+  active: 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15',
+  trialing: 'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15',
+  past_due: 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
   canceled: 'text-slate-600 bg-slate-100 dark:text-slate-400 dark:bg-slate-500/15',
-  unpaid: 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15',
+  unpaid: 'text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15',
   inactive: 'text-slate-500 bg-slate-50 dark:text-slate-500 dark:bg-slate-500/10',
 };
 
@@ -182,7 +182,7 @@ export default async function AdminUserDetailPage({
       supabase
         .from('SpaceSetting')
         .select(
-          'id, spaceId, phoneNumber, businessName, timezone, notifications, smsNotifications, notifyNewLeads, notifyTourBookings, notifyNewDeals, notifyFollowUps',
+          'id, spaceId, phoneNumber, businessName, timezone, notifications, smsNotifications, notifyNewLeads, notifyDemoBookings, notifyNewDeals, notifyFollowUps',
         )
         .eq('spaceId', spaceRow.id)
         .maybeSingle(),
@@ -275,7 +275,7 @@ export default async function AdminUserDetailPage({
           {/* Status badges */}
           <div className="flex flex-wrap items-center gap-2">
             {isSuspended && (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2.5 py-1 text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15">
+              <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2.5 py-1 text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15">
                 <ShieldBan size={11} />
                 Suspended
               </span>
@@ -284,8 +284,8 @@ export default async function AdminUserDetailPage({
               className={cn(
                 'inline-flex text-xs font-semibold rounded-full px-2.5 py-1',
                 onboarding.isOnboarded
-                  ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/15'
-                  : 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15',
+                  ? 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15'
+                  : 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15',
               )}
             >
               {onboarding.isOnboarded ? 'Onboarded' : 'Not onboarded'}
@@ -393,7 +393,7 @@ export default async function AdminUserDetailPage({
                         <span className="text-muted-foreground">stages</span>
                       </span>
                       {failedLeads > 0 && (
-                        <span className="text-sm text-amber-600 dark:text-amber-400">
+                        <span className="text-sm text-muted-foreground dark:text-muted-foreground">
                           <strong>{failedLeads}</strong> failed scoring
                         </span>
                       )}
@@ -463,11 +463,11 @@ export default async function AdminUserDetailPage({
                             className={cn(
                               'text-[10px] font-semibold rounded-full px-2 py-0.5',
                               lead.scoreLabel === 'hot'
-                                ? 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-500/15'
+                                ? 'text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15'
                                 : lead.scoreLabel === 'warm'
-                                  ? 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/15'
+                                  ? 'text-muted-foreground bg-muted dark:text-muted-foreground dark:bg-muted0/15'
                                   : lead.scoreLabel === 'cold'
-                                    ? 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15'
+                                    ? 'text-primary bg-brand-subtle dark:text-blue-400 dark:bg-brand-subtle0/15'
                                     : 'text-slate-600 bg-slate-100 dark:text-slate-400 dark:bg-slate-500/15',
                             )}
                           >

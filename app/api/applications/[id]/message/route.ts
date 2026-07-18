@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 
 /**
  * POST /api/applications/[id]/message
  *
- * Auth'd endpoint for realtors to send messages to applicants.
- * Creates an ApplicationMessage with senderType: 'realtor'.
+ * Auth'd endpoint for sellers to send messages to applicants.
+ * Creates an ApplicationMessage with senderType: 'seller'.
  * Sends email notification to applicant.
  */
 export async function POST(
@@ -39,29 +39,28 @@ export async function POST(
   const sanitized = content.trim().replace(/<[^>]*>/g, '');
 
   // Get contact details for email notification
-  const { data: contact, error: fetchError } = await supabase
-    .from('Contact')
-    .select('email, name, spaceId, applicationRef, statusPortalToken')
-    .eq('id', contactId)
-    .single();
+  let contact;
+  try {
+    contact = await convex().query(api.contacts.contacts.getById, { id: contactId });
+  } catch (fetchError) {
+    console.error('[message] Contact lookup error:', fetchError);
+    return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+  }
 
-  if (fetchError || !contact) {
+  if (!contact) {
     return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
   }
 
   // Create the message
-  const { data: message, error: insertError } = await supabase
-    .from('ApplicationMessage')
-    .insert({
+  let message;
+  try {
+    message = await convex().mutation(api.portal.applicationMessages.create, {
       contactId,
       spaceId: contact.spaceId,
-      senderType: 'realtor',
+      senderType: 'seller',
       content: sanitized,
-    })
-    .select('id, senderType, content, createdAt')
-    .single();
-
-  if (insertError) {
+    });
+  } catch (insertError) {
     console.error('[message] Insert error:', insertError);
     return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
   }
@@ -91,30 +90,29 @@ export async function GET(
   const auth = await requireContactAccess(contactId);
   if (auth instanceof NextResponse) return auth;
 
-  const { data: messages, error } = await supabase
-    .from('ApplicationMessage')
-    .select('id, senderType, content, readAt, createdAt')
-    .eq('contactId', contactId)
-    .order('createdAt', { ascending: true });
-
-  if (error) {
+  let messages;
+  try {
+    messages = await convex().query(api.portal.applicationMessages.listForContact, {
+      contactId,
+    });
+  } catch (error) {
     console.error('[message] Fetch error:', error);
     return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
   }
 
   // Mark unread applicant messages as read
-  const unreadApplicantIds = (messages ?? [])
-    .filter((m: { senderType: string; readAt: string | null }) => m.senderType === 'applicant' && !m.readAt)
-    .map((m: { id: string }) => m.id);
+  const unreadApplicantIds = messages
+    .filter((m) => m.senderType === 'applicant' && !m.readAt)
+    .map((m) => m.id);
 
   if (unreadApplicantIds.length > 0) {
-    await supabase
-      .from('ApplicationMessage')
-      .update({ readAt: new Date().toISOString() })
-      .in('id', unreadApplicantIds);
+    await convex().mutation(api.portal.applicationMessages.markRead, {
+      contactId,
+      ids: unreadApplicantIds,
+    });
   }
 
-  return NextResponse.json({ messages: messages ?? [] });
+  return NextResponse.json({ messages });
 }
 
 async function sendMessageNotification(
@@ -129,17 +127,13 @@ async function sendMessageNotification(
 ): Promise<void> {
   if (!contact.email || !process.env.RESEND_API_KEY) return;
 
-  const [{ data: space }, { data: settings }] = await Promise.all([
-    supabase.from('Space').select('slug, name').eq('id', contact.spaceId).maybeSingle(),
-    supabase
-      .from('SpaceSetting')
-      .select('businessName')
-      .eq('spaceId', contact.spaceId)
-      .maybeSingle(),
+  const [space, settings] = await Promise.all([
+    convex().query(api.workspace.spaces.getById, { id: contact.spaceId }),
+    convex().query(api.workspace.settings.getBySpace, { spaceId: contact.spaceId }),
   ]);
 
   const businessName = settings?.businessName ?? space?.name ?? 'Your Agent';
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usechippi.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://my.usecola.com';
 
   let portalUrl = '';
   if (space?.slug && contact.applicationRef) {
@@ -157,7 +151,7 @@ async function sendMessageNotification(
   const FROM =
     process.env.RESEND_FROM_EMAIL?.includes('@')
       ? process.env.RESEND_FROM_EMAIL
-      : `notifications@${process.env.RESEND_FROM_EMAIL ?? 'alerts.usechippi.com'}`;
+      : `notifications@${process.env.RESEND_FROM_EMAIL ?? 'alerts.usecola.com'}`;
 
   await resend.emails.send({
     from: `${businessName.replace(/[\r\n\t<>"]/g, ' ').slice(0, 100)} <${FROM}>`,
@@ -187,7 +181,7 @@ async function sendMessageNotification(
           ` : ''}
         </td></tr>
         <tr><td style="padding:16px 28px;border-top:1px solid #f1f5f9">
-          <p style="margin:0;font-size:11px;color:#9ca3af">This email was sent by ${safeBizName} via Chippi</p>
+          <p style="margin:0;font-size:11px;color:#9ca3af">This email was sent by ${safeBizName} via Cola</p>
         </td></tr>
       </table>
     </td></tr>

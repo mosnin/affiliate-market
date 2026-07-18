@@ -1,9 +1,9 @@
 /**
- * `check_availability` — does the realtor have anything booked between two
+ * `check_availability` — does the seller have anything booked between two
  * ISO datetimes?
  *
  * Read-only. Looks at:
- *   • Tour rows (have native startsAt/endsAt)
+ *   • Demo rows (have native startsAt/endsAt)
  *   • CalendarEvent rows (have date + optional time text — best-effort
  *     conversion to a datetime band; events without a time are treated as
  *     all-day in that local-date sense)
@@ -12,7 +12,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { defineTool } from '../types';
 
 const parameters = z
@@ -29,7 +29,7 @@ interface Conflict {
   title: string;
   startsAt: string;
   endsAt: string;
-  kind: 'tour' | 'event';
+  kind: 'demo' | 'event';
 }
 
 interface CheckAvailabilityResult {
@@ -57,7 +57,7 @@ export const checkAvailabilityTool = defineTool<typeof parameters, CheckAvailabi
   name: 'check_availability',
   riskLevel: 'safe',
   description:
-    'Check whether the realtor has Tours or CalendarEvents booked in a given ISO time window.',
+    'Check whether the seller has Demos or CalendarEvents booked in a given ISO time window.',
   parameters,
   requiresApproval: false,
 
@@ -67,53 +67,50 @@ export const checkAvailabilityTool = defineTool<typeof parameters, CheckAvailabi
     const fromDate = fromIso.slice(0, 10);
     const toDate = toIso.slice(0, 10);
 
-    const [tourRes, eventRes] = await Promise.all([
-      supabase
-        .from('Tour')
-        .select('id, startsAt, endsAt, propertyAddress, guestName')
-        .eq('spaceId', ctx.space.id)
-        .lt('startsAt', toIso)
-        .gt('endsAt', fromIso)
-        .limit(20),
-      supabase
-        .from('CalendarEvent')
-        .select('id, title, date, time')
-        .eq('spaceId', ctx.space.id)
-        .gte('date', fromDate)
-        .lte('date', toDate)
-        .limit(50),
-    ]);
-
-    if (tourRes.error) {
-      return { summary: `Availability check failed: ${tourRes.error.message}`, display: 'error' };
-    }
-    if (eventRes.error) {
-      return { summary: `Availability check failed: ${eventRes.error.message}`, display: 'error' };
-    }
-
-    const conflicts: Conflict[] = [];
-    for (const t of (tourRes.data ?? []) as Array<{
+    // Both Demo and CalendarEvent are on Convex now. The overlap predicate is
+    // `startsAt < to AND endsAt > from`; listBySpace bounds startsAt on the
+    // index, so we filter `endsAt > from` in-process. Both throw on failure.
+    let eventData: Array<{ id: string; title: string; date: string; time: string | null }>;
+    let demoData: Array<{
       id: string;
       startsAt: string;
       endsAt: string;
-      propertyAddress: string | null;
+      productAddress: string | null;
       guestName: string;
-    }>) {
+    }>;
+    try {
+      const [demoRows, events] = await Promise.all([
+        convex().query(api.demos.demos.listBySpace, {
+          spaceId: ctx.space.id,
+          startsAtLt: toIso,
+          order: 'asc',
+        }),
+        convex().query(api.calendar.events.listByDateRange, {
+          spaceId: ctx.space.id,
+          fromDate,
+          toDate,
+          limit: 50,
+        }),
+      ]);
+      demoData = (demoRows as typeof demoData).filter((t) => t.endsAt > fromIso).slice(0, 20);
+      eventData = events;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      return { summary: `Availability check failed: ${message}`, display: 'error' };
+    }
+
+    const conflicts: Conflict[] = [];
+    for (const t of demoData) {
       conflicts.push({
-        title: t.propertyAddress
-          ? `Tour: ${t.guestName} — ${t.propertyAddress}`
-          : `Tour: ${t.guestName}`,
+        title: t.productAddress
+          ? `Demo: ${t.guestName} — ${t.productAddress}`
+          : `Demo: ${t.guestName}`,
         startsAt: t.startsAt,
         endsAt: t.endsAt,
-        kind: 'tour',
+        kind: 'demo',
       });
     }
-    for (const e of (eventRes.data ?? []) as Array<{
-      id: string;
-      title: string;
-      date: string;
-      time: string | null;
-    }>) {
+    for (const e of eventData) {
       const band = eventBand(e.date, e.time);
       // Filter all-day events down to the requested window.
       if (band.endsAt <= fromIso || band.startsAt >= toIso) continue;

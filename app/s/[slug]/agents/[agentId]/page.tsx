@@ -1,11 +1,11 @@
 import { redirect, notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { AgentBuilderForm } from '@/components/agents/agent-builder-form';
 import type { CustomAgent } from '@/lib/swarm-types';
 
-export const metadata = { title: 'Edit Agent — Chippi' };
+export const metadata = { title: 'Edit Agent — Cola' };
 
 export default async function EditAgentPage({
   params,
@@ -14,33 +14,29 @@ export default async function EditAgentPage({
 }) {
   const { slug, agentId } = await params;
   const { userId } = await auth();
-  if (!userId) redirect('/login/realtor');
+  if (!userId) redirect('/login/seller');
 
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
 
   // Verify the authenticated user owns this space.
-  const { data: spaceOwner } = await supabase
-    .from('User')
-    .select('id')
-    .eq('clerkId', userId)
-    .eq('id', space.ownerId)
-    .maybeSingle();
-  if (!spaceOwner) notFound();
+  const spaceOwner = await convex()
+    .query(api.org.users.getByClerkId, { clerkId: userId })
+    .catch(() => null);
+  if (!spaceOwner || spaceOwner.id !== space.ownerId) notFound();
 
   // Fetch the agent and verify it belongs to this space.
-  const { data: agentData, error } = await supabase
-    .from('CustomAgent')
-    .select('*')
-    .eq('id', agentId)
-    .maybeSingle();
-
-  if (error) {
+  let agentData: CustomAgent | null = null;
+  try {
+    agentData = (await convex().query(api.agent.customAgents.getById, {
+      id: agentId,
+    })) as CustomAgent | null;
+  } catch (error) {
     console.error('[agents/[agentId]] agent fetch error:', error);
     notFound();
   }
 
-  const agent = agentData as CustomAgent | null;
+  const agent = agentData;
   if (!agent || agent.spaceId !== space.id) notFound();
 
   return (

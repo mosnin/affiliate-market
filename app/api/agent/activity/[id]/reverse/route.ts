@@ -1,7 +1,7 @@
 /**
  * POST /api/agent/activity/[id]/reverse
  *
- * Undo an autonomous action Chippi took. Reverses the side effect when the
+ * Undo an autonomous action Cola took. Reverses the side effect when the
  * action type is in the supported set, then marks the activity log row's
  * reversedAt so the UI can show "undone" state. The Python agent flags
  * actions as `reversible` at log time; we additionally check our own
@@ -18,6 +18,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
 
@@ -59,14 +60,18 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
   const space = await getSpaceForUser(userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  // Fetch + scope-check in one query
-  const { data: row, error: fetchError } = await supabase
-    .from('AgentActivityLog')
-    .select('id, spaceId, actionType, relatedContactId, relatedDealId, reversible, reversedAt')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  // Fetch + scope-check (Convex). Throws on infra error → 500, mirroring the
+  // old `{ error }` branch. Returns the real columns (actionType, reasoning,
+  // …) — the buggy `action`/`summary` names never existed.
+  let row;
+  try {
+    row = await convex().query(api.agent.activity.getByIdForSpace, { id, spaceId: space.id });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : 'Failed to fetch activity' },
+      { status: 500 },
+    );
+  }
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   if (row.reversedAt) {
@@ -93,14 +98,17 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ error: result.reason }, { status: 500 });
   }
 
-  // Mark reversed so the UI knows + future GETs filter it out of "undoable"
+  // Mark reversed so the UI knows + future GETs filter it out of "undoable".
+  // markReversed sets reversedAt server-side; the side effect already landed,
+  // so a failure here is the same "reversed but log update failed" warning.
   const reversedAt = new Date().toISOString();
-  const { error: updateError } = await supabase
-    .from('AgentActivityLog')
-    .update({ reversedAt })
-    .eq('id', id)
-    .eq('spaceId', space.id);
-  if (updateError) {
+  let marked: { ok: boolean };
+  try {
+    marked = await convex().mutation(api.agent.activity.markReversed, { id, spaceId: space.id });
+  } catch {
+    marked = { ok: false };
+  }
+  if (!marked.ok) {
     // The side effect was reversed but the log update failed. Surface this
     // honestly — caller can refresh to see the field-level change.
     return NextResponse.json(

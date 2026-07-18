@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { auth } from '@clerk/nextjs/server';
 import { getSpaceFromSlug } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { buildIntakeUrl } from '@/lib/intake';
 import { IntakeLinkRow } from './intake-link-row';
 import { timeAgo } from '@/lib/formatting';
@@ -23,7 +23,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  return { title: `Intake -- ${slug} -- Chippi` };
+  return { title: `Intake -- ${slug} -- Cola` };
 }
 
 export default async function IntakeOverviewPage({
@@ -33,7 +33,7 @@ export default async function IntakeOverviewPage({
 }) {
   const { slug } = await params;
   const { userId } = await auth();
-  if (!userId) redirect('/login/realtor');
+  if (!userId) redirect('/login/seller');
 
   const space = await getSpaceFromSlug(slug);
   if (!space) notFound();
@@ -54,35 +54,31 @@ export default async function IntakeOverviewPage({
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const [submissionsResult, hotLeadsResult, recentResult] = await Promise.all([
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .is('brokerageId', null)
-        .contains('tags', ['application-link'])
-        .gte('createdAt', sevenDaysAgo.toISOString()),
-      supabase
-        .from('Contact')
-        .select('*', { count: 'exact', head: true })
-        .eq('spaceId', space.id)
-        .is('brokerageId', null)
-        .contains('tags', ['application-link'])
-        .gte('createdAt', sevenDaysAgo.toISOString())
-        .eq('scoreLabel', 'hot'),
-      supabase
-        .from('Contact')
-        .select('id, name, createdAt, tags, leadScore, scoreLabel, leadType')
-        .eq('spaceId', space.id)
-        .is('brokerageId', null)
-        .contains('tags', ['application-link'])
-        .order('createdAt', { ascending: false })
-        .limit(5),
+    const [submissionsCount, hotLeadsCount, recentRows] = await Promise.all([
+      convex().query(api.contacts.contacts.countForSpaces, {
+        spaceIds: [space.id],
+        requireCompanyIdNull: true,
+        tagsAll: ['application-link'],
+        createdGte: sevenDaysAgo.toISOString(),
+      }),
+      convex().query(api.contacts.contacts.countForSpaces, {
+        spaceIds: [space.id],
+        requireCompanyIdNull: true,
+        tagsAll: ['application-link'],
+        createdGte: sevenDaysAgo.toISOString(),
+        scoreLabel: 'hot',
+      }),
+      convex().query(api.contacts.contacts.filterForSpaces, {
+        spaceIds: [space.id],
+        requireCompanyIdNull: true,
+        tagsAll: ['application-link'],
+        limit: 5,
+      }),
     ]);
 
-    totalSubmissions = submissionsResult.count ?? 0;
-    hotLeadCount = hotLeadsResult.count ?? 0;
-    recentLeads = (recentResult.data ?? []) as typeof recentLeads;
+    totalSubmissions = submissionsCount ?? 0;
+    hotLeadCount = hotLeadsCount ?? 0;
+    recentLeads = (recentRows ?? []) as unknown as typeof recentLeads;
   } catch (err) {
     console.error('[intake/overview] DB query failed', err);
   }
@@ -95,9 +91,9 @@ export default async function IntakeOverviewPage({
   // that just redirected to the same surface. Re-enable it only if a real
   // alternate intake variant ships again.
 
-  // Chippi narration ladder — one sentence describing the state of intake
+  // Cola narration ladder — one sentence describing the state of intake
   // right now. No counts in stat tiles; the count lives in the sentence so
-  // the realtor reads it like a thought, not a dashboard.
+  // the seller reads it like a thought, not a dashboard.
   const subtitle = (() => {
     if (totalSubmissions === 0) {
       return 'No submissions yet. Share the link.';
@@ -117,7 +113,7 @@ export default async function IntakeOverviewPage({
 
   return (
     <div className={`${PAGE_RHYTHM} max-w-3xl mx-auto pb-12`}>
-      {/* Header — H1 + Chippi narration */}
+      {/* Header — H1 + Cola narration */}
       <header className="space-y-1.5">
         <h1 className={H1} style={TITLE_FONT}>
           Intake
@@ -125,7 +121,7 @@ export default async function IntakeOverviewPage({
         <p className={BODY_MUTED}>{subtitle}</p>
       </header>
 
-      {/* Your link — the one thing every realtor comes here for */}
+      {/* Your link — the one thing every seller comes here for */}
       <section className="space-y-3">
         <div className="flex items-end justify-between gap-3">
           <div>
@@ -148,7 +144,7 @@ export default async function IntakeOverviewPage({
       {/* AI chat mode — hidden 2026-05-25. The `/apply/<slug>/chat` route
           now permanent-redirects to `/apply/<slug>` (which IS the chat). The
           section advertised a second "mode" that didn't exist; the share
-          link above already gives the realtor the chat surface. */}
+          link above already gives the seller the chat surface. */}
 
       {/* Recent submissions — the second thing they come here for */}
       <section>

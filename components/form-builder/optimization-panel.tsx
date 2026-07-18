@@ -58,8 +58,8 @@ interface OptimizationResult {
  * Severity is the message — the rest of the row stays paper-flat.
  */
 const IMPACT_DOT: Record<string, string> = {
-  high: 'bg-rose-500/70',
-  medium: 'bg-amber-500/70',
+  high: 'bg-negative-subtle0/70',
+  medium: 'bg-muted0/70',
   low: 'bg-muted-foreground/40',
 };
 
@@ -256,11 +256,11 @@ function PerformanceSummary({ performance }: { performance: FormPerformance }) {
           <p className={SECTION_LABEL}>Lead quality</p>
           <div className="flex flex-col gap-1 mt-1">
             <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/70 flex-shrink-0" />
+              <span className="w-1.5 h-1.5 rounded-full bg-positive-subtle0/70 flex-shrink-0" />
               <span className="text-xs text-foreground">{performance.scoreDistribution.hot}% hot</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500/70 flex-shrink-0" />
+              <span className="w-1.5 h-1.5 rounded-full bg-muted0/70 flex-shrink-0" />
               <span className="text-xs text-foreground">{performance.scoreDistribution.warm}% warm</span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -440,13 +440,13 @@ export function OptimizationPanel({ slug }: OptimizationPanelProps) {
       {error && !loading && (() => {
         const { title, detail } = friendlyErrorMessage(error);
         return (
-          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3">
-            <p className="text-sm font-medium text-rose-700 dark:text-rose-400">{title}</p>
-            <p className="text-xs text-rose-700/80 dark:text-rose-400/80 mt-0.5">{detail}</p>
+          <div className="rounded-lg border border-negative/20 bg-negative-subtle0/10 px-4 py-3">
+            <p className="text-sm font-medium text-negative dark:text-negative">{title}</p>
+            <p className="text-xs text-negative/80 dark:text-negative/80 mt-0.5">{detail}</p>
             <button
               type="button"
               onClick={() => fetchSuggestions()}
-              className="text-xs text-rose-700 dark:text-rose-400 hover:underline mt-2 transition-colors duration-150"
+              className="text-xs text-negative dark:text-negative hover:underline mt-2 transition-colors duration-150"
             >
               Try again
             </button>
@@ -462,9 +462,9 @@ export function OptimizationPanel({ slug }: OptimizationPanelProps) {
 
           {/* Message (e.g., not enough data) — sanctioned subtle amber */}
           {result.message && (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
-              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{result.message}</p>
-              <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-1 leading-relaxed">
+            <div className="rounded-lg border border-border bg-muted0/10 px-4 py-3">
+              <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">{result.message}</p>
+              <p className="text-xs text-muted-foreground/80 dark:text-muted-foreground/80 mt-1 leading-relaxed">
                 Share your form link with more applicants to collect enough data. Once you reach the threshold, come back here for personalized recommendations.
               </p>
             </div>
@@ -488,11 +488,11 @@ export function OptimizationPanel({ slug }: OptimizationPanelProps) {
               </p>
             </div>
           ) : !result.message ? (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-6 text-center">
-              <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <div className="rounded-lg border border-positive/20 bg-positive-subtle0/10 p-6 text-center">
+              <p className="text-sm font-medium text-positive dark:text-positive">
                 Your form looks great. No changes needed right now.
               </p>
-              <p className="text-xs text-emerald-700/80 dark:text-emerald-400/80 mt-1">
+              <p className="text-xs text-positive/80 dark:text-positive/80 mt-1">
                 Check back after you get more submissions for new insights.
               </p>
             </div>

@@ -66,8 +66,8 @@ function QuestionRow({ question, onAnswered }: { question: AgentQuestion; onAnsw
       {/* Meta line */}
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         {isHighPriority && (
-          <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          <span className="inline-flex items-center gap-1 text-muted-foreground dark:text-muted-foreground font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-muted0" />
             High priority
           </span>
         )}
@@ -92,7 +92,7 @@ function QuestionRow({ question, onAnswered }: { question: AgentQuestion; onAnsw
       {/* Answer form */}
       <form onSubmit={handleSubmit} className="mt-3">
         {answeredOk ? (
-          <div className="flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400">
+          <div className="flex items-center gap-1.5 text-sm text-positive dark:text-positive">
             <CheckCircle2 size={14} />
             Answered, thanks
           </div>
@@ -156,7 +156,7 @@ export function AgentQuestionsPanel() {
   }
 
   // Hide the section entirely when there's nothing to weigh in on — keeps the
-  // page calm. The chat surface still tells the user Chippi will check in
+  // page calm. The chat surface still tells the user Cola will check in
   // when stuck.
   if (!loading && questions.length === 0) return null;
 

@@ -8,12 +8,12 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/formatting';
-import { ChippiAvatar } from './chippi-avatar';
+import { ColaAvatar } from './cola-avatar';
 
 const ACTION_LABELS: Record<string, string> = {
   create_draft_message: 'Drafted message',
   message_drafted: 'Drafted message',
-  packet_drafted: 'Drafted property packet',
+  packet_drafted: 'Drafted product packet',
   set_contact_follow_up: 'Scheduled follow-up',
   set_deal_follow_up: 'Scheduled deal follow-up',
   log_agent_observation: 'Logged observation',
@@ -25,7 +25,7 @@ const ACTION_LABELS: Record<string, string> = {
   create_follow_up_reminder: 'Created reminder',
   send_sms: 'Sent SMS',
   send_email: 'Sent email',
-  tour_booked: 'Booked tour',
+  demo_booked: 'Booked demo',
   deal_stage_advanced: 'Moved deal forward',
   review_requested: 'Flagged deal for review',
   lead_routed_out: 'Routed contact out',
@@ -50,7 +50,7 @@ const AGENT_LABELS: Record<string, string> = {
   deal_sentinel: 'Deal Sentinel',
   long_term_nurture: 'Long-term Nurture',
   lead_scorer: 'Lead Scorer',
-  tour_followup: 'Tour Follow-up',
+  demo_followup: 'Demo Follow-up',
 };
 
 function formatAgent(t: string): string {
@@ -58,10 +58,10 @@ function formatAgent(t: string): string {
 }
 
 const OUTCOME_CFG = {
-  completed: { icon: CheckCircle2, cls: 'text-emerald-600 dark:text-emerald-400' },
-  queued_for_approval: { icon: Clock, cls: 'text-amber-500 dark:text-amber-400' },
-  suggested: { icon: Lightbulb, cls: 'text-amber-400 dark:text-amber-300' },
-  failed: { icon: AlertCircle, cls: 'text-rose-600 dark:text-rose-400' },
+  completed: { icon: CheckCircle2, cls: 'text-positive dark:text-positive' },
+  queued_for_approval: { icon: Clock, cls: 'text-muted-foreground dark:text-muted-foreground' },
+  suggested: { icon: Lightbulb, cls: 'text-lead-warm dark:text-muted-foreground' },
+  failed: { icon: AlertCircle, cls: 'text-negative dark:text-negative' },
 } as const;
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -195,15 +195,15 @@ export function AgentMissionControl({ slug }: { slug: string }) {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-y-1 px-5 py-3.5 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
-          <ChippiAvatar size="xs" className={enabled ? undefined : 'opacity-40'} pulse={!!enabled} />
+          <ColaAvatar size="xs" className={enabled ? undefined : 'opacity-40'} pulse={!!enabled} />
           <h2 className="text-sm font-semibold flex-shrink-0">Agent</h2>
           <span className={cn(
             'inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0',
             enabled
-              ? 'bg-orange-50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-400'
+              ? 'bg-brand-subtle dark:bg-brand-subtle text-primary dark:text-primary'
               : 'bg-muted text-muted-foreground',
           )}>
-            <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', enabled ? 'bg-orange-500' : 'bg-muted-foreground/40')} />
+            <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', enabled ? 'bg-brand' : 'bg-muted-foreground/40')} />
             {enabled ? 'Active' : 'Off'}
           </span>
           {lastRanAt && (
@@ -213,7 +213,7 @@ export function AgentMissionControl({ slug }: { slug: string }) {
           )}
         </div>
         <Link
-          href={`/s/${slug}/chippi`}
+          href={`/s/${slug}/cola`}
           className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-3"
         >
           Agent hub <ArrowRight size={10} />
@@ -227,9 +227,9 @@ export function AgentMissionControl({ slug }: { slug: string }) {
             <Bot size={14} className="text-muted-foreground" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">Bring Chippi on as your cowork</p>
+            <p className="text-sm font-medium">Bring Cola on as your cowork</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Chippi watches your leads, drafts the follow-ups, and hands them to you for a quick read.
+              Cola watches your leads, drafts the follow-ups, and hands them to you for a quick read.
             </p>
           </div>
           <Link
@@ -244,11 +244,11 @@ export function AgentMissionControl({ slug }: { slug: string }) {
       {/* Pending drafts CTA */}
       {pendingDrafts > 0 && (
         <Link
-          href={`/s/${slug}/chippi`}
-          className="flex items-center justify-between gap-3 px-5 py-3 bg-orange-500/5 border-b border-border hover:bg-orange-500/10 transition-colors"
+          href={`/s/${slug}/cola`}
+          className="flex items-center justify-between gap-3 px-5 py-3 bg-brand/5 border-b border-border hover:bg-brand/10 transition-colors"
         >
           <div className="flex items-center gap-2.5">
-            <span className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+            <span className="w-6 h-6 rounded-full bg-brand flex items-center justify-center text-white text-xs font-bold shrink-0">
               {pendingDrafts > 9 ? '9+' : pendingDrafts}
             </span>
             <div>
@@ -275,17 +275,17 @@ export function AgentMissionControl({ slug }: { slug: string }) {
               {latestRun.entries.length} action{latestRun.entries.length !== 1 ? 's' : ''}
             </span>
             {runCompleted > 0 && (
-              <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
+              <span className="text-[11px] font-medium text-positive dark:text-positive bg-positive-subtle dark:bg-positive-subtle0/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
                 {runCompleted} done
               </span>
             )}
             {runQueued > 0 && (
-              <span className="text-[11px] font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
+              <span className="text-[11px] font-medium text-muted-foreground dark:text-muted-foreground bg-muted dark:bg-muted0/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
                 {runQueued} draft{runQueued !== 1 ? 's' : ''}
               </span>
             )}
             {runFailed > 0 && (
-              <span className="text-[11px] font-medium text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
+              <span className="text-[11px] font-medium text-negative dark:text-negative bg-negative-subtle dark:bg-negative-subtle0/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
                 {runFailed} failed
               </span>
             )}
@@ -304,7 +304,7 @@ export function AgentMissionControl({ slug }: { slug: string }) {
                   {entry.Contact && (
                     <Link
                       href={`/s/${slug}/contacts/${entry.Contact.id}`}
-                      className="inline-flex items-center gap-0.5 text-xs text-orange-500 dark:text-orange-400 hover:underline underline-offset-2 flex-shrink-0"
+                      className="inline-flex items-center gap-0.5 text-xs text-primary dark:text-primary hover:underline underline-offset-2 flex-shrink-0"
                     >
                       <User size={10} />
                       <span className="max-w-[120px] truncate">{entry.Contact.name}</span>
@@ -313,7 +313,7 @@ export function AgentMissionControl({ slug }: { slug: string }) {
                   {!entry.Contact && entry.Deal && (
                     <Link
                       href={`/s/${slug}/deals`}
-                      className="inline-flex items-center gap-0.5 text-xs text-orange-500 dark:text-orange-400 hover:underline underline-offset-2 flex-shrink-0"
+                      className="inline-flex items-center gap-0.5 text-xs text-primary dark:text-primary hover:underline underline-offset-2 flex-shrink-0"
                     >
                       <Briefcase size={10} />
                       <span className="max-w-[120px] truncate">{entry.Deal.title}</span>
@@ -327,7 +327,7 @@ export function AgentMissionControl({ slug }: { slug: string }) {
           {/* "N more" overflow link */}
           {hiddenCount > 0 && (
             <Link
-              href={`/s/${slug}/chippi`}
+              href={`/s/${slug}/cola`}
               className="flex items-center gap-1 px-5 py-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors border-b border-border"
             >
               +{hiddenCount} more action{hiddenCount !== 1 ? 's' : ''}
@@ -340,11 +340,11 @@ export function AgentMissionControl({ slug }: { slug: string }) {
       {/* Agent is on but nothing happened yet */}
       {enabled && !hasActivity && !hasInsights && pendingDrafts === 0 && (
         <div className="flex items-center gap-3 px-5 py-4 border-b border-border">
-          <div className="w-8 h-8 rounded-md bg-orange-500/10 flex items-center justify-center flex-shrink-0">
-            <Bot size={14} className="text-orange-500" />
+          <div className="w-8 h-8 rounded-md bg-brand/10 flex items-center justify-center flex-shrink-0">
+            <Bot size={14} className="text-primary" />
           </div>
           <div>
-            <p className="text-sm font-medium">Chippi is settling in</p>
+            <p className="text-sm font-medium">Cola is settling in</p>
             <p className="text-xs text-muted-foreground mt-0.5">First sweep through your pipeline coming up &mdash; I&apos;ll post anything worth your attention here.</p>
           </div>
         </div>
@@ -363,7 +363,7 @@ export function AgentMissionControl({ slug }: { slug: string }) {
                   ? `/s/${slug}/contacts/${insight.entityId}?tab=intelligence`
                   : insight.entityType === 'deal'
                     ? `/s/${slug}/deals/${insight.entityId}?tab=overview`
-                    : `/s/${slug}/chippi`;
+                    : `/s/${slug}/cola`;
               return (
                 <Link
                   key={insight.id}
@@ -373,7 +373,7 @@ export function AgentMissionControl({ slug }: { slug: string }) {
                   <span className={cn(
                     'w-1.5 h-1.5 rounded-full mt-[5px] flex-shrink-0',
                     insight.importance >= 0.7 ? 'bg-red-500' :
-                    insight.importance >= 0.4 ? 'bg-amber-400' :
+                    insight.importance >= 0.4 ? 'bg-lead-warm' :
                     'bg-muted-foreground/30',
                   )} />
                   <div className="flex-1 min-w-0">
@@ -382,9 +382,9 @@ export function AgentMissionControl({ slug }: { slug: string }) {
                       <span className={cn(
                         'mt-1 inline-flex text-[11px] font-medium rounded px-1.5 py-0.5',
                         insight.entityType === 'contact'
-                          ? 'bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400'
+                          ? 'bg-brand-subtle text-primary dark:bg-brand/15 dark:text-primary'
                           : insight.entityType === 'deal'
-                            ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400'
+                            ? 'bg-muted text-muted-foreground dark:bg-muted0/15 dark:text-muted-foreground'
                             : 'bg-muted text-muted-foreground',
                       )}>
                         {insight.entityName}

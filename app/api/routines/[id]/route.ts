@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import {
   fireRoutineRun,
@@ -21,9 +21,6 @@ import {
 } from '@/lib/routines';
 
 export const runtime = 'nodejs';
-
-const SELECT =
-  'id, instruction, cadence, hour, dayOfMonth, daysOfWeek, enabled, lastRunAt, lastRunStatus, nextRunAt, createdAt';
 
 const MAX_INSTRUCTION = 600;
 const MIN_INSTRUCTION = 10;
@@ -70,7 +67,7 @@ export async function PATCH(
     const trimmed = body.instruction.trim();
     if (trimmed.length < MIN_INSTRUCTION) {
       return NextResponse.json(
-        { error: 'Write a full sentence — what should Chippi do?' },
+        { error: 'Write a full sentence — what should Cola do?' },
         { status: 400 },
       );
     }
@@ -106,16 +103,25 @@ export async function PATCH(
     return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 });
   }
 
-  // updatedAt + nextRunAt are recomputed by the table trigger.
-  const { data, error } = await supabase
-    .from('Routine')
-    .update(patch)
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .select(SELECT)
-    .maybeSingle();
-
-  if (error) {
+  // updatedAt + nextRunAt are recomputed inside the mutation (the PG trigger's
+  // port). The patch keys map 1:1 to the mutation's tri-state args: a key
+  // present with null clears that field, absent leaves it. dayOfMonth /
+  // daysOfWeek were already null-cleared above on a cadence switch.
+  let data;
+  try {
+    data = await convex().mutation(api.agent.routines.update, {
+      id,
+      spaceId: space.id,
+      ...(patch.instruction !== undefined && { instruction: patch.instruction as string }),
+      ...(patch.cadence !== undefined && {
+        cadence: patch.cadence as (typeof ROUTINE_CADENCES)[number],
+      }),
+      ...(patch.hour !== undefined && { hour: patch.hour as number }),
+      ...('dayOfMonth' in patch && { dayOfMonth: patch.dayOfMonth as number | null }),
+      ...('daysOfWeek' in patch && { daysOfWeek: patch.daysOfWeek as RoutineWeekday[] | null }),
+      ...(patch.enabled !== undefined && { enabled: patch.enabled as boolean }),
+    });
+  } catch (error) {
     logger.error('[routines] update failed', { spaceId: space.id, id }, error);
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
   }
@@ -136,13 +142,11 @@ export async function DELETE(
   const space = await getSpaceForUser(authResult.userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { error } = await supabase
-    .from('Routine')
-    .delete()
-    .eq('id', id)
-    .eq('spaceId', space.id);
-
-  if (error) {
+  // Scoped to (id, spaceId). A non-matching row is a no-op, exactly as the old
+  // scoped delete was (it never 404'd on a missing/foreign routine).
+  try {
+    await convex().mutation(api.agent.routines.remove, { id, spaceId: space.id });
+  } catch (error) {
     logger.error('[routines] delete failed', { spaceId: space.id, id }, error);
     return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
   }
@@ -162,34 +166,36 @@ export async function POST(
   const space = await getSpaceForUser(authResult.userId);
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data: routine } = await supabase
-    .from('Routine')
-    .select('id, instruction')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
+  const routine = await convex().query(api.agent.routines.getByIdForSpace, {
+    id,
+    spaceId: space.id,
+  });
   if (!routine) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   // Optimistically stamp the run so the UI updates instantly. after() corrects
   // the status to 'error' if the dispatch never landed. The Modal endpoint
   // doesn't return until the run finishes, so we don't block the response on it.
-  await supabase
-    .from('Routine')
-    .update({ lastRunAt: new Date().toISOString(), lastRunStatus: 'ok' })
-    .eq('id', id)
-    .eq('spaceId', space.id);
+  // stampRun sets lastRunAt + lastRunStatus and advances nextRunAt (the PG
+  // trigger's port), matching the old optimistic update + trigger.
+  await convex().mutation(api.agent.routines.stampRun, {
+    id,
+    spaceId: space.id,
+    lastRunStatus: 'ok',
+  });
 
-  // Pass the caller's own Clerk userId — this is "Run now" from the realtor's
+  // Pass the caller's own Clerk userId — this is "Run now" from the seller's
   // own session, so they're the entity whose Composio connections we use.
   // Mirrors the cron path which threads the owner's clerkId in the same way.
   after(async () => {
     const status = await fireRoutineRun(space.id, routine.instruction, authResult.userId);
     if (status === 'error') {
-      await supabase
-        .from('Routine')
-        .update({ lastRunStatus: 'error' })
-        .eq('id', id)
-        .eq('spaceId', space.id);
+      // Flip only the status flag — does NOT touch nextRunAt (the stamp above
+      // already advanced it), exactly as the old correction did.
+      await convex().mutation(api.agent.routines.setLastRunStatus, {
+        id,
+        spaceId: space.id,
+        lastRunStatus: 'error',
+      });
     }
   });
 

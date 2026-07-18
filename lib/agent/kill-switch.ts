@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 
 // 30-second TTL cache to avoid DB hammering on every tool call
 const cache = new Map<string, { disabled: boolean; expiresAt: number }>();
@@ -9,20 +9,9 @@ export async function isSpaceDisabled(spaceId: string): Promise<boolean> {
   const cached = cache.get(spaceId);
   if (cached && Date.now() < cached.expiresAt) return cached.disabled;
 
-  // Query DB: SELECT id FROM "DisabledSpace" WHERE "spaceId" = spaceId AND "isActive" = true LIMIT 1
-  const { data, error } = await supabase
-    .from('DisabledSpace')
-    .select('id')
-    .eq('spaceId', spaceId)
-    .eq('isActive', true)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`kill-switch: failed to query DisabledSpace: ${error.message}`);
-  }
-
-  const disabled = data !== null;
+  // Active disable for this space? Convex throws on failure (the old code
+  // threw on the Supabase error) — let it propagate to the caller.
+  const disabled = await convex().query(api.workspace.disabled.isDisabled, { spaceId });
 
   // Update cache
   cache.set(spaceId, { disabled, expiresAt: Date.now() + CACHE_TTL_MS });
@@ -35,35 +24,19 @@ export async function disableSpace(
   reason: string,
   disabledBy = 'system'
 ): Promise<void> {
-  // Upsert: insert a new DisabledSpace row with isActive = true.
-  // If one already exists (UNIQUE constraint on spaceId+isActive), update it.
-  const { error } = await supabase
-    .from('DisabledSpace')
-    .upsert(
-      { spaceId, reason, disabledBy, isActive: true, reenabledAt: null },
-      { onConflict: 'spaceId,isActive' }
-    );
-
-  if (error) {
-    throw new Error(`kill-switch: failed to disable space ${spaceId}: ${error.message}`);
-  }
+  // Insert a new active DisabledSpace row, or refresh the existing active one
+  // (the mutation re-implements the PG `onConflict: 'spaceId,isActive'` upsert).
+  // Convex throws on failure — preserve the old throw-on-error contract.
+  await convex().mutation(api.workspace.disabled.disable, { spaceId, reason, disabledBy });
 
   // Invalidate cache for this spaceId
   cache.delete(spaceId);
 }
 
 export async function reenableSpace(spaceId: string): Promise<void> {
-  // UPDATE DisabledSpace SET isActive = false, reenabledAt = now()
-  // WHERE spaceId = spaceId AND isActive = true
-  const { error } = await supabase
-    .from('DisabledSpace')
-    .update({ isActive: false, reenabledAt: new Date().toISOString() })
-    .eq('spaceId', spaceId)
-    .eq('isActive', true);
-
-  if (error) {
-    throw new Error(`kill-switch: failed to re-enable space ${spaceId}: ${error.message}`);
-  }
+  // Flip every active disable to inactive + stamp reenabledAt. Convex throws
+  // on failure — preserve the old throw-on-error contract.
+  await convex().mutation(api.workspace.disabled.reenable, { spaceId });
 
   // Invalidate cache
   cache.delete(spaceId);

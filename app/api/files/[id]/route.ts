@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getSpaceForUser } from '@/lib/space';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { logger } from '@/lib/logger';
 import { getSignedDownloadUrl, deleteObject } from '@/lib/storage';
 
@@ -24,15 +24,14 @@ export async function GET(
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { id } = await params;
-  const { data: row, error } = await supabase
-    .from('File')
-    .select('id, spaceId, storageKey, name, mimeType')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  if (error) {
-    logger.error('[files/id] lookup failed', { id }, error);
+  let row;
+  try {
+    row = await convex().query(api.infra.files.getByIdForSpace, {
+      id,
+      spaceId: space.id,
+    });
+  } catch (err) {
+    logger.error('[files/id] lookup failed', { id }, err as Error);
     return NextResponse.json({ error: 'Lookup failed' }, { status: 500 });
   }
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -60,34 +59,22 @@ export async function DELETE(
   if (!space) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { id } = await params;
-  const { data: row, error } = await supabase
-    .from('File')
-    .select('id, spaceId, storageKey')
-    .eq('id', id)
-    .eq('spaceId', space.id)
-    .maybeSingle();
-
-  if (error) {
-    logger.error('[files/id] delete lookup failed', { id }, error);
-    return NextResponse.json({ error: 'Lookup failed' }, { status: 500 });
-  }
-  if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
-  const { error: delError } = await supabase
-    .from('File')
-    .delete()
-    .eq('id', id)
-    .eq('spaceId', space.id);
-
-  if (delError) {
-    logger.error('[files/id] delete failed', { id }, delError);
+  let deleted: { storageKey: string } | null;
+  try {
+    deleted = await convex().mutation(api.infra.files.deleteByIdForSpace, {
+      id,
+      spaceId: space.id,
+    });
+  } catch (err) {
+    logger.error('[files/id] delete failed', { id }, err as Error);
     return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
   }
+  if (!deleted) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   // Best-effort object cleanup — leaked bytes are preferable to a dangling
   // row in the UI.
-  await deleteObject(row.storageKey).catch((err) => {
-    logger.warn('[files/id] storage cleanup failed', { id, key: row.storageKey }, err);
+  await deleteObject(deleted.storageKey).catch((err) => {
+    logger.warn('[files/id] storage cleanup failed', { id, key: deleted.storageKey }, err);
   });
 
   return NextResponse.json({ ok: true });

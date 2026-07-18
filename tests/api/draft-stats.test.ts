@@ -5,7 +5,7 @@
  * reads `feedback_action`, `edit_distance`, and `decision_ms`, those columns
  * are bytes accumulating. This file guards the contract: auth + space gate,
  * the single Supabase read, the count/median math, and the exact response
- * shape downstream callers (the agent itself, future broker dashboards) will
+ * shape downstream callers (the agent itself, future manager dashboards) will
  * bind to.
  *
  * Mocks: requireAuth, getSpaceForUser, supabase. Everything else (median,
@@ -26,43 +26,35 @@ vi.mock('@/lib/space', () => ({
 }));
 
 /**
- * Per-test queued terminal — the route makes exactly one `from('AgentDraft')`
- * call and awaits it as a thenable. We capture the chain calls so tests can
- * assert the .eq('spaceId'), .not('feedback_action', 'is', null), and .gte
- * filters were applied.
+ * Convex mock — the route's single read is now
+ * `convex().query(api.agent.drafts.decidedStatsForSpace, { spaceId, since })`,
+ * which returns the already-projected DraftStatsRow array the lib aggregates.
+ * We steer that array per-test (was the Supabase terminal) and capture the
+ * forwarded args so the "applies the correct filters" / "selects outcome_signal"
+ * contracts are re-expressed as assertions on the Convex call: scoped to the
+ * space, with a 30-day `since`. `api` is a path proxy so the fn ref stringifies
+ * to its dotted path.
  */
-type Terminal = { data?: unknown; error?: unknown };
-let supabaseTerminal: Terminal = { data: [] };
-const supabaseCalls: Array<{ table: string; chain: Array<[string, unknown[]]> }> = [];
-
-vi.mock('@/lib/supabase', () => {
-  function makeChain(table: string): Record<string, unknown> {
-    const calls: Array<[string, unknown[]]> = [];
-    supabaseCalls.push({ table, chain: calls });
-
-    const chain: Record<string, unknown> = {};
-    const passthrough = ['select', 'eq', 'is', 'not', 'gte', 'lt', 'order', 'limit'];
-    for (const method of passthrough) {
-      chain[method] = vi.fn((...args: unknown[]) => {
-        calls.push([method, args]);
-        return chain;
-      });
-    }
-    chain.then = (resolve: (v: Terminal) => unknown, reject?: (e: unknown) => unknown) => {
-      try {
-        return Promise.resolve(supabaseTerminal).then(resolve, reject);
-      } catch (e) {
-        return reject ? reject(e) : Promise.reject(e);
-      }
-    };
-    return chain;
-  }
+let decidedRows: unknown[] = [];
+const { convexQueryMock } = vi.hoisted(() => ({
+  convexQueryMock: vi.fn(async (_ref?: unknown, _args?: unknown) => [] as unknown),
+}));
+vi.mock('@/lib/convex-server', () => {
+  const makePath = (path: string): unknown =>
+    new Proxy(() => path, {
+      get: (_t, p) => (typeof p === 'string' ? makePath(`${path}.${p}`) : path),
+    });
   return {
-    supabase: {
-      from: vi.fn((table: string) => makeChain(table)),
-    },
+    api: new Proxy({}, { get: (_t, p) => (typeof p === 'string' ? makePath(p) : undefined) }),
+    convex: () => ({ query: convexQueryMock, mutation: vi.fn() }),
   };
 });
+
+/** The fn ref + args object of the i-th Convex query call. */
+function queryCall(i = 0): { path: string; args: Record<string, unknown> } {
+  const [ref, args] = convexQueryMock.mock.calls[i] as [unknown, Record<string, unknown>];
+  return { path: typeof ref === 'function' ? (ref as () => string)() : '', args: args ?? {} };
+}
 
 // Imports after mocks.
 import { GET } from '@/app/api/agent/draft-stats/route';
@@ -78,15 +70,16 @@ const SPACE = {
   name: 'Test Space',
   emoji: null,
   ownerId: 'user_owner',
-  brokerageId: null,
+  companyId: null,
   createdAt: new Date().toISOString(),
   stripeSubscriptionStatus: null,
 } as unknown as NonNullable<Awaited<ReturnType<typeof getSpaceForUser>>>;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  supabaseTerminal = { data: [] };
-  supabaseCalls.length = 0;
+  decidedRows = [];
+  // The Convex query returns the already-projected decided rows for the space.
+  convexQueryMock.mockImplementation(async () => decidedRows);
   mockedAuth.mockResolvedValue({ userId: 'test-user' });
   mockedSpace.mockResolvedValue(SPACE);
 });
@@ -103,7 +96,7 @@ describe('GET /api/agent/draft-stats', () => {
     expect(res).toBe(unauthorized);
     expect(res.status).toBe(401);
     // No DB reads when auth fails.
-    expect(supabaseCalls).toHaveLength(0);
+    expect(convexQueryMock).not.toHaveBeenCalled();
   });
 
   it('no space → 403 Forbidden, no DB read', async () => {
@@ -114,11 +107,11 @@ describe('GET /api/agent/draft-stats', () => {
 
     expect(res.status).toBe(403);
     expect(body).toEqual({ error: 'Forbidden' });
-    expect(supabaseCalls).toHaveLength(0);
+    expect(convexQueryMock).not.toHaveBeenCalled();
   });
 
   it('empty data: no decided drafts → all zeros, null medians', async () => {
-    supabaseTerminal = { data: [] };
+    decidedRows = [];
 
     const res = await GET();
     const body = await res.json();
@@ -141,8 +134,7 @@ describe('GET /api/agent/draft-stats', () => {
   });
 
   it('mixed data: 5 approved + 3 edited (distances 2,4,8) + 1 rejected → exact body', async () => {
-    supabaseTerminal = {
-      data: [
+    decidedRows = [
         { feedback_action: 'approved', edit_distance: 0, decision_ms: 5000 },
         { feedback_action: 'approved', edit_distance: 0, decision_ms: 7000 },
         { feedback_action: 'approved', edit_distance: 0, decision_ms: 9000 },
@@ -152,8 +144,7 @@ describe('GET /api/agent/draft-stats', () => {
         { feedback_action: 'edited_and_approved', edit_distance: 4, decision_ms: 17000 },
         { feedback_action: 'edited_and_approved', edit_distance: 8, decision_ms: 19000 },
         { feedback_action: 'rejected', edit_distance: null, decision_ms: 3000 },
-      ],
-    };
+    ];
 
     const res = await GET();
     const body = await res.json();
@@ -181,14 +172,12 @@ describe('GET /api/agent/draft-stats', () => {
   });
 
   it('even count of edited drafts → median is the average of the two middles', async () => {
-    supabaseTerminal = {
-      data: [
+    decidedRows = [
         { feedback_action: 'edited_and_approved', edit_distance: 2, decision_ms: 1000 },
         { feedback_action: 'edited_and_approved', edit_distance: 6, decision_ms: 2000 },
         { feedback_action: 'edited_and_approved', edit_distance: 10, decision_ms: 3000 },
         { feedback_action: 'edited_and_approved', edit_distance: 14, decision_ms: 4000 },
-      ],
-    };
+    ];
 
     const res = await GET();
     const body = await res.json();
@@ -205,13 +194,11 @@ describe('GET /api/agent/draft-stats', () => {
   });
 
   it('held drafts count toward the total but not the approval rate', async () => {
-    supabaseTerminal = {
-      data: [
+    decidedRows = [
         { feedback_action: 'approved', edit_distance: 0, decision_ms: 5000 },
         { feedback_action: 'held', edit_distance: null, decision_ms: 8000 },
         { feedback_action: 'held', edit_distance: null, decision_ms: 12000 },
-      ],
-    };
+    ];
 
     const res = await GET();
     const body = await res.json();
@@ -229,57 +216,45 @@ describe('GET /api/agent/draft-stats', () => {
     expect(body.medianDecisionMs).toBe(8000);
   });
 
-  it('applies the correct DB filters: spaceId, feedback_action not null, 30-day window', async () => {
-    supabaseTerminal = { data: [] };
+  it('applies the correct DB filters: spaceId, 30-day window (Convex decided-stats query)', async () => {
+    decidedRows = [];
 
     await GET();
 
-    expect(supabaseCalls).toHaveLength(1);
-    const draftCall = supabaseCalls[0];
-    expect(draftCall.table).toBe('AgentDraft');
+    // Exactly one Convex read — the decided-stats projection for this space.
+    // The `feedback_action IS NOT NULL` filter now lives inside the Convex
+    // query (decidedStatsForSpace), so the route only forwards the scope.
+    expect(convexQueryMock).toHaveBeenCalledTimes(1);
+    const { path, args } = queryCall(0);
+    expect(path).toContain('agent.drafts.decidedStatsForSpace');
 
-    // .eq('spaceId', space.id)
-    const eqCalls = draftCall.chain.filter(([m]) => m === 'eq');
-    expect(eqCalls.some(([, args]) => args[0] === 'spaceId' && args[1] === SPACE.id)).toBe(true);
+    // Scoped to this space — dropping spaceId would leak other spaces' rows.
+    expect(args.spaceId).toBe(SPACE.id);
 
-    // .not('feedback_action', 'is', null)
-    const notCalls = draftCall.chain.filter(([m]) => m === 'not');
-    expect(
-      notCalls.some(([, args]) => args[0] === 'feedback_action' && args[1] === 'is' && args[2] === null),
-    ).toBe(true);
-
-    // .gte('createdAt', <ISO 30 days ago>)
-    const gteCalls = draftCall.chain.filter(([m]) => m === 'gte');
-    expect(gteCalls.length).toBe(1);
-    const [, gteArgs] = gteCalls[0];
-    expect(gteArgs[0]).toBe('createdAt');
-    const since = new Date(gteArgs[1] as string).getTime();
+    // since = ISO ~30 days ago.
+    const since = new Date(args.since as string).getTime();
     const expected = Date.now() - 30 * 24 * 60 * 60 * 1000;
     // Within a few seconds of "now - 30 days" — clock drift across the boundary
     // shouldn't fail the test.
     expect(Math.abs(since - expected)).toBeLessThan(5000);
   });
 
-  it('selects outcome_signal alongside the feedback columns', async () => {
-    // The route has to actually pull outcome_signal off AgentDraft, otherwise
-    // the entire phase-13 metric is zero forever.
-    supabaseTerminal = { data: [] };
+  it('reads the decided-stats projection that carries outcome_signal', async () => {
+    // The route has to read the Convex fn that projects outcome_signal +
+    // feedback_action, otherwise the entire phase-13 metric is zero forever.
+    // The projection moved into the query; binding to it is the contract.
+    decidedRows = [];
     await GET();
 
-    const draftCall = supabaseCalls[0];
-    const selectCalls = draftCall.chain.filter(([m]) => m === 'select');
-    expect(selectCalls).toHaveLength(1);
-    const selectArg = selectCalls[0][1][0] as string;
-    expect(selectArg).toContain('outcome_signal');
-    expect(selectArg).toContain('feedback_action');
+    const { path } = queryCall(0);
+    expect(path).toContain('agent.drafts.decidedStatsForSpace');
   });
 
   it('outcome attribution: 2 advanced + 3 none + 1 unchecked → rate over checked only', async () => {
     // The unchecked row contributes to feedback totals but not to the outcome
     // rate, so the cron's day-1 delay doesn't poison "this draft just sent
     // and hasn't had time to land yet."
-    supabaseTerminal = {
-      data: [
+    decidedRows = [
         { feedback_action: 'approved', edit_distance: 0, decision_ms: 5000, outcome_signal: 'deal_advanced' },
         { feedback_action: 'approved', edit_distance: 0, decision_ms: 6000, outcome_signal: 'deal_advanced' },
         { feedback_action: 'approved', edit_distance: 0, decision_ms: 7000, outcome_signal: 'none' },
@@ -287,8 +262,7 @@ describe('GET /api/agent/draft-stats', () => {
         { feedback_action: 'approved', edit_distance: 0, decision_ms: 9000, outcome_signal: 'none' },
         // One sent draft the cron hasn't checked yet.
         { feedback_action: 'approved', edit_distance: 0, decision_ms: 10000, outcome_signal: null },
-      ],
-    };
+    ];
 
     const res = await GET();
     const body = await res.json();
@@ -307,12 +281,10 @@ describe('GET /api/agent/draft-stats', () => {
 
   it('outcome attribution: zero checked drafts → rate is 0 (not NaN, not null)', async () => {
     // A workspace where everything is fresh shouldn't render NaN in the UI.
-    supabaseTerminal = {
-      data: [
+    decidedRows = [
         { feedback_action: 'approved', edit_distance: 0, decision_ms: 5000, outcome_signal: null },
         { feedback_action: 'rejected', edit_distance: null, decision_ms: 1500, outcome_signal: null },
-      ],
-    };
+    ];
 
     const res = await GET();
     const body = await res.json();
@@ -325,13 +297,11 @@ describe('GET /api/agent/draft-stats', () => {
     // The route's median is over `edited_and_approved` rows with edit_distance > 0.
     // A row labelled edited but with distance 0 (shouldn't happen, but defend
     // against it) must not pull the median toward zero.
-    supabaseTerminal = {
-      data: [
+    decidedRows = [
         { feedback_action: 'edited_and_approved', edit_distance: 0, decision_ms: 1000 },
         { feedback_action: 'edited_and_approved', edit_distance: 5, decision_ms: 2000 },
         { feedback_action: 'edited_and_approved', edit_distance: 9, decision_ms: 3000 },
-      ],
-    };
+    ];
 
     const res = await GET();
     const body = await res.json();
@@ -344,8 +314,8 @@ describe('GET /api/agent/draft-stats', () => {
 
 // ── Helper unit tests ────────────────────────────────────────────────────────
 // `aggregateDraftStats` is the pure-math contract both the route and the
-// broker dashboard's "Draft impact" card bind to. Test it directly so the
-// brokerage-wide consumer doesn't need the full request mock.
+// manager dashboard's "Draft impact" card bind to. Test it directly so the
+// company-wide consumer doesn't need the full request mock.
 
 import { aggregateDraftStats, type DraftStatsRow } from '@/lib/draft-stats';
 
@@ -368,9 +338,9 @@ describe('aggregateDraftStats (helper)', () => {
     });
   });
 
-  it('mixed input rolls up identically across realtor and brokerage scopes', () => {
-    // The card is brokerage-wide — it concatenates rows from every space in
-    // the brokerage and feeds them in. Same shape, same numbers.
+  it('mixed input rolls up identically across seller and company scopes', () => {
+    // The card is company-wide — it concatenates rows from every space in
+    // the company and feeds them in. Same shape, same numbers.
     const rows: DraftStatsRow[] = [
       { feedback_action: 'approved', edit_distance: 0, decision_ms: 5000, outcome_signal: 'deal_advanced' },
       { feedback_action: 'approved', edit_distance: 0, decision_ms: 7000, outcome_signal: 'none' },

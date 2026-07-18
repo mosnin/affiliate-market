@@ -1,33 +1,33 @@
 /**
- * Realtor / broker conversation isolation boundary.
+ * Seller / manager conversation isolation boundary.
  *
- * Broker-Chippi and brokerage team chats live in the SAME `Conversation`
- * table as realtor conversations today, keyed by `spaceId` and distinguished
- * only by a reserved title prefix. A broker_owner also owns their personal
- * realtor space, so space ownership ALONE is not isolation — the realtor
+ * Manager-Cola and company team chats live in the SAME `Conversation`
+ * table as seller conversations today, keyed by `spaceId` and distinguished
+ * only by a reserved title prefix. A manager_owner also owns their personal
+ * seller space, so space ownership ALONE is not isolation — the seller
  * surface must additionally refuse any conversation whose title carries a
  * reserved prefix.
  *
  * This module is the single source of truth for that boundary. Keep it
  * dependency-free (no supabase, no clerk) so the predicates are trivially
- * unit-testable and so every realtor read path routes through the same
+ * unit-testable and so every seller read path routes through the same
  * checks. If this class of leak is to fail CI, it has to live in one place.
  *
  * No em dashes below this point are in code — the prose above is comment.
  */
 
-/** Title prefix on a broker's personal Chippi conversation. */
-export const BROKER_TITLE_PREFIX = '[BROKER_CHIPPI]';
+/** Title prefix on a manager's personal Cola conversation. */
+export const MANAGER_TITLE_PREFIX = '[MANAGER_COLA]';
 
-/** Title prefix on a brokerage-wide team chat conversation. */
-export const TEAM_TITLE_PREFIX = '[BROKERAGE_CHAT]';
+/** Title prefix on a company-wide team chat conversation. */
+export const TEAM_TITLE_PREFIX = '[COMPANY_CHAT]';
 
 /**
- * Every reserved prefix the realtor surface must never serve. Sourced by the
+ * Every reserved prefix the seller surface must never serve. Sourced by the
  * supabase `.not('title','like', ...)` list filters so the exclusion set
  * lives in exactly one place.
  */
-export const RESERVED_TITLE_PREFIXES = [BROKER_TITLE_PREFIX, TEAM_TITLE_PREFIX] as const;
+export const RESERVED_TITLE_PREFIXES = [MANAGER_TITLE_PREFIX, TEAM_TITLE_PREFIX] as const;
 
 /**
  * The SQL LIKE patterns for the reserved prefixes, ready to hand to
@@ -39,8 +39,8 @@ export const RESERVED_TITLE_LIKE_PATTERNS = RESERVED_TITLE_PREFIXES.map(
 ) as readonly string[];
 
 /**
- * True when a title belongs to a broker-side surface (broker Chippi or team
- * chat) and must therefore be hidden from the realtor. Used by the list
+ * True when a title belongs to a manager-side surface (manager Cola or team
+ * chat) and must therefore be hidden from the seller. Used by the list
  * filters and the per-conversation guards.
  */
 export function isReservedConversationTitle(title: string | null | undefined): boolean {
@@ -49,16 +49,16 @@ export function isReservedConversationTitle(title: string | null | undefined): b
 }
 
 /**
- * The realtor-side boundary predicate. True ONLY when:
+ * The seller-side boundary predicate. True ONLY when:
  *   - the conversation exists,
- *   - it belongs to THIS realtor space (`conv.spaceId === spaceId`), and
- *   - its title is not a reserved broker/team title.
+ *   - it belongs to THIS seller space (`conv.spaceId === spaceId`), and
+ *   - its title is not a reserved manager/team title.
  *
- * Any read path that loads messages or mutates a conversation on the realtor
+ * Any read path that loads messages or mutates a conversation on the seller
  * surface must gate on this. A false result means "deny": 404, or fall
  * through to the empty state. Never expose.
  */
-export function isRealtorConversation(
+export function isSellerConversation(
   conv: { spaceId: string; title: string } | null | undefined,
   spaceId: string,
 ): boolean {

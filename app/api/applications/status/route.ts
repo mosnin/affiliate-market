@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { convex, api } from '@/lib/convex-server';
 import { requireContactAccess } from '@/lib/api-auth';
 
 /**
@@ -14,7 +14,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'contactId and status required' }, { status: 400 });
   }
 
-  const validStatuses = ['received', 'under_review', 'tour_scheduled', 'approved', 'needs_info', 'declined', 'waitlisted'];
+  const validStatuses = ['received', 'under_review', 'demo_scheduled', 'approved', 'needs_info', 'declined', 'waitlisted'];
   if (!validStatuses.includes(status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
   }
@@ -23,37 +23,30 @@ export async function PATCH(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   // Get current status for audit trail
-  const { data: currentContact } = await supabase
-    .from('Contact')
-    .select('applicationStatus, spaceId')
-    .eq('id', contactId)
-    .maybeSingle();
+  const currentContact = await convex().query(api.contacts.contacts.getById, { id: contactId });
 
-  const update: Record<string, any> = {
+  const patch: Record<string, any> = {
     applicationStatus: status,
-    updatedAt: new Date().toISOString(),
   };
   if (statusNote !== undefined) {
-    update.applicationStatusNote = statusNote?.trim() || null;
+    patch.applicationStatusNote = statusNote?.trim() || null;
   }
 
-  const { error } = await supabase
-    .from('Contact')
-    .update(update)
-    .eq('id', contactId);
-
-  if (error) throw error;
+  await convex().mutation(api.contacts.contacts.update, {
+    id: contactId,
+    patch,
+  });
 
   // Create audit trail record
   if (currentContact) {
-    await supabase.from('ApplicationStatusUpdate').insert({
+    await convex().mutation(api.portal.applicationStatus.create, {
       contactId,
       spaceId: currentContact.spaceId,
       fromStatus: currentContact.applicationStatus ?? null,
       toStatus: status,
       note: statusNote?.trim() || null,
-    }).then(({ error: auditErr }) => {
-      if (auditErr) console.warn('[status] Audit insert failed (non-fatal):', auditErr);
+    }).catch((auditErr) => {
+      console.warn('[status] Audit insert failed (non-fatal):', auditErr);
     });
   }
 

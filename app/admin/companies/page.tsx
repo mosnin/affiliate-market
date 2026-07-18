@@ -1,0 +1,198 @@
+import { redirect } from 'next/navigation';
+import { isPlatformAdmin } from '@/lib/permissions';
+import { convex, api } from '@/lib/convex-server';
+import { Card, CardContent } from '@/components/ui/card';
+import { Building2, CheckCircle2, XCircle, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
+import { cn } from '@/lib/utils';
+
+type CompanyRow = {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  ownerId: string;
+  User: { id: string; name: string | null; email: string } | null;
+};
+
+export default async function AdminCompaniesPage() {
+  const isAdmin = await isPlatformAdmin();
+  if (!isAdmin) redirect('/');
+
+  let companies: CompanyRow[];
+  let countMap: Record<string, number> = {};
+  try {
+    // Companies newest-first, then resolve the owner User(...) embed + per-company
+    // member counts lib-side (the Convex fns return single-table rows).
+    const rows = (await convex().query(api.org.companies.listAll, {})) as Array<{
+      id: string;
+      name: string;
+      status: string;
+      createdAt: string;
+      ownerId: string;
+    }>;
+
+    const ownerIds = Array.from(new Set(rows.map((b) => b.ownerId).filter(Boolean)));
+    const owners =
+      ownerIds.length > 0
+        ? ((await convex().query(api.org.users.listByIds, { ids: ownerIds })) as Array<{
+            id: string;
+            name: string | null;
+            email: string;
+          }>)
+        : [];
+    const ownerById = new Map(owners.map((o) => [o.id, o]));
+
+    companies = rows.map((b) => ({
+      id: b.id,
+      name: b.name,
+      status: b.status,
+      createdAt: b.createdAt,
+      ownerId: b.ownerId,
+      User: ownerById.get(b.ownerId) ?? null,
+    }));
+
+    const allIds = companies.map((b) => b.id);
+    if (allIds.length > 0) {
+      const memberships = (await convex().query(api.org.memberships.listByCompanyIds, {
+        companyIds: allIds,
+      })) as Array<{ companyId: string }>;
+      for (const m of memberships) {
+        countMap[m.companyId] = (countMap[m.companyId] ?? 0) + 1;
+      }
+    }
+  } catch {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="text-center space-y-2 p-8">
+          <p className="text-sm text-muted-foreground">Couldn&apos;t load companies.</p>
+          <a href="/admin/companies" className="text-xs text-primary hover:underline">Retry</a>
+        </div>
+      </div>
+    );
+  }
+
+  const active    = companies.filter((b) => b.status === 'active').length;
+  const suspended = companies.filter((b) => b.status === 'suspended').length;
+
+  return (
+    <div className="space-y-8 pb-12">
+      <header className="space-y-1.5">
+        <p className="text-sm text-muted-foreground">Management.</p>
+        <h1
+          className="text-3xl tracking-tight text-foreground"
+          style={{ fontFamily: 'var(--font-title)' }}
+        >
+          Companies
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {companies?.length ?? 0} total · {active} active · {suspended} suspended.
+        </p>
+      </header>
+
+      {!companies || companies.length === 0 ? (
+        <Card>
+          <CardContent className="px-5 py-10 text-center">
+            <Building2 size={28} className="mx-auto mb-3 text-muted-foreground opacity-40" />
+            <p className="text-sm text-muted-foreground">No companies yet.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="rounded-xl border border-border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground">
+                    Company
+                  </th>
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground hidden sm:table-cell">
+                    Owner
+                  </th>
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground hidden md:table-cell">
+                    Members
+                  </th>
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground">
+                    Status
+                  </th>
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground hidden lg:table-cell">
+                    Created
+                  </th>
+                  <th className="text-right px-4 py-3 text-[11px] font-semibold text-muted-foreground">
+                    &nbsp;
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border bg-card">
+                {companies.map((b) => {
+                  const owner = b.User as { id: string; name: string | null; email: string } | null;
+                  const memberCount = countMap[b.id] ?? 0;
+                  const isActive = b.status === 'active';
+                  return (
+                    <tr
+                      key={b.id}
+                      className="hover:bg-muted/30 transition-colors"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-foreground/[0.06] flex items-center justify-center flex-shrink-0">
+                            <Building2 size={14} className="text-foreground/70" />
+                          </div>
+                          <p className="font-semibold truncate max-w-[200px]">{b.name}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        {owner ? (
+                          <Link
+                            href={`/admin/users/${owner.id}`}
+                            className="text-xs text-primary hover:underline underline-offset-2"
+                          >
+                            {owner.name ?? owner.email}
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell text-sm">
+                        {memberCount}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 text-[10px] font-semibold rounded-full px-2 py-0.5',
+                            isActive
+                              ? 'text-positive bg-positive-subtle dark:text-positive dark:bg-positive-subtle0/15'
+                              : 'text-negative bg-negative-subtle dark:text-red-400 dark:bg-negative-subtle0/15',
+                          )}
+                        >
+                          {isActive ? <CheckCircle2 size={9} /> : <XCircle size={9} />}
+                          {isActive ? 'Active' : 'Suspended'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell text-xs text-muted-foreground whitespace-nowrap">
+                        {new Date(b.createdAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link
+                          href={`/admin/companies/${b.id}`}
+                          className="inline-flex items-center gap-0.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          View
+                          <ChevronRight size={12} />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
