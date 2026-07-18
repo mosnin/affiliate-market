@@ -86,12 +86,17 @@ export async function transferPayout(input: {
   if (input.amountCents <= 0) return null;
 
   try {
-    const transfer = await getStripe().transfers.create({
-      amount: input.amountCents,
-      currency: input.currency ?? 'usd',
-      destination: input.stripeAccountId,
-      metadata: { payoutId: input.payoutId },
-    });
+    // Idempotency key = payoutId: a network-timeout retry where Stripe actually
+    // created the transfer returns the SAME transfer instead of moving cash twice.
+    const transfer = await getStripe().transfers.create(
+      {
+        amount: input.amountCents,
+        currency: input.currency ?? 'usd',
+        destination: input.stripeAccountId,
+        metadata: { payoutId: input.payoutId },
+      },
+      { idempotencyKey: `payout_transfer_${input.payoutId}` },
+    );
     return transfer.id;
   } catch (err) {
     logger.warn('[affiliates] stripe transfer failed — payout left pending', {

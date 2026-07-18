@@ -82,12 +82,17 @@ export async function transferSellerProceeds(input: {
   if (!accountId) return null;
 
   try {
-    const transfer = await getStripe().transfers.create({
-      amount: input.amountCents,
-      currency: input.currency ?? 'usd',
-      destination: accountId,
-      metadata: { orderId: input.orderId, kind: 'seller_proceeds' },
-    });
+    // Idempotency key = orderId: a retry after a network timeout returns the
+    // same transfer rather than paying the seller's proceeds a second time.
+    const transfer = await getStripe().transfers.create(
+      {
+        amount: input.amountCents,
+        currency: input.currency ?? 'usd',
+        destination: accountId,
+        metadata: { orderId: input.orderId, kind: 'seller_proceeds' },
+      },
+      { idempotencyKey: `seller_proceeds_${input.orderId}` },
+    );
     return transfer.id;
   } catch (err) {
     logger.warn('[marketplace] seller proceeds transfer failed — recorded for manual settlement', {
